@@ -116,9 +116,9 @@ EOF
 CF_TOKEN=""
 cf() { # cf METHOD PATH [JSON_BODY] → in JSON phản hồi; dừng nếu success != true
   local method=$1 path=$2 body=${3:-} resp
-  local args=(-sS -X "$method" "https://api.cloudflare.com/client/v4$path" -H 'Content-Type: application/json' -K <(printf 'header = "Authorization: Bearer %s"\n' "$CF_TOKEN"))
+  local args=(-sS -X "$method" "https://api.cloudflare.com/client/v4$path" -H 'Content-Type: application/json')
   [[ -z $body ]] || args+=(--data "$body")
-  resp=$(curl "${args[@]}") || die "Không gọi được Cloudflare API ($method $path)."
+  resp=$(curl "${args[@]}" -K <(printf 'header = "Authorization: Bearer %s"\n' "$CF_TOKEN")) || die "Không gọi được Cloudflare API ($method $path)."
   [[ $(jq -r '.success' <<<"$resp" 2>/dev/null) == true ]] || die "Cloudflare API $method $path không thành công: $(jq -c '.errors // .' <<<"$resp" 2>/dev/null || echo "$resp")"
   printf '%s' "$resp"
 }
