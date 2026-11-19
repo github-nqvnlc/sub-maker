@@ -1,0 +1,171 @@
+import type { ModelInfo, ProviderCatalog, ProviderType, VoiceInfo } from './types';
+
+/**
+ * Danh mục model/giọng/tốc độ theo từng nhà cung cấp (nguồn: docs/fpt-ai-voice-guide.md, docs/shopaikey-guide.md).
+ * Các giá trị đánh dấu ⚠️ trong tài liệu (khoảng speed của Marketplace, giới hạn ký tự) dùng mặc định thận trọng
+ * cho đến khi Spike S1–S3 xác nhận (docs/provider-spikes.md).
+ */
+
+const v = (id: string, label: string, gender: VoiceInfo['gender'], region: VoiceInfo['region'] = ''): VoiceInfo => ({
+  id,
+  label,
+  gender,
+  region,
+});
+
+const FPT_MARKETPLACE_VOICES: Record<string, VoiceInfo[]> = {
+  'FPT.AI-VITs': [
+    v('banmai', 'Ban Mai (nữ, miền Bắc)', 'female', 'north'),
+    v('thuminh', 'Thu Minh (nữ, miền Bắc)', 'female', 'north'),
+    v('leminh', 'Lê Minh (nam, miền Bắc)', 'male', 'north'),
+    v('minhquan', 'Minh Quân (nam, miền Bắc)', 'male', 'north'),
+    v('ngoclam', 'Ngọc Lam (nữ, miền Trung)', 'female', 'central'),
+    v('giahuy', 'Gia Huy (nam, miền Trung)', 'male', 'central'),
+    v('kimngan', 'Kim Ngân (nữ, miền Nam)', 'female', 'south'),
+    v('hatieumai', 'Hà Tiểu Mai (nữ, miền Nam)', 'female', 'south'),
+    v('huyphong', 'Huy Phong (nam, miền Nam)', 'male', 'south'),
+  ],
+  'FPT.TTS-pro': [
+    v('std_banmai', 'Ban Mai (nữ, miền Bắc)', 'female', 'north'),
+    v('std_quanganh', 'Quang Anh (nam, miền Bắc)', 'male', 'north'),
+    v('fci_phuongan', 'Phương An (nữ)', 'female'),
+    v('fci_vietkhoa', 'Việt Khoa (nam)', 'male'),
+    v('fci_xuantoan', 'Xuân Toàn (nam)', 'male'),
+  ],
+  'FPT.TTS-ultra': [
+    v('std_banmai', 'Ban Mai (nữ, miền Bắc)', 'female', 'north'),
+    v('std_kimngan', 'Kim Ngân (nữ, miền Nam)', 'female', 'south'),
+    v('std_quanganh', 'Quang Anh (nam, miền Bắc)', 'male', 'north'),
+    v('std_minhquang', 'Minh Quang (nam)', 'male'),
+    v('std_vietkhoa', 'Việt Khoa (nam)', 'male'),
+    v('fci_phuongan', 'Phương An (nữ)', 'female'),
+    v('fci_xuantoan', 'Xuân Toàn (nam)', 'male'),
+  ],
+};
+
+const FPT_MARKETPLACE: ProviderCatalog = {
+  type: 'fpt_marketplace',
+  label: 'FPT AI Marketplace',
+  defaultBaseUrl: 'https://mkp-api.fptcloud.com/v1',
+  models: Object.entries(FPT_MARKETPLACE_VOICES).map(
+    ([id, voices]): ModelInfo => ({
+      id,
+      label: id,
+      voices,
+    }),
+  ),
+  // Hệ số tốc độ (khác thang của FPT Speech). Đã kiểm chứng bằng khóa thật (S3, 2026-11-19): 0,25–4 được chấp nhận, 5 trở lên bị 422.
+  speed: { min: 0.25, max: 4, default: 1, step: 0.05 },
+  // Đã kiểm chứng (S3): 1.500 ký tự được chấp nhận, 10.001 bị 422. Giữ 5.000 làm giới hạn an toàn (đoạn thực tế ≤ 400 ký tự).
+  maxCharsPerRequest: 5000,
+  minChars: 1,
+};
+
+const OPENAI_VOICES: VoiceInfo[] = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'].map((id) =>
+  v(id, id.charAt(0).toUpperCase() + id.slice(1), 'neutral'),
+);
+
+const SHOPAIKEY_OPENAI: ProviderCatalog = {
+  type: 'shopaikey_openai',
+  label: 'ShopAIKey (OpenAI TTS)',
+  defaultBaseUrl: 'https://api.shopaikey.com',
+  models: [{ id: 'tts-1', label: 'tts-1', voices: OPENAI_VOICES }],
+  speed: { min: 0.25, max: 4, default: 1, step: 0.05 },
+  maxCharsPerRequest: 4096,
+  minChars: 1,
+};
+
+// Giọng tiếng Việt của MiniMax (nguồn: GET /tts/minimax/voices của ShopAIKey, 2026-11-19). Giới tính suy ra từ tên giọng;
+// vùng miền theo mô tả ("giọng Bắc"/"giọng Nam"), để trống khi mô tả không nêu rõ.
+const MINIMAX_VOICES: VoiceInfo[] = [
+  v('Vietnamese_Professional_Guide_v6', 'Nam Hướng Dẫn', 'male', 'north'),
+  v('Vietnamese_Serene_Man', 'Nam Trầm Ấm', 'male'),
+  v('Vietnamese_Professional_Narrator_v2', 'Nam Dẫn Chuyện', 'male', 'north'),
+  v('Vietnamese_female_4_v1', 'Nữ Tự Tin', 'female'),
+  v('Vietnamese_Articulate_Assistant_v1', 'Nữ Trợ Lý', 'female', 'south'),
+  v('Vietnamese_male_1_v2', 'Nam Năng Động', 'male'),
+  v('Vietnamese_Warm_Narrator_v1', 'Nam Ấm Áp', 'male', 'north'),
+  v('Vietnamese_kindhearted_girl', 'Nữ Tốt Bụng', 'female'),
+  v('Vietnamese_Steady_Instructor_v1', 'Nam Giảng Viên', 'male', 'north'),
+  v('Vietnamese_polished_Announcer_v3', 'Nữ Thông Báo', 'female', 'north'),
+  v('Vietnamese_patient_Instructor_v1', 'Nữ Kiên Nhẫn', 'female', 'north'),
+  v('Vietnamese_crisp_announcer_v2', 'Nữ Sắc Nét', 'female', 'north'),
+  v('Vietnamese_Professional_Assistant_v1', 'Nữ Đáng Tin', 'female', 'north'),
+  v('Vietnamese_Podcast_Host_v2', 'Nam Podcast', 'male', 'north'),
+  v('Vietnamese_Audiobook_woman_v2', 'Nữ Sách Nói', 'female', 'north'),
+  v('Vietnamese_Male_Narrator_v1', 'Nam Động Viên', 'male', 'south'),
+  v('Vietnamese_Cheerful_Instructor_v1', 'Nam Vui Vẻ', 'male', 'north'),
+  v('Vietnamese_Cute_Girl_v1', 'Nữ Dễ Thương', 'female', 'north'),
+];
+
+// Model chạy được với khóa thật (2026-11-19). Không đưa speech-2.8-* vì ShopAIKey đang trả lỗi 500 (proxy không đọc được phản hồi nén).
+const MINIMAX_MODELS = ['speech-02-hd', 'speech-02-turbo', 'speech-2.6-hd', 'speech-2.6-turbo', 'speech-01-hd', 'speech-01-turbo'];
+
+const SHOPAIKEY_MINIMAX: ProviderCatalog = {
+  type: 'shopaikey_minimax',
+  label: 'ShopAIKey (MiniMax TTS)',
+  defaultBaseUrl: 'https://api.shopaikey.com',
+  models: MINIMAX_MODELS.map((id): ModelInfo => ({ id, label: id, voices: MINIMAX_VOICES })),
+  // MiniMax nhận speed 0,5–2; ngoài khoảng này ShopAIKey không báo lỗi nhưng cũng không áp dụng (đã kiểm chứng speed=3).
+  speed: { min: 0.5, max: 2, default: 1, step: 0.05 },
+  // Tài liệu MiniMax: tối đa 10.000 ký tự; dùng 5.000 làm giới hạn an toàn (đoạn thực tế ≤ 400).
+  maxCharsPerRequest: 5000,
+  minChars: 1,
+};
+
+const CATALOGS: Record<ProviderType, ProviderCatalog> = {
+  fpt_marketplace: FPT_MARKETPLACE,
+  shopaikey_openai: SHOPAIKEY_OPENAI,
+  shopaikey_minimax: SHOPAIKEY_MINIMAX,
+};
+
+export const PROVIDER_TYPES = Object.keys(CATALOGS) as ProviderType[];
+
+export function getCatalog(type: ProviderType): ProviderCatalog {
+  return CATALOGS[type];
+}
+
+export function allCatalogs(): ProviderCatalog[] {
+  return PROVIDER_TYPES.map((t) => CATALOGS[t]);
+}
+
+export type ResolvedSettings = { model: string | null; voice: string; speed: number | null };
+
+export type SettingsInput = {
+  model?: string | null;
+  voice?: string | null;
+  speed?: number | null;
+  /** Giá trị mặc định của cấu hình nhà cung cấp (nếu có). */
+  defaults?: { model?: string | null; voice?: string | null; speed?: number | null };
+};
+
+/**
+ * Chuẩn hóa và kiểm tra thiết lập (model/giọng/tốc độ) theo catalog của nhà cung cấp.
+ * Trả `{ ok:false, fields }` với thông điệp tiếng Việt theo trường.
+ */
+export function resolveSettings(
+  type: ProviderType,
+  input: SettingsInput,
+): { ok: true; value: ResolvedSettings } | { ok: false; fields: Record<string, string> } {
+  const cat = getCatalog(type);
+  const fields: Record<string, string> = {};
+
+  const model = input.model ?? input.defaults?.model ?? cat.models[0]!.id;
+  const modelInfo = cat.models.find((m) => m.id === model);
+  if (!modelInfo) fields.model = 'Model không được hỗ trợ cho nhà cung cấp này';
+
+  const voice = input.voice ?? input.defaults?.voice ?? modelInfo?.voices[0]?.id ?? null;
+  if (modelInfo && (!voice || !modelInfo.voices.some((x) => x.id === voice))) {
+    fields.voice = 'Giọng đọc không có trong model đã chọn';
+  }
+
+  const speed: number | null = input.speed ?? input.defaults?.speed ?? cat.speed.default;
+  if (speed !== null) {
+    if (!Number.isFinite(speed) || speed < cat.speed.min || speed > cat.speed.max) {
+      fields.speed = `Tốc độ phải từ ${cat.speed.min} đến ${cat.speed.max}`;
+    }
+  }
+
+  if (Object.keys(fields).length > 0) return { ok: false, fields };
+  return { ok: true, value: { model: model ?? null, voice: voice!, speed } };
+}

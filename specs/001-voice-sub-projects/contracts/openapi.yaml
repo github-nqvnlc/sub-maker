@@ -1,0 +1,847 @@
+openapi: 3.0.3
+info:
+  title: Sub Maker API
+  version: 1.0.0
+  description: |
+    API nội bộ giữa giao diện Next.js và máy chủ. Quy ước chung:
+    - Xác thực bằng cookie phiên (đăng ký/đăng nhập/đăng xuất do thư viện xác thực xử lý ở `/api/auth/*`).
+    - Mọi endpoint (trừ `/api/auth/*`) yêu cầu đăng nhập; thiếu phiên -> 401.
+    - Tài nguyên của người khác -> 404 (không dùng 403) để không lộ sự tồn tại. Endpoint `/api/admin/*` với User thường -> 404.
+    - `owner_id` không bao giờ nhận từ client.
+    - Lỗi: `{ "error": { "code": "STRING", "message": "tiếng Việt", "fields": { "name": "lý do" } } }`.
+    - Khóa API không bao giờ xuất hiện trong phản hồi (chỉ `apiKeyHint`).
+servers:
+  - url: /api
+tags:
+  - name: me
+  - name: projects
+  - name: files
+  - name: jobs
+  - name: voices
+  - name: dashboard
+  - name: ai-config
+  - name: admin
+
+paths:
+  /me:
+    get:
+      tags: [me]
+      summary: Hồ sơ của tôi
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+    patch:
+      tags: [me]
+      summary: Sửa hồ sơ (FR-035)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName: { type: string, minLength: 1, maxLength: 60 }
+                bio: { type: string, maxLength: 500 }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '422': { $ref: '#/components/responses/Validation' }
+  /me/avatar:
+    put:
+      tags: [me]
+      summary: Đặt ảnh đại diện (png/jpeg/webp, tối đa 1 MB)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, properties: { file: { type: string, format: binary } }, required: [file] }
+      responses:
+        '200': { description: OK }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Validation' }
+    get:
+      tags: [me]
+      summary: Tải ảnh đại diện của tôi (qua proxy xác thực)
+      responses:
+        '200': { description: Ảnh }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [me]
+      summary: Xóa ảnh đại diện
+      responses:
+        '204': { description: Đã xóa }
+  /me/password:
+    post:
+      tags: [me]
+      summary: Đổi mật khẩu
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 10, maxLength: 128 }
+      responses:
+        '204': { description: Đã đổi }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /projects:
+    get:
+      tags: [projects]
+      summary: Danh sách Project của tôi, tìm kiếm/sắp xếp/lọc/phân trang (FR-005..008)
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 200 }, description: Không phân biệt hoa/thường, gõ không dấu được }
+        - { name: sort, in: query, schema: { type: string, enum: [name, createdAt, updatedAt, voiceCount], default: updatedAt } }
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: provider, in: query, schema: { $ref: '#/components/schemas/ProviderType' } }
+        - { name: jobState, in: query, schema: { type: string, enum: [running, failed, none] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ProjectSummary' } }
+                  total: { type: integer }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+    post:
+      tags: [projects]
+      summary: Tạo Project (FR-001)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, providerType]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+                description: { type: string, maxLength: 2000 }
+                providerType: { $ref: '#/components/schemas/ProviderType' }
+      responses:
+        '201': { description: Đã tạo, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+        '422': { $ref: '#/components/responses/Validation' }
+  /projects/bulk-delete:
+    post:
+      tags: [projects]
+      summary: Xóa nhiều Project (FR-004); dừng tiến trình đang chạy rồi xóa dữ liệu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, minItems: 1, maxItems: 100, items: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Kết quả từng mục
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: array, items: { type: string, format: uuid } }
+                  notFound: { type: array, items: { type: string, format: uuid } }
+  /projects/{projectId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [projects]
+      summary: Chi tiết Project gồm file, voice, tiến trình (FR-002)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [projects]
+      summary: Sửa thông tin Project (FR-003)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+                description: { type: string, maxLength: 2000 }
+                providerType: { $ref: '#/components/schemas/ProviderType' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [projects]
+      summary: Xóa một Project
+      responses:
+        '204': { description: Đã xóa }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/files:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [files]
+      summary: Danh sách file kịch bản của Project
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SubtitleFile' } } } } }
+    post:
+      tags: [files]
+      summary: Upload file .txt/.md/.skt (FR-009); trả danh sách đoạn để xem trước (FR-011)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } }
+      responses:
+        '201': { description: Đã nhận và phân tích, content: { application/json: { schema: { $ref: '#/components/schemas/SubtitleFileDetail' } } } }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Validation' }
+        '409': { description: Vượt hạn mức lưu trữ (QUOTA_EXCEEDED), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /files/{fileId}:
+    parameters:
+      - { name: fileId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [files]
+      summary: Xem file đã upload (văn bản gốc) và các đoạn (FR-010)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SubtitleFileDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [files]
+      summary: Xóa file (bị chặn nếu có job đang chạy dùng file)
+      responses:
+        '204': { description: Đã xóa }
+        '409': { description: Đang được dùng }
+  /files/{fileId}/raw:
+    parameters:
+      - { name: fileId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [files]
+      summary: Tải file gốc
+      responses:
+        '200': { description: Nội dung file gốc }
+
+  /projects/{projectId}/jobs:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [jobs]
+      summary: Danh sách tiến trình của Project
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Job' } } } } }
+    post:
+      tags: [jobs]
+      summary: Bắt đầu tạo voice (FR-012, FR-015). Cấu hình AI được chọn lúc này (riêng nếu đủ điều kiện, ngược lại chung)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileId]
+              properties:
+                fileId: { type: string, format: uuid }
+                model: { type: string }
+                voice: { type: string }
+                speed: { type: number }
+      responses:
+        '202': { description: Đã xếp hàng, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { description: PROVIDER_NOT_CONFIGURED hoặc QUOTA_EXCEEDED hoặc đang có quá nhiều tiến trình, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '422': { $ref: '#/components/responses/Validation' }
+  /jobs:
+    get:
+      tags: [jobs]
+      summary: Danh sách tiến trình của tôi xuyên mọi Project (dùng cho chỉ báo tiến trình đang chạy)
+      parameters:
+        - { name: status, in: query, schema: { type: string }, description: 'Lọc theo trạng thái, nhiều giá trị cách nhau bằng dấu phẩy, ví dụ running,queued' }
+        - { name: limit, in: query, schema: { type: integer, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Job' } } } } }
+  /jobs/bulk-delete:
+    post:
+      tags: [jobs]
+      summary: Xóa nhiều tiến trình/voice (FR-023); tiến trình đang chạy bị từ chối trừ khi `stopFirst`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, minItems: 1, maxItems: 100, items: { type: string, format: uuid } }
+                stopFirst: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Kết quả từng mục
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: array, items: { type: string, format: uuid } }
+                  rejectedRunning: { type: array, items: { type: string, format: uuid } }
+                  notFound: { type: array, items: { type: string, format: uuid } }
+  /jobs/{jobId}:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [jobs]
+      summary: Chi tiết tiến trình (trạng thái, tiến độ, thiết lập, danh sách đoạn lỗi)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/JobDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [jobs]
+      summary: Sửa thiết lập (model/voice/speed); khi đổi, mọi đoạn về pending (đoạn trùng dùng cache). Chỉ khi stopped/failed/interrupted; queued/running/completed -> 409 (job completed dùng rerun kèm thiết lập mới)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model: { type: string }
+                voice: { type: string }
+                speed: { type: number }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { description: Không được sửa ở trạng thái hiện tại (queued, running hoặc completed) }
+    delete:
+      tags: [jobs]
+      summary: Xóa tiến trình và voice kèm theo (409 nếu đang chạy)
+      responses:
+        '204': { description: Đã xóa }
+        '409': { description: Đang chạy }
+  /jobs/{jobId}/stop:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [jobs]
+      summary: Dừng tiến trình; giữ phần đã xong (FR-021)
+      responses:
+        '202': { description: Đã yêu cầu dừng }
+  /jobs/{jobId}/resume:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [jobs]
+      summary: Tiếp tục tiến trình stopped/failed/interrupted từ đoạn chưa xong
+      responses:
+        '202': { description: Đã xếp hàng lại }
+  /jobs/{jobId}/rerun:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [jobs]
+      summary: Chạy lại, tạo job mới với thiết lập tùy chọn trong body (mặc định giữ thiết lập cũ); đoạn trùng dùng cache (FR-022, FR-017)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model: { type: string }
+                voice: { type: string }
+                speed: { type: number }
+      responses:
+        '202': { description: Job mới, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+  /jobs/{jobId}/logs:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [jobs]
+      summary: Đọc log theo con trỏ (dự phòng khi SSE không dùng được)
+      parameters:
+        - { name: after, in: query, schema: { type: integer, format: int64, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 500, default: 200 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/LogEntry' } }
+                  status: { $ref: '#/components/schemas/JobStatus' }
+  /jobs/{jobId}/events:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [jobs]
+      summary: Luồng SSE log và tiến độ thời gian thực. Xem job-events.md
+      description: Hỗ trợ header `Last-Event-ID` để nhận tiếp log đã bỏ lỡ.
+      responses:
+        '200': { description: text/event-stream, content: { text/event-stream: { schema: { type: string } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /voices/{voiceId}:
+    parameters:
+      - { name: voiceId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [voices]
+      summary: Thông tin voice, mốc thời gian và văn bản từng đoạn để đồng bộ highlight (FR-016, FR-027)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/VoiceDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /voices/{voiceId}/audio:
+    parameters:
+      - { name: voiceId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [voices]
+      summary: Phát audio qua proxy xác thực, hỗ trợ Range để tua (FR-026)
+      parameters:
+        - { name: Range, in: header, schema: { type: string } }
+        - { name: download, in: query, schema: { type: boolean }, description: Nếu true, trả kèm Content-Disposition: attachment (FR-029) }
+      responses:
+        '200': { description: Toàn bộ audio, content: { audio/mpeg: { schema: { type: string, format: binary } } } }
+        '206': { description: Một phần audio }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /providers:
+    get:
+      tags: [ai-config]
+      summary: Danh mục loại nhà cung cấp, model, giọng đọc, tốc độ hợp lệ; kèm cho biết loại nào đang khả dụng cho tôi
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProviderCatalogItem' }
+  /me/ai-config:
+    get:
+      tags: [ai-config]
+      summary: Cấu hình AI riêng của tôi. User không thuộc danh sách -> 404
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AiConfig' } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [ai-config]
+      summary: Tạo/sửa cấu hình riêng theo `type` (FR-043). Ngoài danh sách -> 404
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AiConfigInput' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AiConfig' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /me/ai-config/{type}:
+    parameters:
+      - { name: type, in: path, required: true, schema: { $ref: '#/components/schemas/ProviderType' } }
+    delete:
+      tags: [ai-config]
+      summary: Xóa cấu hình riêng
+      responses:
+        '204': { description: Đã xóa }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /me/ai-config/{type}/test:
+    parameters:
+      - { name: type, in: path, required: true, schema: { $ref: '#/components/schemas/ProviderType' } }
+    post:
+      tags: [ai-config]
+      summary: Kiểm tra kết nối (gọi thử với câu ngắn)
+      responses:
+        '200': { description: Kết quả, content: { application/json: { schema: { $ref: '#/components/schemas/TestResult' } } } }
+
+  /dashboard:
+    get:
+      tags: [dashboard]
+      summary: Thống kê cá nhân (FR-038)
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Dashboard' } } } }
+
+  /admin/users:
+    get:
+      tags: [admin]
+      summary: Danh sách tài khoản (FR-037); tìm kiếm, lọc theo trạng thái, phân trang
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [active, banned, deleting] } }
+        - { name: customAi, in: query, schema: { type: boolean } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/AdminUser' } }, total: { type: integer } } } } } }
+  /admin/users/{userId}:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [admin]
+      summary: Khóa/mở khóa; bật/tắt quyền dùng cấu hình AI riêng (FR-042); khóa dừng các tiến trình đang chạy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [active, banned] }
+                canUseCustomAi: { type: boolean }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AdminUser' } } } }
+    delete:
+      tags: [admin]
+      summary: Xóa vĩnh viễn User và toàn bộ dữ liệu; chỉ giữ thống kê ẩn danh. Cần `confirm` khớp email
+      parameters:
+        - { name: confirm, in: query, required: true, schema: { type: string } }
+      responses:
+        '202': { description: Đã bắt đầu xóa (status = deleting) }
+  /admin/users/{userId}/reset-password:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Đặt lại mật khẩu cho User
+      requestBody:
+        content: { application/json: { schema: { type: object, required: [newPassword], properties: { newPassword: { type: string, minLength: 10, maxLength: 128 } } } } }
+      responses:
+        '204': { description: Đã đặt lại }
+  /admin/custom-ai-users:
+    get:
+      tags: [admin]
+      summary: Danh sách User được phép dùng cấu hình AI riêng, có tìm kiếm
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AdminUser' } } } } }
+    post:
+      tags: [admin]
+      summary: Thêm User vào danh sách
+      requestBody:
+        content: { application/json: { schema: { type: object, required: [userId], properties: { userId: { type: string, format: uuid } } } } }
+      responses:
+        '204': { description: Đã thêm }
+  /admin/custom-ai-users/{userId}:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [admin]
+      summary: Gỡ User khỏi danh sách; cấu hình riêng bị vô hiệu, giữ lại (FR-044)
+      responses:
+        '204': { description: Đã gỡ }
+  /admin/ai-configs:
+    get:
+      tags: [admin]
+      summary: Cấu hình AI chung
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AiConfig' } } } } }
+    put:
+      tags: [admin]
+      summary: Tạo/sửa cấu hình chung theo `type` (FR-041). `apiKey` để trống khi sửa = giữ khóa cũ
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AiConfigInput' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AiConfig' } } } }
+        '422': { $ref: '#/components/responses/Validation' }
+  /admin/ai-configs/{type}:
+    parameters:
+      - { name: type, in: path, required: true, schema: { $ref: '#/components/schemas/ProviderType' } }
+    delete:
+      tags: [admin]
+      summary: Xóa cấu hình chung
+      responses:
+        '204': { description: Đã xóa }
+  /admin/ai-configs/{type}/test:
+    parameters:
+      - { name: type, in: path, required: true, schema: { $ref: '#/components/schemas/ProviderType' } }
+    post:
+      tags: [admin]
+      summary: Kiểm tra kết nối cấu hình chung
+      responses:
+        '200': { description: Kết quả, content: { application/json: { schema: { $ref: '#/components/schemas/TestResult' } } } }
+  /admin/stats:
+    get:
+      tags: [admin]
+      summary: Thống kê toàn hệ thống và từng User (FR-039)
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: sort, in: query, schema: { type: string, enum: [projects, voices, chars, cost, storage, lastActive], default: chars } }
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStats' } } } }
+  /admin/settings:
+    get:
+      tags: [admin]
+      summary: Cài đặt hệ thống (giới hạn file, hạn mức lưu trữ, số tiến trình đồng thời)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+    put:
+      tags: [admin]
+      summary: Cập nhật cài đặt hệ thống
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+
+components:
+  responses:
+    NotFound:
+      description: Không tồn tại hoặc không thuộc về bạn
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Validation:
+      description: Dữ liệu không hợp lệ
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    TooLarge:
+      description: Vượt kích thước cho phép
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: QUOTA_EXCEEDED }
+            message: { type: string }
+            fields: { type: object, additionalProperties: { type: string } }
+    ProviderType:
+      type: string
+      enum: [fpt_marketplace, shopaikey_openai, shopaikey_minimax]
+    JobStatus:
+      type: string
+      enum: [queued, running, completed, failed, stopped, interrupted]
+    Me:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        displayName: { type: string }
+        bio: { type: string, nullable: true }
+        hasAvatar: { type: boolean }
+        role: { type: string, enum: [admin, user] }
+        canUseCustomAi: { type: boolean }
+        storageUsedBytes: { type: integer, format: int64 }
+        storageQuotaBytes: { type: integer, format: int64 }
+    Project:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        providerType: { $ref: '#/components/schemas/ProviderType' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ProjectSummary:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            voiceCount: { type: integer }
+            runningJobs: { type: integer }
+            failedJobs: { type: integer }
+    ProjectDetail:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            files: { type: array, items: { $ref: '#/components/schemas/SubtitleFile' } }
+            jobs: { type: array, items: { $ref: '#/components/schemas/Job' } }
+            voices: { type: array, items: { $ref: '#/components/schemas/Voice' } }
+    SubtitleFile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        originalName: { type: string }
+        ext: { type: string, enum: [txt, md, skt] }
+        sizeBytes: { type: integer }
+        charCount: { type: integer }
+        segmentCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+    SubtitleFileDetail:
+      allOf:
+        - $ref: '#/components/schemas/SubtitleFile'
+        - type: object
+          properties:
+            rawText: { type: string }
+            segments:
+              type: array
+              items: { type: object, properties: { idx: { type: integer }, text: { type: string }, charCount: { type: integer } } }
+    JobSettings:
+      type: object
+      properties:
+        model: { type: string, nullable: true }
+        voice: { type: string }
+        speed: { type: number, nullable: true }
+    Job:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        fileId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        providerType: { $ref: '#/components/schemas/ProviderType' }
+        configScope: { type: string, enum: [global, user] }
+        settings: { $ref: '#/components/schemas/JobSettings' }
+        progressDone: { type: integer }
+        progressTotal: { type: integer }
+        errorCode: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+        voiceId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+    JobDetail:
+      allOf:
+        - $ref: '#/components/schemas/Job'
+        - type: object
+          properties:
+            failedSegments:
+              type: array
+              items: { type: object, properties: { idx: { type: integer }, errorCode: { type: string } } }
+    LogEntry:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        ts: { type: string, format: date-time }
+        level: { type: string, enum: [info, warn, error] }
+        code: { type: string }
+        message: { type: string }
+        meta: { type: object, nullable: true }
+    Voice:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        durationMs: { type: integer }
+        sizeBytes: { type: integer }
+        createdAt: { type: string, format: date-time }
+    VoiceDetail:
+      allOf:
+        - $ref: '#/components/schemas/Voice'
+        - type: object
+          properties:
+            segments:
+              type: array
+              description: Mỗi phần tử = một đoạn văn bản + mốc thời gian chính xác theo mẫu PCM
+              items:
+                type: object
+                properties:
+                  idx: { type: integer }
+                  text: { type: string }
+                  startMs: { type: integer }
+                  endMs: { type: integer }
+    ProviderCatalogItem:
+      type: object
+      properties:
+        type: { $ref: '#/components/schemas/ProviderType' }
+        label: { type: string }
+        available: { type: boolean, description: Có cấu hình dùng được cho tôi }
+        usingOwnConfig: { type: boolean }
+        models:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              voices:
+                type: array
+                items: { type: object, properties: { id: { type: string }, label: { type: string }, gender: { type: string }, region: { type: string } } }
+        speed: { type: object, properties: { min: { type: number }, max: { type: number }, default: { type: number } } }
+    AiConfig:
+      type: object
+      properties:
+        scope: { type: string, enum: [global, user] }
+        type: { $ref: '#/components/schemas/ProviderType' }
+        name: { type: string }
+        baseUrl: { type: string }
+        apiKeyHint: { type: string, description: 'Vài ký tự cuối, ví dụ "…a1b2"' }
+        defaultModel: { type: string, nullable: true }
+        defaultVoice: { type: string, nullable: true }
+        defaultSpeed: { type: number, nullable: true }
+        maxCharsPerRequest: { type: integer }
+        pricePerMillionChars: { type: number, nullable: true }
+        enabled: { type: boolean }
+        disabledReason: { type: string, nullable: true, enum: [owner_removed_from_list, admin_disabled] }
+        lastTestAt: { type: string, format: date-time, nullable: true }
+        lastTestOk: { type: boolean, nullable: true }
+    AiConfigInput:
+      type: object
+      required: [type, baseUrl]
+      properties:
+        type: { $ref: '#/components/schemas/ProviderType' }
+        name: { type: string }
+        baseUrl: { type: string, format: uri }
+        apiKey: { type: string, writeOnly: true, description: Để trống khi sửa = giữ khóa cũ. Bắt buộc khi tạo }
+        defaultModel: { type: string }
+        defaultVoice: { type: string }
+        defaultSpeed: { type: number }
+        maxCharsPerRequest: { type: integer }
+        pricePerMillionChars: { type: number }
+        enabled: { type: boolean }
+    TestResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        message: { type: string, description: Thân thiện, không lộ khóa }
+        latencyMs: { type: integer }
+    Dashboard:
+      type: object
+      properties:
+        projects: { type: integer }
+        voices: { type: integer }
+        totalDurationMs: { type: integer, format: int64 }
+        jobsByStatus: { type: object, additionalProperties: { type: integer } }
+        usage:
+          type: object
+          properties:
+            chars: { type: integer, format: int64 }
+            tokens: { type: integer, format: int64, nullable: true }
+            costEstimateUsd: { type: number, nullable: true }
+            byDay: { type: array, items: { type: object, properties: { date: { type: string, format: date }, chars: { type: integer }, costEstimateUsd: { type: number, nullable: true } } } }
+            byProvider: { type: array, items: { type: object, properties: { providerType: { $ref: '#/components/schemas/ProviderType' }, configScope: { type: string }, chars: { type: integer } } } }
+        storageUsedBytes: { type: integer, format: int64 }
+        storageQuotaBytes: { type: integer, format: int64 }
+    AdminUser:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        displayName: { type: string }
+        role: { type: string, enum: [admin, user] }
+        status: { type: string, enum: [active, banned, deleting] }
+        canUseCustomAi: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        lastActiveAt: { type: string, format: date-time, nullable: true }
+    AdminStats:
+      type: object
+      properties:
+        totals:
+          type: object
+          properties:
+            users: { type: integer }
+            projects: { type: integer }
+            voices: { type: integer }
+            chars: { type: integer, format: int64 }
+            costEstimateUsd: { type: number, nullable: true }
+            storageUsedBytes: { type: integer, format: int64 }
+            charsByScope: { type: object, properties: { global: { type: integer, format: int64 }, user: { type: integer, format: int64 } } }
+        users:
+          type: array
+          items:
+            type: object
+            properties:
+              user: { $ref: '#/components/schemas/AdminUser' }
+              projects: { type: integer }
+              voices: { type: integer }
+              chars: { type: integer, format: int64 }
+              tokens: { type: integer, format: int64, nullable: true }
+              costEstimateUsd: { type: number, nullable: true }
+              storageUsedBytes: { type: integer, format: int64 }
+    Settings:
+      type: object
+      properties:
+        maxFileBytes: { type: integer, example: 2097152 }
+        userQuotaBytes: { type: integer, format: int64, example: 524288000 }
+        maxConcurrentJobs: { type: integer, example: 3 }
+        maxJobsPerUser: { type: integer, example: 2 }
+        segmentConcurrency: { type: integer, example: 3 }
