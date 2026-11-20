@@ -60,6 +60,8 @@ export type ProviderCatalog = {
   /** Giới hạn mỗi yêu cầu theo tài liệu nhà cung cấp. */
   maxCharsPerRequest: number;
   minChars: number;
+  /** Số yêu cầu/phút mỗi khóa theo tài liệu nhà cung cấp — chỉ là ƯỚC TÍNH, Administrator ghi đè được (rpm* trong cài đặt). */
+  requestsPerMinute?: number;
 };
 
 export interface TtsProvider {

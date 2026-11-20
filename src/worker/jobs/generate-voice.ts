@@ -7,6 +7,12 @@ import { sleep } from '../../lib/providers/adapters/shared';
 import type { PgBoss } from 'pg-boss';
 import { encodeMp3FromFile, BYTES_PER_SAMPLE } from '../../lib/audio/ffmpeg';
 import { DEFAULT_PAUSES, TimelineBuilder } from '../../lib/audio/merge';
+import { mergeTimed } from '../../lib/audio/merge-timed';
+import { planParts, type Part } from '../../lib/audio/placement';
+import { getLimiter, requestsPerMinute } from '../../lib/providers/rate-limit';
+import type { TimelineEntry } from '../../lib/db/schema/jobs';
+import type { ReadingUnit } from '../../lib/parsing/reading-units';
+import { loadFileCues, placeParamsOf, TIMED_MAX_CHARS, unitsForTiming } from '../../lib/jobs/timed';
 import { getDb } from '../../lib/db';
 import { jobSegments, projects, segments, subtitleFiles, users, voiceJobs, voices } from '../../lib/db/schema';
 import { HttpError } from '../../lib/api/errors';
@@ -40,7 +46,13 @@ export type RunOptions = {
   segmentConcurrency?: number;
   /** Chu kỳ kiểm tra lại khi đang chờ tới lượt chạy (ms). Mặc định 2000. */
   admissionPollMs?: number;
+  /** Chỉ để kiểm thử: ghi đè cửa sổ chia phần (ms) thay cho `timing.params.partMinutes`. */
+  partWindowMs?: number;
 };
+
+/** Phụ đề có nhiều hơn số đơn vị này thì log tổng hợp theo phần (không ghi từng đơn vị) để không bùng nổ số dòng. */
+const QUIET_LOG_UNITS = 200;
+const PER_UNIT_LOG_CODES = new Set(['SEGMENT_REQUEST', 'SEGMENT_DONE', 'SEGMENT_CACHE_HIT']);
 
 const FATAL_KINDS: ReadonlySet<ProviderErrorKind> = new Set(['auth', 'quota', 'forbidden_model', 'voice_invalid', 'bad_request', 'ssrf_blocked', 'transient']);
 
@@ -164,11 +176,25 @@ export async function runGenerateVoice(jobId: string, opts: RunOptions = {}): Pr
     );
 
     // ---- 3) Các đoạn cần đọc ----------------------------------------------------------------------
-    const segRows = await db
-      .select({ idx: segments.idx, text: segments.text })
-      .from(segments)
-      .where(eq(segments.subtitleFileId, job.subtitleFileId))
-      .orderBy(asc(segments.idx));
+    const timing = job.settings.timing;
+    let units: ReadingUnit[] | null = null;
+    let cueTotal = 0;
+    let segRows: Array<{ idx: number; text: string }>;
+    if (timing) {
+      // Chế độ khớp mốc (spec 003): đơn vị đọc dựng xác định từ cue + thiết lập timing đã chốt lúc tạo job
+      const cues = await loadFileCues(job.subtitleFileId, db);
+      cueTotal = cues.length;
+      units = unitsForTiming(cues, timing, Math.min(provider.catalog().maxCharsPerRequest, TIMED_MAX_CHARS));
+      segRows = units.map((u) => ({ idx: u.idx, text: u.text }));
+    } else {
+      segRows = await db
+        .select({ idx: segments.idx, text: segments.text })
+        .from(segments)
+        .where(eq(segments.subtitleFileId, job.subtitleFileId))
+        .orderBy(asc(segments.idx));
+    }
+    // Chia phần theo cửa sổ thời gian (chỉ để log/tiến độ và điểm đặt lại độ trễ; ghép vẫn một lượt tuần tự theo mốc tuyệt đối)
+    const parts: Part[] | null = timing && units ? planParts(units, opts.partWindowMs ?? timing.params.partMinutes * 60_000) : null;
     if (segRows.length === 0) {
       await log('error', 'JOB_FAILED', 'Kịch bản không có đoạn nào để đọc');
       await finish(jobId, 'failed', { errorCode: 'EMPTY', errorMessage: 'Kịch bản không có đoạn nào để đọc.' });
@@ -179,7 +205,18 @@ export async function runGenerateVoice(jobId: string, opts: RunOptions = {}): Pr
       .values(segRows.map((s) => ({ jobId, idx: s.idx })))
       .onConflictDoNothing();
     await db.update(voiceJobs).set({ progressTotal: segRows.length }).where(eq(voiceJobs.id, jobId));
-    await log('info', 'FILE_PARSED', `Kịch bản có ${segRows.length} đoạn cần đọc`, { total: segRows.length });
+    if (parts && parts.length > 1) {
+      await log('info', 'PARTS_PLANNED', `Phụ đề dài được chia thành ${parts.length} phần để xử lý (các phần được ghép lại đúng mốc thời gian)`, { parts: parts.length });
+    }
+    if (timing) {
+      await log('info', 'UNITS_BUILT', `Phụ đề có ${cueTotal} cue, ghép thành ${segRows.length} đoạn đọc (${timing.mergeCues ? 'ghép cue cùng câu' : 'mỗi cue một đoạn'})`, {
+        cues: cueTotal,
+        total: segRows.length,
+        mergeCues: timing.mergeCues,
+      });
+    } else {
+      await log('info', 'FILE_PARSED', `Kịch bản có ${segRows.length} đoạn cần đọc`, { total: segRows.length });
+    }
 
     // Đoạn `failed` được thử lại khi tiếp tục; đoạn `done` mà audio cache đã mất thì làm lại
     await db.update(jobSegments).set({ status: 'pending', errorCode: null }).where(and(eq(jobSegments.jobId, jobId), inArray(jobSegments.status, ['failed', 'running'])));
@@ -231,22 +268,29 @@ export async function runGenerateVoice(jobId: string, opts: RunOptions = {}): Pr
       settings: { model: job.settings.model ?? null, voice: job.settings.voice, speed: job.settings.speed ?? null },
       pricePerMillionChars: resolved.row.pricePerMillionChars,
       signal: controller.signal,
+      limiter: getLimiter(resolved.row.id, requestsPerMinute(job.providerType, settings)),
       retry,
-      log,
+      // Phụ đề rất dài: bỏ log từng đơn vị (thông tin), giữ cảnh báo/lỗi và log theo phần
+      log:
+        timing && segRows.length > QUIET_LOG_UNITS
+          ? (level: LogLevel, code: string, message: string, meta?: Record<string, unknown>) =>
+              level === 'info' && PER_UNIT_LOG_CODES.has(code) ? Promise.resolve() : log(level, code, message, meta)
+          : log,
     };
 
-    let next = 0;
     let fatal: SegmentFailure | null = null;
     const blocked: number[] = [];
     let unexpected: unknown = null;
 
-    try {
+    /** Chạy một nhóm đơn vị với giới hạn song song; dừng sớm khi bị hủy, gặp lỗi nghiêm trọng hoặc lỗi bất ngờ. */
+    const runItems = async (items: Array<{ idx: number; text: string }>) => {
+      let next = 0;
       await Promise.all(
-        Array.from({ length: Math.min(concurrency, pending.length) }, async () => {
+        Array.from({ length: Math.min(concurrency, items.length) }, async () => {
           for (;;) {
             if (controller.signal.aborted || fatal || unexpected) return;
             const i = next++;
-            const item = pending[i];
+            const item = items[i];
             if (!item) return;
             try {
               await synthesizeSegment(ctx, item.idx, item.text);
@@ -267,6 +311,26 @@ export async function runGenerateVoice(jobId: string, opts: RunOptions = {}): Pr
           }
         }),
       );
+    };
+
+    try {
+      if (parts && parts.length > 1) {
+        for (const part of parts) {
+          if (controller.signal.aborted || fatal || unexpected) break;
+          const items = pending.filter((p) => p.idx >= part.fromUnit && p.idx <= part.toUnit);
+          if (items.length === 0) continue; // phần đã xong từ lần chạy trước: bỏ qua
+          await log('info', 'PART_STARTED', `Phần ${part.n}/${parts.length}: đoạn ${part.fromUnit + 1}–${part.toUnit + 1} (${items.length} đoạn cần tạo)`, {
+            part: part.n,
+            parts: parts.length,
+            from: part.fromUnit,
+            to: part.toUnit,
+          });
+          await runItems(items);
+          if (!controller.signal.aborted && !fatal && !unexpected) await log('info', 'PART_DONE', `Phần ${part.n}/${parts.length} hoàn tất`, { part: part.n, parts: parts.length });
+        }
+      } else {
+        await runItems(pending);
+      }
     } finally {
       clearInterval(hb);
     }
@@ -288,7 +352,20 @@ export async function runGenerateVoice(jobId: string, opts: RunOptions = {}): Pr
       await finish(jobId, 'failed', { errorCode: f.code, errorMessage: msg });
       return;
     }
-    if (blocked.length > 0) {
+    // Chế độ khớp mốc: đoạn bị chặn nội dung chỉ thành khe im lặng, job vẫn hoàn tất (FR-010); nếu mọi đoạn đều bị chặn thì thất bại
+    const softBlocked = !!timing && blocked.length > 0 && blocked.length < segRows.length;
+    if (softBlocked) {
+      blocked.sort((a, b) => a - b);
+      const cueList = blocked
+        .slice(0, 10)
+        .flatMap((i) => units![i]!.cues.map((c) => c.n))
+        .slice(0, 10);
+      await log('warn', 'UNITS_FAILED', `Nhà cung cấp từ chối nội dung của ${blocked.length} đoạn (cue ${cueList.join(', ')}${blocked.length > 10 ? '…' : ''}). Các đoạn này để im lặng, voice vẫn được tạo.`, {
+        blocked,
+        cues: cueList,
+      });
+    }
+    if (blocked.length > 0 && !softBlocked) {
       blocked.sort((a, b) => a - b);
       const list = blocked.slice(0, 10).map((i) => i + 1).join(', ');
       const msg = `Nhà cung cấp từ chối nội dung của ${blocked.length} đoạn (đoạn ${list}${blocked.length > 10 ? '…' : ''}). Hãy sửa kịch bản rồi chạy lại.`;
@@ -298,7 +375,16 @@ export async function runGenerateVoice(jobId: string, opts: RunOptions = {}): Pr
     }
 
     // ---- 7) Ghép + mã hóa + lưu voice --------------------------------------------------------------
-    await mergeAndSave({ jobId, ownerId: job.ownerId, projectId: job.projectId, fileId: job.subtitleFileId, segRows, voiceName: job.settings.voice, log });
+    await mergeAndSave({
+      jobId,
+      ownerId: job.ownerId,
+      projectId: job.projectId,
+      fileId: job.subtitleFileId,
+      segRows,
+      voiceName: job.settings.voice,
+      log,
+      timed: timing && units ? { units, failed: new Set(blocked), params: placeParamsOf(timing.params) } : undefined,
+    });
   } catch (e) {
     // Lỗi không lường trước: không lộ chi tiết nội bộ cho người dùng
     const detail = e instanceof Error ? `${e.name}: ${e.message}` : 'không rõ';
@@ -316,9 +402,11 @@ async function mergeAndSave(a: {
   segRows: Array<{ idx: number; text: string }>;
   voiceName: string;
   log: (level: LogLevel, code: string, message: string, meta?: Record<string, unknown>) => Promise<void>;
+  /** Có ⇒ ghép theo mốc phụ đề (spec 003) thay vì nối liên tục. */
+  timed?: { units: ReadingUnit[]; failed: ReadonlySet<number>; params: ReturnType<typeof placeParamsOf> };
 }): Promise<void> {
   const db = getDb();
-  await a.log('info', 'MERGING', `Đang ghép ${a.segRows.length} đoạn thành một voice…`);
+  await a.log('info', 'MERGING', `Đang ghép ${a.segRows.length} đoạn thành một voice…`, { count: a.segRows.length });
 
   const dir = await mkdtemp(path.join(os.tmpdir(), 'submaker-merge-'));
   const pcmPath = path.join(dir, 'all.pcm');
@@ -327,20 +415,54 @@ async function mergeAndSave(a: {
     const states = await db.select().from(jobSegments).where(eq(jobSegments.jobId, a.jobId));
     const cacheIdByIdx = new Map(states.map((s) => [s.idx, s.audioCacheId]));
 
-    // Ghi tuần tự ra tệp (kịch bản dài không giữ toàn bộ PCM trong bộ nhớ); mốc thời gian tính theo số mẫu
-    const builder = new TimelineBuilder(DEFAULT_PAUSES);
-    const fh = await open(pcmPath, 'w');
-    try {
-      for (const s of a.segRows) {
-        const cacheId = cacheIdByIdx.get(s.idx);
-        const cached = cacheId ? await loadCachedById(a.ownerId, cacheId) : null;
-        if (!cached) throw new Error(`Thiếu audio của đoạn ${s.idx}`);
-        const { gapSamples } = builder.add(s.idx, cached.pcm.length / BYTES_PER_SAMPLE, s.text);
-        if (gapSamples > 0) await fh.write(Buffer.alloc(gapSamples * BYTES_PER_SAMPLE));
-        await fh.write(cached.pcm);
+    let timeline: TimelineEntry[];
+    let durationMs: number;
+    if (a.timed) {
+      // Ghép theo mốc tuyệt đối: mượn khoảng nghỉ → nén nhẹ → trượt nhẹ (contracts/timing-engine.md)
+      const r = await mergeTimed({
+        units: a.timed.units,
+        failed: a.timed.failed,
+        params: a.timed.params,
+        pcmPath,
+        readPcm: async (idx) => {
+          const cacheId = cacheIdByIdx.get(idx);
+          const cached = cacheId ? await loadCachedById(a.ownerId, cacheId) : null;
+          if (!cached) throw new Error(`Thiếu audio của đoạn ${idx}`);
+          return cached.pcm;
+        },
+      });
+      timeline = r.timeline;
+      durationMs = r.durationMs;
+      await a.log('info', 'PLACEMENT_DONE', `Đã đặt ${a.timed.units.length - r.failedCount} đoạn vào đúng mốc phụ đề${r.overflowCount > 0 ? `; ${r.overflowCount} đoạn vượt độ trễ tối đa` : ''}`, {
+        placed: a.timed.units.length - r.failedCount,
+        failed: r.failedCount,
+        overflow: r.overflowCount,
+      });
+      if (r.overflowCount > 0) {
+        const over = r.timeline.filter((t) => t.overflow).slice(0, 10).map((t) => t.idx + 1);
+        await a.log('warn', 'UNIT_OVERFLOW', `${r.overflowCount} đoạn đọc dài hơn khe thời gian và trễ quá mức cho phép (đoạn ${over.join(', ')}${r.overflowCount > 10 ? '…' : ''}). Hãy sửa phụ đề nếu cần khớp chính xác.`, {
+          overflow: r.overflowCount,
+        });
       }
-    } finally {
-      await fh.close();
+    } else {
+      // Ghi tuần tự ra tệp (kịch bản dài không giữ toàn bộ PCM trong bộ nhớ); mốc thời gian tính theo số mẫu
+      const builder = new TimelineBuilder(DEFAULT_PAUSES);
+      const fh = await open(pcmPath, 'w');
+      try {
+        for (const s of a.segRows) {
+          const cacheId = cacheIdByIdx.get(s.idx);
+          const cached = cacheId ? await loadCachedById(a.ownerId, cacheId) : null;
+          if (!cached) throw new Error(`Thiếu audio của đoạn ${s.idx}`);
+          const { gapSamples } = builder.add(s.idx, cached.pcm.length / BYTES_PER_SAMPLE, s.text);
+          if (gapSamples > 0) await fh.write(Buffer.alloc(gapSamples * BYTES_PER_SAMPLE));
+          await fh.write(cached.pcm);
+        }
+      } finally {
+        await fh.close();
+      }
+
+      timeline = builder.timeline;
+      durationMs = builder.durationMs;
     }
 
     await a.log('info', 'ENCODING', 'Đang mã hóa MP3…');
@@ -372,9 +494,9 @@ async function mergeAndSave(a: {
           title,
           storageKey: key,
           format: 'mp3',
-          durationMs: builder.durationMs,
+          durationMs,
           sizeBytes: mp3.length,
-          timeline: builder.timeline,
+          timeline,
         });
         await tx
           .update(projects)
@@ -391,9 +513,9 @@ async function mergeAndSave(a: {
       throw e;
     }
 
-    await a.log('info', 'VOICE_SAVED', `Đã lưu voice (${(builder.durationMs / 1000).toFixed(1)} giây, ${(mp3.length / 1024).toFixed(0)} KB)`, {
+    await a.log('info', 'VOICE_SAVED', `Đã lưu voice (${(durationMs / 1000).toFixed(1)} giây, ${(mp3.length / 1024).toFixed(0)} KB)`, {
       voiceId,
-      durationMs: builder.durationMs,
+      durationMs,
     });
     await a.log('info', 'JOB_COMPLETED', 'Hoàn tất tạo voice');
   } finally {

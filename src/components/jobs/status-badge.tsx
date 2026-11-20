@@ -1,5 +1,7 @@
+'use client';
+
 import { Badge } from '@/components/ui/badge';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 import { cn } from '@/lib/utils';
 
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stopped' | 'interrupted';
@@ -15,10 +17,11 @@ const STYLE: Record<JobStatus, string> = {
 
 /** Huy hiệu trạng thái tiến trình (FR-020). */
 export function StatusBadge({ status, className }: { status: JobStatus; className?: string }) {
+  const t = useT();
   return (
     <Badge variant="outline" className={cn('border-transparent font-medium', STYLE[status], className)}>
       {status === 'running' ? <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-current" aria-hidden /> : null}
-      {vi.jobs.status[status]}
+      {t.jobs.status[status]}
     </Badge>
   );
 }

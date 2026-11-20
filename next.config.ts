@@ -34,6 +34,8 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   serverExternalPackages: ['pg', 'pg-boss'],
+  // Máy ít bộ nhớ (hoặc đang chạy nhiều tiến trình khác) có thể hết bộ nhớ khi build với nhiều worker: đặt NEXT_BUILD_CPUS=2 để giảm.
+  ...(Number(process.env.NEXT_BUILD_CPUS) > 0 ? { experimental: { cpus: Number(process.env.NEXT_BUILD_CPUS) } } : {}),
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

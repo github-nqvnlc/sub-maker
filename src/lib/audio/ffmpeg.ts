@@ -8,12 +8,12 @@ import path from 'node:path';
  * 24 kHz, mono, 16-bit little-endian — mọi đoạn đều được đưa về dạng này trước khi ghép nên không bị
  * "lách tách" do khác tần số/kênh (docs/fpt-ai-voice-guide.md §10).
  */
-export const SAMPLE_RATE = 24_000;
-export const BYTES_PER_SAMPLE = 2;
+import { BYTES_PER_SAMPLE, SAMPLE_RATE } from './pcm';
+export { BYTES_PER_SAMPLE, SAMPLE_RATE };
 
 const FFMPEG = () => process.env.FFMPEG_PATH || 'ffmpeg';
 
-function runFfmpeg(args: string[], input: Buffer | Uint8Array | null, timeoutMs = 120_000): Promise<Buffer> {
+export function runFfmpeg(args: string[], input: Buffer | Uint8Array | null, timeoutMs = 120_000): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const child = spawn(FFMPEG(), ['-hide_banner', '-loglevel', 'error', '-nostdin', ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],

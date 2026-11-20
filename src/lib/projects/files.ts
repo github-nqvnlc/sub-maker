@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { asc, eq, sql } from 'drizzle-orm';
+import { paged, toPage } from '../api/pagination';
 import { getDb } from '../db';
-import { projects, segments, subtitleFiles, voiceJobs } from '../db/schema';
+import { projects, segments, subtitleCues, subtitleFiles, voiceJobs } from '../db/schema';
 import { HttpError, conflict } from '../api/errors';
 import { parseScript, ScriptError } from '../parsing';
 import { decodeUtf8 } from '../parsing/detect';
+import { parseSrtCues } from '../parsing/srt';
 import { getSettings } from '../settings';
 import { deleteObject, getObjectBuffer, putObject } from '../storage/client';
 import { storageKeys } from '../storage/keys';
@@ -32,6 +34,10 @@ export async function uploadScript(ownerId: string, projectId: string, file: { n
     throw e;
   }
 
+  // Chế độ khớp mốc (spec 003): .srt có ≥ 1 cue hợp lệ thì lưu cue + cảnh báo cùng giao dịch với tệp
+  const cueInfo = parsed.ext === 'srt' ? parseSrtCues(parsed.rawText) : null;
+  const hasCues = !!cueInfo && cueInfo.cues.length > 0;
+
   // Hạn mức lưu trữ (chặt): chỉ tính dung lượng file gốc ở đây
   await reserveBytes(ownerId, file.bytes.length);
 
@@ -51,7 +57,28 @@ export async function uploadScript(ownerId: string, projectId: string, file: { n
         contentHash: parsed.contentHash,
         charCount: parsed.charCount,
         segmentCount: parsed.segments.length,
+        hasTimecodes: hasCues,
+        cueCount: hasCues ? cueInfo!.cues.length : null,
+        durationMs: hasCues ? Math.max(...cueInfo!.cues.map((c) => c.endMs)) : null,
+        cueWarnings: hasCues ? cueInfo!.warnings : [],
+        cueWarningCount: hasCues ? cueInfo!.warningCount : 0,
       });
+      if (hasCues) {
+        for (let i = 0; i < cueInfo!.cues.length; i += SEGMENT_INSERT_CHUNK) {
+          await tx.insert(subtitleCues).values(
+            cueInfo!.cues.slice(i, i + SEGMENT_INSERT_CHUNK).map((c) => ({
+              subtitleFileId: fileId,
+              idx: c.idx,
+              n: c.n,
+              startMs: c.startMs,
+              endMs: c.endMs,
+              text: c.text,
+              speakable: c.speakable,
+              charCount: c.charCount,
+            })),
+          );
+        }
+      }
       for (let i = 0; i < parsed.segments.length; i += SEGMENT_INSERT_CHUNK) {
         await tx.insert(segments).values(
           parsed.segments.slice(i, i + SEGMENT_INSERT_CHUNK).map((text, j) => ({
@@ -77,6 +104,30 @@ export async function uploadScript(ownerId: string, projectId: string, file: { n
     rawText: parsed.rawText,
     segments: parsed.segments.map((text, idx) => ({ idx, text, charCount: [...text].length })),
   };
+}
+
+/** Xem trước các cue của tệp có mốc thời gian theo trang (spec 003, FR-011). Tệp không có mốc → 409 NO_TIMECODES. */
+export async function listCues(ownerId: string, fileId: string, page: number, pageSize: number) {
+  const file = await getOwnedFile(ownerId, fileId);
+  if (!file.hasTimecodes) throw conflict('NO_TIMECODES');
+  const db = getDb();
+  const p = toPage(page, pageSize);
+  const items = await db
+    .select({
+      idx: subtitleCues.idx,
+      n: subtitleCues.n,
+      startMs: subtitleCues.startMs,
+      endMs: subtitleCues.endMs,
+      text: subtitleCues.text,
+      speakable: subtitleCues.speakable,
+      charCount: subtitleCues.charCount,
+    })
+    .from(subtitleCues)
+    .where(eq(subtitleCues.subtitleFileId, fileId))
+    .orderBy(asc(subtitleCues.idx))
+    .limit(p.pageSize)
+    .offset(p.offset);
+  return { ...paged(items, file.cueCount ?? 0, p), warnings: file.cueWarnings, warningCount: file.cueWarningCount };
 }
 
 export async function listFiles(ownerId: string, projectId: string) {

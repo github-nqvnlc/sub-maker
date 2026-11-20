@@ -5,15 +5,16 @@ import { useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError, api } from '@/lib/api-client';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 import { cn } from '@/lib/utils';
 
-const ACCEPT = '.txt,.md,.skt';
+const ACCEPT = '.txt,.md,.srt';
 
 type Uploaded = { id: string };
 
-/** Kéo thả hoặc chọn tệp .txt/.md/.skt; kiểm tra sơ bộ phía client, máy chủ vẫn là nơi quyết định cuối cùng. */
+/** Kéo thả hoặc chọn tệp .txt/.md/.srt; kiểm tra sơ bộ phía client, máy chủ vẫn là nơi quyết định cuối cùng. */
 export function UploadDropzone({ projectId, onUploaded }: { projectId: string; onUploaded?: (fileId: string) => void }) {
+  const t = useT();
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
@@ -27,12 +28,12 @@ export function UploadDropzone({ projectId, onUploaded }: { projectId: string; o
     },
     onSuccess: (f) => {
       setError(null);
-      toast.success(vi.files.uploaded);
+      toast.success(t.files.uploaded);
       void qc.invalidateQueries({ queryKey: ['project', projectId] });
       onUploaded?.(f.id);
     },
     onError: (e) => {
-      const msg = e instanceof ApiError ? (e.fields?.file ?? e.message) : vi.common.genericError;
+      const msg = e instanceof ApiError ? (e.fields?.file ?? e.message) : t.common.genericError;
       setError(msg);
     },
   });
@@ -40,8 +41,8 @@ export function UploadDropzone({ projectId, onUploaded }: { projectId: string; o
   function pick(file: File | undefined | null) {
     if (!file) return;
     setError(null);
-    if (!/\.(txt|md|skt)$/i.test(file.name)) {
-      setError(vi.files.acceptHint);
+    if (!/\.(txt|md|srt)$/i.test(file.name)) {
+      setError(t.files.acceptHint);
       return;
     }
     upload.mutate(file);
@@ -52,7 +53,7 @@ export function UploadDropzone({ projectId, onUploaded }: { projectId: string; o
       <div
         role="button"
         tabIndex={0}
-        aria-label={vi.files.dropHere}
+        aria-label={t.files.dropHere}
         onClick={() => input.current?.click()}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && input.current?.click()}
         onDragOver={(e) => {
@@ -72,14 +73,14 @@ export function UploadDropzone({ projectId, onUploaded }: { projectId: string; o
         )}
       >
         <Upload className="size-8 text-muted-foreground" />
-        <p className="font-medium">{upload.isPending ? vi.files.uploading : vi.files.dropHere}</p>
-        <p className="max-w-md text-xs text-muted-foreground">{vi.files.acceptHint}</p>
+        <p className="font-medium">{upload.isPending ? t.files.uploading : t.files.dropHere}</p>
+        <p className="max-w-md text-xs text-muted-foreground">{t.files.acceptHint}</p>
         <input
           ref={input}
           type="file"
           accept={ACCEPT}
           className="hidden"
-          aria-label={vi.files.uploadTitle}
+          aria-label={t.files.uploadTitle}
           onChange={(e) => {
             pick(e.target.files?.[0]);
             e.target.value = '';

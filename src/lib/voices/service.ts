@@ -21,6 +21,17 @@ export async function getVoiceDetail(ownerId: string, voiceId: string) {
     projectId: voice.projectId,
     jobId: voice.jobId,
     fileId: voice.subtitleFileId,
-    segments: voice.timeline.map((t) => ({ idx: t.idx, text: textByIdx.get(t.idx) ?? '', startMs: t.startMs, endMs: t.endMs })),
+    // Voice khớp mốc (spec 003): văn bản đơn vị nằm ngay trong timeline; kèm mốc nội bộ từng cue để bôi theo cue
+    segments: voice.timeline.map((t) => ({
+      idx: t.idx,
+      text: t.text ?? textByIdx.get(t.idx) ?? '',
+      startMs: t.startMs,
+      endMs: t.endMs,
+      ...(t.cues ? { cues: t.cues } : {}),
+      ...(t.slipMs !== undefined ? { slipMs: t.slipMs } : {}),
+      ...(t.compress !== undefined ? { compress: t.compress } : {}),
+      ...(t.overflow ? { overflow: true } : {}),
+      ...(t.failed ? { failed: true } : {}),
+    })),
   };
 }

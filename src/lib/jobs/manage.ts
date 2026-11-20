@@ -3,10 +3,13 @@ import { z } from 'zod';
 import { getDb } from '../db';
 import { jobSegments, voiceJobs } from '../db/schema';
 import { conflict, validation } from '../api/errors';
+import { getCatalog } from '../providers/catalog';
+import { getSettings } from '../settings';
+import { buildTimingSettings, loadFileCues, TIMED_MAX_CHARS, timingChanged, unitsForTiming } from './timed';
 import type { AuthUser } from '../auth/guards';
 import { resolveSettings } from '../providers/catalog';
 import { resolveConfigForJob } from '../providers/config-service';
-import { getOwnedJob } from '../projects/access';
+import { getOwnedFile, getOwnedJob } from '../projects/access';
 import { jobDto } from '../projects/dto';
 import { enqueueGenerateVoice } from '../../worker/queues';
 import { createJob } from './service';
@@ -27,6 +30,11 @@ export const settingsPatchSchema = z
     model: z.string().trim().max(100).nullable().optional(),
     voice: z.string().trim().max(100).nullable().optional(),
     speed: z.number().finite().nullable().optional(),
+    /** Đổi chế độ khớp mốc / "Ghép cue cùng câu" (spec 003): tạo lại danh sách đơn vị đọc. */
+    timing: z
+      .object({ mode: z.enum(['timed', 'continuous']), mergeCues: z.boolean().optional() })
+      .strict()
+      .optional(),
   })
   .strict();
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>;
@@ -65,23 +73,54 @@ export async function updateJobSettings(user: AuthUser, jobId: string, patch: Se
   });
   if (!parsed.ok) throw validation(parsed.fields);
 
-  const next = { ...job.settings, model: parsed.value.model, voice: parsed.value.voice, speed: parsed.value.speed };
+  const next: typeof job.settings = { ...job.settings, model: parsed.value.model, voice: parsed.value.voice, speed: parsed.value.speed };
   const changed = next.model !== (job.settings.model ?? null) || next.voice !== job.settings.voice || next.speed !== (job.settings.speed ?? null);
+
+  // Chế độ khớp mốc: chỉ số đơn vị phụ thuộc `mergeCues` nên đổi timing thì dựng lại job_segments (research R15)
+  let timingDiff = false;
+  let newTotal = job.progressTotal;
+  if (patch.timing !== undefined) {
+    const file = await getOwnedFile(user.id, job.subtitleFileId);
+    if (patch.timing.mode === 'timed' && !file.hasTimecodes) throw conflict('NO_TIMECODES');
+    const built = buildTimingSettings(patch.timing, await getSettings());
+    // giữ tham số đã chốt lúc tạo job nếu job vốn đã ở chế độ khớp mốc
+    const nextTiming = built && job.settings.timing ? { ...built, params: job.settings.timing.params } : built;
+    timingDiff = timingChanged(job.settings.timing, nextTiming);
+    if (timingDiff) {
+      if (nextTiming) next.timing = nextTiming;
+      else delete next.timing;
+      if (nextTiming) {
+        const cues = await loadFileCues(file.id);
+        newTotal = unitsForTiming(cues, nextTiming, Math.min(getCatalog(job.providerType).maxCharsPerRequest, TIMED_MAX_CHARS)).length;
+        if (newTotal === 0) throw validation({ timing: 'Tệp không có cue nào đọc được.' });
+      } else {
+        newTotal = file.segmentCount;
+      }
+    }
+  }
   const db = getDb();
   const updated = await db.transaction(async (tx) => {
     const [row] = await tx
       .update(voiceJobs)
-      .set({ settings: next, ...(changed ? { progressDone: 0 } : {}) })
+      .set({ settings: next, ...(changed || timingDiff ? { progressDone: 0 } : {}), ...(timingDiff ? { progressTotal: newTotal } : {}) })
       .where(and(eq(voiceJobs.id, jobId), eq(voiceJobs.ownerId, user.id), inArray(voiceJobs.status, [...RESUMABLE])))
       .returning();
     if (!row) throw conflict('CONFLICT', 'Trạng thái tiến trình vừa thay đổi, hãy tải lại trang.');
-    if (changed) {
+    if (timingDiff) {
+      // Danh sách đơn vị đổi: xóa và tạo lại toàn bộ hàng trạng thái (đơn vị trùng văn bản vẫn lấy từ cache khi chạy)
+      await tx.delete(jobSegments).where(eq(jobSegments.jobId, jobId));
+      for (let i = 0; i < newTotal; i += 1000) {
+        const n = Math.min(1000, newTotal - i);
+        await tx.insert(jobSegments).values(Array.from({ length: n }, (_, k) => ({ jobId, idx: i + k })));
+      }
+    } else if (changed) {
       // Đổi giọng/tốc độ/model: mọi đoạn phải làm lại với thiết lập mới (đoạn trùng hash vẫn lấy từ cache, không tốn phí lặp)
       await tx.update(jobSegments).set({ status: 'pending', cacheHit: false, audioCacheId: null, durationMs: null, errorCode: null }).where(eq(jobSegments.jobId, jobId));
     }
     return row;
   });
-  if (changed) await appendLogSafe(jobId, 'info', 'SETTINGS_CHANGED', `Đã đổi thiết lập: giọng ${next.voice}${next.model ? `, model ${next.model}` : ''}${next.speed != null ? `, tốc độ ${next.speed}` : ''}. Các đoạn sẽ được tạo lại khi tiếp tục.`);
+  if (timingDiff) await appendLogSafe(jobId, 'info', 'SETTINGS_CHANGED', `Đã đổi chế độ: ${next.timing ? (next.timing.mergeCues ? 'khớp mốc, ghép cue cùng câu' : 'khớp mốc, mỗi cue một đoạn') : 'đọc liên tục'} (${newTotal} đoạn). Các đoạn sẽ được dựng lại khi tiếp tục.`);
+  else if (changed) await appendLogSafe(jobId, 'info', 'SETTINGS_CHANGED', `Đã đổi thiết lập: giọng ${next.voice}${next.model ? `, model ${next.model}` : ''}${next.speed != null ? `, tốc độ ${next.speed}` : ''}. Các đoạn sẽ được tạo lại khi tiếp tục.`);
   return jobDto(updated);
 }
 
@@ -93,5 +132,6 @@ export async function rerunJob(user: AuthUser, jobId: string, overrides: Setting
     model: overrides.model !== undefined ? overrides.model : (job.settings.model ?? null),
     voice: overrides.voice !== undefined ? overrides.voice : job.settings.voice,
     speed: overrides.speed !== undefined ? overrides.speed : (job.settings.speed ?? null),
+    timing: overrides.timing !== undefined ? overrides.timing : job.settings.timing ? { mode: 'timed', mergeCues: job.settings.timing.mergeCues } : undefined,
   });
 }

@@ -13,7 +13,8 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { EmptyState, ErrorState, LoadingList } from '@/components/shared/states';
 import { ApiError, api, apiDelete, apiPatch } from '@/lib/api-client';
-import { vi } from '@/lib/i18n/vi';
+import { useFormat, useT } from '@/lib/i18n/client';
+import type { Dict } from '@/lib/i18n/types';
 
 type AdminUser = {
   id: string;
@@ -30,17 +31,15 @@ type ListResult = { items: AdminUser[]; total: number; page: number; pageSize: n
 const PAGE_SIZE = 20;
 const ALL = 'all';
 
-const statusLabel: Record<AdminUser['status'], string> = {
-  active: vi.adminUsers.statusActive,
-  banned: vi.adminUsers.statusBanned,
-  deleting: vi.adminUsers.statusDeleting,
-};
-
-function fmt(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString('vi-VN') : vi.adminUsers.never;
-}
+const statusLabelOf = (t: Dict): Record<AdminUser['status'], string> => ({
+  active: t.adminUsers.statusActive,
+  banned: t.adminUsers.statusBanned,
+  deleting: t.adminUsers.statusDeleting,
+});
 
 export function UsersTable() {
+  const t = useT();
+  const fx = useFormat();
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -72,16 +71,16 @@ export function UsersTable() {
   const setUserStatus = useMutation({
     mutationFn: (v: { id: string; status: 'active' | 'banned' }) => apiPatch(`/api/admin/users/${v.id}`, { status: v.status }),
     onSuccess: () => {
-      toast.success(vi.adminUsers.done);
+      toast.success(t.adminUsers.done);
       void refresh();
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : vi.common.genericError),
+    onError: (e) => toast.error(e instanceof Error ? e.message : t.common.genericError),
   });
 
   const columns: Column<AdminUser>[] = [
     {
       key: 'user',
-      header: vi.adminUsers.colUser,
+      header: t.adminUsers.colUser,
       cell: (u) => (
         <div className="min-w-0">
           <div className="truncate font-medium">{u.displayName}</div>
@@ -91,38 +90,38 @@ export function UsersTable() {
     },
     {
       key: 'role',
-      header: vi.adminUsers.colRole,
-      cell: (u) => <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>{u.role === 'admin' ? vi.adminUsers.roleAdmin : vi.adminUsers.roleUser}</Badge>,
+      header: t.adminUsers.colRole,
+      cell: (u) => <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>{u.role === 'admin' ? t.adminUsers.roleAdmin : t.adminUsers.roleUser}</Badge>,
     },
     {
       key: 'status',
-      header: vi.adminUsers.colStatus,
-      cell: (u) => <Badge variant={u.status === 'active' ? 'outline' : 'destructive'}>{statusLabel[u.status]}</Badge>,
+      header: t.adminUsers.colStatus,
+      cell: (u) => <Badge variant={u.status === 'active' ? 'outline' : 'destructive'}>{statusLabelOf(t)[u.status]}</Badge>,
     },
-    { key: 'created', header: vi.adminUsers.colCreated, cell: (u) => <span className="whitespace-nowrap text-sm">{fmt(u.createdAt)}</span>, className: 'hidden md:table-cell' },
-    { key: 'active', header: vi.adminUsers.colActive, cell: (u) => <span className="whitespace-nowrap text-sm">{fmt(u.lastActiveAt)}</span>, className: 'hidden lg:table-cell' },
+    { key: 'created', header: t.adminUsers.colCreated, cell: (u) => <span className="whitespace-nowrap text-sm">{u.createdAt ? fx.dateTime(u.createdAt) : t.adminUsers.never}</span>, className: 'hidden md:table-cell' },
+    { key: 'active', header: t.adminUsers.colActive, cell: (u) => <span className="whitespace-nowrap text-sm">{u.lastActiveAt ? fx.dateTime(u.lastActiveAt) : t.adminUsers.never}</span>, className: 'hidden lg:table-cell' },
     {
       key: 'actions',
-      header: vi.adminUsers.colActions,
+      header: t.adminUsers.colActions,
       cell: (u) =>
         u.role === 'admin' ? (
-          <span className="text-xs text-muted-foreground">{vi.adminUsers.protectedAdmin}</span>
+          <span className="text-xs text-muted-foreground">{t.adminUsers.protectedAdmin}</span>
         ) : u.status === 'deleting' ? null : (
           <div className="flex flex-wrap gap-1">
             {u.status === 'banned' ? (
               <Button size="sm" variant="outline" onClick={() => setUserStatus.mutate({ id: u.id, status: 'active' })}>
-                {vi.adminUsers.unban}
+                {t.adminUsers.unban}
               </Button>
             ) : (
               <Button size="sm" variant="outline" onClick={() => setBanTarget(u)}>
-                {vi.adminUsers.ban}
+                {t.adminUsers.ban}
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={() => setResetTarget(u)}>
-              {vi.adminUsers.resetPassword}
+              {t.adminUsers.resetPassword}
             </Button>
             <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(u)}>
-              {vi.adminUsers.deleteUser}
+              {t.adminUsers.deleteUser}
             </Button>
           </div>
         ),
@@ -134,16 +133,16 @@ export function UsersTable() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">{vi.adminUsers.title}</h1>
-        <p className="text-sm text-muted-foreground">{vi.adminUsers.description}</p>
+        <h1 className="text-2xl font-semibold">{t.adminUsers.title}</h1>
+        <p className="text-sm text-muted-foreground">{t.adminUsers.description}</p>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder={vi.adminUsers.searchPlaceholder}
-          aria-label={vi.common.search}
+          placeholder={t.adminUsers.searchPlaceholder}
+          aria-label={t.common.search}
           className="sm:max-w-sm"
         />
         <Select
@@ -153,14 +152,14 @@ export function UsersTable() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="sm:w-48" aria-label={vi.adminUsers.colStatus}>
+          <SelectTrigger className="sm:w-48" aria-label={t.adminUsers.colStatus}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>{vi.adminUsers.allStatuses}</SelectItem>
-            <SelectItem value="active">{vi.adminUsers.statusActive}</SelectItem>
-            <SelectItem value="banned">{vi.adminUsers.statusBanned}</SelectItem>
-            <SelectItem value="deleting">{vi.adminUsers.statusDeleting}</SelectItem>
+            <SelectItem value={ALL}>{t.adminUsers.allStatuses}</SelectItem>
+            <SelectItem value="active">{t.adminUsers.statusActive}</SelectItem>
+            <SelectItem value="banned">{t.adminUsers.statusBanned}</SelectItem>
+            <SelectItem value="deleting">{t.adminUsers.statusDeleting}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -170,7 +169,7 @@ export function UsersTable() {
       ) : list.isError ? (
         <ErrorState message={list.error.message} onRetry={() => void list.refetch()} />
       ) : list.data.items.length === 0 ? (
-        <EmptyState title={debouncedQ || status !== ALL ? vi.common.noResults : vi.adminUsers.empty} />
+        <EmptyState title={debouncedQ || status !== ALL ? t.common.noResults : t.adminUsers.empty} />
       ) : (
         <>
           <DataTable rows={list.data.items} columns={columns} rowId={(u) => u.id} />
@@ -180,10 +179,10 @@ export function UsersTable() {
             </span>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                {vi.common.back}
+                {t.common.back}
               </Button>
               <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                {vi.common.next}
+                {t.common.next}
               </Button>
             </div>
           </div>
@@ -193,14 +192,14 @@ export function UsersTable() {
       <ConfirmDialog
         open={!!banTarget}
         onOpenChange={(o) => !o && setBanTarget(null)}
-        title={vi.adminUsers.banTitle}
+        title={t.adminUsers.banTitle}
         description={
           <>
             <p className="font-medium text-foreground">{banTarget?.email}</p>
-            <p>{vi.adminUsers.banDesc}</p>
+            <p>{t.adminUsers.banDesc}</p>
           </>
         }
-        confirmLabel={vi.adminUsers.ban}
+        confirmLabel={t.adminUsers.ban}
         onConfirm={async () => {
           if (banTarget) await setUserStatus.mutateAsync({ id: banTarget.id, status: 'banned' });
         }}
@@ -209,24 +208,24 @@ export function UsersTable() {
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
-        title={vi.adminUsers.deleteTitle}
+        title={t.adminUsers.deleteTitle}
         description={
           <>
             <p className="font-medium text-foreground">{deleteTarget?.email}</p>
-            <p>{vi.adminUsers.deleteDesc}</p>
+            <p>{t.adminUsers.deleteDesc}</p>
           </>
         }
         requireText={deleteTarget?.email}
-        requireTextLabel={vi.adminUsers.deleteConfirmLabel}
-        confirmLabel={vi.adminUsers.deleteUser}
+        requireTextLabel={t.adminUsers.deleteConfirmLabel}
+        confirmLabel={t.adminUsers.deleteUser}
         onConfirm={async () => {
           if (!deleteTarget) return;
           try {
             await apiDelete(`/api/admin/users/${deleteTarget.id}?confirm=${encodeURIComponent(deleteTarget.email)}`);
-            toast.success(vi.adminUsers.deleteStarted);
+            toast.success(t.adminUsers.deleteStarted);
             void refresh();
           } catch (e) {
-            toast.error(e instanceof Error ? e.message : vi.common.genericError);
+            toast.error(e instanceof Error ? e.message : t.common.genericError);
           }
         }}
       />
@@ -237,6 +236,7 @@ export function UsersTable() {
 }
 
 function ResetPasswordDialog({ target, onClose }: { target: AdminUser | null; onClose: () => void }) {
+  const t = useT();
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -247,10 +247,10 @@ function ResetPasswordDialog({ target, onClose }: { target: AdminUser | null; on
     setError(null);
     try {
       await api(`/api/admin/users/${target.id}/reset-password`, { method: 'POST', json: { newPassword: password } });
-      toast.success(vi.adminUsers.done);
+      toast.success(t.adminUsers.done);
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? (e.fields?.newPassword ?? e.message) : vi.common.genericError);
+      setError(e instanceof ApiError ? (e.fields?.newPassword ?? e.message) : t.common.genericError);
     } finally {
       setBusy(false);
     }
@@ -260,25 +260,25 @@ function ResetPasswordDialog({ target, onClose }: { target: AdminUser | null; on
     <Dialog open={!!target} onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{vi.adminUsers.resetTitle}</DialogTitle>
+          <DialogTitle>{t.adminUsers.resetTitle}</DialogTitle>
           <DialogDescription>
             <span className="font-medium text-foreground">{target?.email}</span>
             <br />
-            {vi.adminUsers.resetDesc}
+            {t.adminUsers.resetDesc}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Label htmlFor="reset-password">{vi.adminUsers.newPassword}</Label>
+          <Label htmlFor="reset-password">{t.adminUsers.newPassword}</Label>
           <Input id="reset-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-          <p className="text-xs text-muted-foreground">{vi.auth.passwordHint}</p>
+          <p className="text-xs text-muted-foreground">{t.auth.passwordHint}</p>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>
-            {vi.common.cancel}
+            {t.common.cancel}
           </Button>
           <Button onClick={() => void submit()} disabled={busy || password.length === 0}>
-            {vi.adminUsers.resetPassword}
+            {t.adminUsers.resetPassword}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -3,7 +3,7 @@ import { ScriptError, validateScript, type ScriptExt } from './detect';
 import { markdownToParagraphs } from './markdown';
 import { charLen, normalizeInline, plainToParagraphs } from './normalize';
 import { buildSegments, DEFAULT_MAX_SEGMENT_CHARS } from './segmenter';
-import { sktToParagraphs } from './skt';
+import { srtToParagraphs } from './srt';
 
 export { ScriptError, extOf } from './detect';
 export type { ScriptExt } from './detect';
@@ -32,7 +32,7 @@ export function parseScript(
 ): ParsedScript {
   const { ext, text } = validateScript(fileName, bytes, opts.maxBytes);
 
-  const paragraphs = (ext === 'md' ? markdownToParagraphs(text) : ext === 'skt' ? sktToParagraphs(text) : plainToParagraphs(text))
+  const paragraphs = (ext === 'md' ? markdownToParagraphs(text) : ext === 'srt' ? srtToParagraphs(text) : plainToParagraphs(text))
     .map(normalizeInline)
     .filter(Boolean);
 

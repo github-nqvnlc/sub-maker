@@ -40,6 +40,8 @@ paths:
               properties:
                 displayName: { type: string, minLength: 1, maxLength: 60 }
                 bio: { type: string, maxLength: 500 }
+                locale: { type: string, enum: [vi, en], description: Ngôn ngữ giao diện (spec 003, FR-021) }
+                theme: { type: string, enum: [light, dark, system], description: Chế độ giao diện (spec 003, FR-016) }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
         '422': { $ref: '#/components/responses/Validation' }
@@ -189,7 +191,7 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SubtitleFile' } } } } }
     post:
       tags: [files]
-      summary: Upload file .txt/.md/.skt (FR-009); trả danh sách đoạn để xem trước (FR-011)
+      summary: Upload file .txt/.md/.srt (FR-009); trả danh sách đoạn để xem trước (FR-011)
       requestBody:
         content:
           multipart/form-data:
@@ -214,6 +216,60 @@ paths:
       responses:
         '204': { description: Đã xóa }
         '409': { description: Đang được dùng }
+  /files/{fileId}/cues:
+    parameters:
+      - { name: fileId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [files]
+      summary: Xem trước các cue của tệp có mốc thời gian, theo trang (spec 003, FR-011)
+      description: Chỉ chủ sở hữu tệp; tệp không có mốc thời gian -> 409 NO_TIMECODES. Sắp theo idx tăng dần.
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 100 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, pageSize, warnings, warningCount]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Cue' } }
+                  total: { type: integer }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  warnings: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/CueWarning' } }
+                  warningCount: { type: integer }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Tệp không có mốc thời gian (NO_TIMECODES) }
+        '422': { $ref: '#/components/responses/Validation' }
+  /files/{fileId}/estimate:
+    parameters:
+      - { name: fileId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [files]
+      summary: Ước tính trước khi tạo voice (spec 003, FR-008, FR-013)
+      description: |
+        Không gọi nhà cung cấp, không ghi usage. Giá trị tiền chỉ có khi cấu hình AI sẽ dùng đã có pricePerMillionChars;
+        nếu không price là null và priceConfigured=false (không bịa số).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                model: { type: string, nullable: true }
+                voice: { type: string, nullable: true }
+                speed: { type: number, nullable: true }
+                timing: { $ref: '#/components/schemas/TimingRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Estimate' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: NO_TIMECODES hoặc PROVIDER_NOT_CONFIGURED }
+        '422': { $ref: '#/components/responses/Validation' }
   /files/{fileId}/raw:
     parameters:
       - { name: fileId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -246,9 +302,10 @@ paths:
                 model: { type: string }
                 voice: { type: string }
                 speed: { type: number }
+                timing: { $ref: '#/components/schemas/TimingRequest' }
       responses:
         '202': { description: Đã xếp hàng, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
-        '409': { description: PROVIDER_NOT_CONFIGURED hoặc QUOTA_EXCEEDED hoặc đang có quá nhiều tiến trình, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: PROVIDER_NOT_CONFIGURED hoặc QUOTA_EXCEEDED (kèm fields.needBytes khi do ước tính dung lượng) hoặc NO_TIMECODES (timing=timed với tệp không có mốc) hoặc đang có quá nhiều tiến trình, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '422': { $ref: '#/components/responses/Validation' }
   /jobs:
     get:
@@ -305,6 +362,7 @@ paths:
                 model: { type: string }
                 voice: { type: string }
                 speed: { type: number }
+                timing: { $ref: '#/components/schemas/TimingRequest' }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
         '409': { description: Không được sửa ở trạng thái hiện tại (queued, running hoặc completed) }
@@ -622,6 +680,8 @@ components:
         canUseCustomAi: { type: boolean }
         storageUsedBytes: { type: integer, format: int64 }
         storageQuotaBytes: { type: integer, format: int64 }
+        locale: { type: string, enum: [vi, en] }
+        theme: { type: string, enum: [light, dark, system] }
     Project:
       type: object
       properties:
@@ -652,8 +712,12 @@ components:
       properties:
         id: { type: string, format: uuid }
         originalName: { type: string }
-        ext: { type: string, enum: [txt, md, skt] }
+        ext: { type: string, enum: [txt, md, srt] }
         sizeBytes: { type: integer }
+        hasTimecodes: { type: boolean, description: .srt có ít nhất một cue hợp lệ (cho phép chế độ khớp mốc) }
+        cueCount: { type: integer, nullable: true }
+        durationMs: { type: integer, nullable: true }
+        warningCount: { type: integer }
         charCount: { type: integer }
         segmentCount: { type: integer }
         createdAt: { type: string, format: date-time }
@@ -672,6 +736,13 @@ components:
         model: { type: string, nullable: true }
         voice: { type: string }
         speed: { type: number, nullable: true }
+        timing:
+          type: object
+          nullable: true
+          description: null khi đọc liên tục
+          properties:
+            mode: { type: string, enum: [timed] }
+            mergeCues: { type: boolean }
     Job:
       type: object
       properties:
@@ -698,6 +769,20 @@ components:
             failedSegments:
               type: array
               items: { type: object, properties: { idx: { type: integer }, errorCode: { type: string } } }
+            timing:
+              type: object
+              nullable: true
+              description: null khi đọc liên tục (spec 003)
+              properties:
+                mode: { type: string, enum: [timed] }
+                mergeCues: { type: boolean }
+                overflowCount: { type: integer, description: Số đoạn vượt độ trễ tối đa (cảnh báo) }
+                parts:
+                  type: object
+                  description: Tiến độ theo phần (phụ đề dài được chia theo cửa sổ thời gian)
+                  properties:
+                    done: { type: integer }
+                    total: { type: integer }
     LogEntry:
       type: object
       properties:
@@ -730,6 +815,20 @@ components:
                   text: { type: string }
                   startMs: { type: integer }
                   endMs: { type: integer }
+                  slipMs: { type: integer, description: Chỉ có ở voice khớp mốc }
+                  compress: { type: number }
+                  overflow: { type: boolean }
+                  failed: { type: boolean, description: Đoạn bị chặn nội dung — khe im lặng }
+                  cues:
+                    type: array
+                    description: Mốc nội bộ từng cue (chia theo ký tự) để bôi theo cue
+                    items:
+                      type: object
+                      properties:
+                        n: { type: integer }
+                        text: { type: string }
+                        startMs: { type: integer }
+                        endMs: { type: integer }
     ProviderCatalogItem:
       type: object
       properties:
@@ -845,3 +944,48 @@ components:
         maxConcurrentJobs: { type: integer, example: 3 }
         maxJobsPerUser: { type: integer, example: 2 }
         segmentConcurrency: { type: integer, example: 3 }
+        timingMaxSlipMs: { type: integer, minimum: 100, maximum: 2000, example: 500 }
+        timingMaxCompressPct: { type: integer, minimum: 100, maximum: 150, example: 125 }
+        timingPartMinutes: { type: integer, minimum: 1, maximum: 30, example: 10 }
+        timingMergeGapMs: { type: integer, minimum: 200, maximum: 3000, example: 1000 }
+        rpmFptMarketplace: { type: integer, minimum: 0, maximum: 600, description: 0 = dùng giá trị mặc định của catalog }
+        rpmShopaikeyOpenai: { type: integer, minimum: 0, maximum: 600 }
+        rpmShopaikeyMinimax: { type: integer, minimum: 0, maximum: 600 }
+    TimingRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [timed, continuous] }
+        mergeCues: { type: boolean, default: true, description: Chỉ có nghĩa khi mode=timed ("Ghép cue cùng câu") }
+    Cue:
+      type: object
+      properties:
+        idx: { type: integer }
+        n: { type: integer, description: Số thứ tự gốc trong tệp (chỉ để đối chiếu, không dùng để đọc) }
+        startMs: { type: integer }
+        endMs: { type: integer }
+        text: { type: string }
+        speakable: { type: boolean }
+        charCount: { type: integer }
+    CueWarning:
+      type: object
+      properties:
+        cue: { type: integer, description: Số thứ tự gốc của cue }
+        code: { type: string, enum: [BAD_RANGE, OUT_OF_ORDER, OVERLAP, NO_SPEECH] }
+    Estimate:
+      type: object
+      properties:
+        cues: { type: integer, description: 0 khi tệp không có mốc }
+        units: { type: integer }
+        chars: { type: integer, description: Ký tự đọc thực (đã bỏ số thứ tự và mốc) }
+        billableChars: { type: integer, description: Ký tự phải trả phí (đơn vị duy nhất chưa có cache) }
+        cachedUnits: { type: integer }
+        requests: { type: integer }
+        audioMs: { type: integer }
+        outputBytes: { type: integer }
+        quotaOk: { type: boolean }
+        needBytes: { type: integer }
+        etaMs: { type: integer }
+        priceConfigured: { type: boolean }
+        price: { type: number, nullable: true }

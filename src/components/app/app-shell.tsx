@@ -7,23 +7,27 @@ import { BarChart3, FolderOpen, Menu, Settings, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { UserMenu, type ShellUser } from '@/components/app/user-menu';
-import { vi } from '@/lib/i18n/vi';
+import { LocaleSwitch, LocaleSync } from '@/components/app/locale-switch';
+import { ThemeSync, ThemeToggle } from '@/components/app/theme-toggle';
+import { useT } from '@/lib/i18n/client';
+import type { Dict } from '@/lib/i18n/types';
 import { cn } from '@/lib/utils';
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; adminOnly?: boolean };
 
-const NAV: NavItem[] = [
-  { href: '/projects', label: vi.nav.projects, icon: FolderOpen },
-  { href: '/dashboard', label: vi.nav.dashboard, icon: BarChart3 },
-  { href: '/settings/profile', label: vi.nav.settings, icon: Settings },
-  { href: '/admin/users', label: vi.nav.admin, icon: Shield, adminOnly: true },
+const navOf = (t: Dict): NavItem[] => [
+  { href: '/projects', label: t.nav.projects, icon: FolderOpen },
+  { href: '/dashboard', label: t.nav.dashboard, icon: BarChart3 },
+  { href: '/settings/profile', label: t.nav.settings, icon: Settings },
+  { href: '/admin/users', label: t.nav.admin, icon: Shield, adminOnly: true },
 ];
 
 function NavLinks({ user, onNavigate }: { user: ShellUser; onNavigate?: () => void }) {
+  const t = useT();
   const pathname = usePathname();
   return (
-    <nav className="flex flex-col gap-1" aria-label={vi.nav.mainNav}>
-      {NAV.filter((n) => !n.adminOnly || user.role === 'admin').map((n) => {
+    <nav className="flex flex-col gap-1" aria-label={t.nav.mainNav}>
+      {navOf(t).filter((n) => !n.adminOnly || user.role === 'admin').map((n) => {
         const section = n.href.split('/')[1];
         const active = pathname === n.href || pathname.startsWith(`/${section}`);
         return (
@@ -47,12 +51,15 @@ function NavLinks({ user, onNavigate }: { user: ShellUser; onNavigate?: () => vo
 
 /** Khung ứng dụng: thanh bên cố định trên màn hình rộng, menu trượt trên điện thoại/tablet (FR-031). */
 export function AppShell({ user, children, extraHeader }: { user: ShellUser; children: React.ReactNode; extraHeader?: React.ReactNode }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <div className="flex min-h-screen">
+      <ThemeSync theme={user.theme} />
+      <LocaleSync locale={user.locale} />
       <aside className="hidden w-56 shrink-0 border-r bg-sidebar p-4 md:block">
         <Link href="/projects" className="mb-6 block px-3 text-lg font-semibold">
-          {vi.app.name}
+          {t.app.name}
         </Link>
         <NavLinks user={user} />
       </aside>
@@ -60,20 +67,22 @@ export function AppShell({ user, children, extraHeader }: { user: ShellUser; chi
         <header className="flex h-14 items-center gap-2 border-b px-4">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden" aria-label={vi.nav.openMenu}>
+              <Button variant="ghost" size="icon" className="md:hidden" aria-label={t.nav.openMenu}>
                 <Menu className="size-5" />
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-64 p-4">
               <SheetHeader className="p-0 pb-4">
-                <SheetTitle>{vi.app.name}</SheetTitle>
+                <SheetTitle>{t.app.name}</SheetTitle>
               </SheetHeader>
               <NavLinks user={user} onNavigate={() => setOpen(false)} />
             </SheetContent>
           </Sheet>
-          <span className="font-semibold md:hidden">{vi.app.name}</span>
+          <span className="font-semibold md:hidden">{t.app.name}</span>
           <div className="ml-auto flex items-center gap-2">
             {extraHeader}
+            <LocaleSwitch />
+            <ThemeToggle />
             <UserMenu user={user} />
           </div>
         </header>

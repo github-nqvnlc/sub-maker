@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 
 export type ShellUser = {
   id: string;
@@ -21,6 +21,9 @@ export type ShellUser = {
   role: 'admin' | 'user';
   hasAvatar: boolean;
   avatarVersion?: number;
+  /** Tùy chọn giao diện đã lưu trong tài khoản (spec 003). */
+  theme?: 'light' | 'dark' | 'system';
+  locale?: 'vi' | 'en';
 };
 
 function initials(name: string): string {
@@ -30,6 +33,7 @@ function initials(name: string): string {
 }
 
 export function UserMenu({ user }: { user: ShellUser }) {
+  const t = useT();
   async function logout() {
     await fetch('/api/auth/sign-out', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     // Tải lại toàn trang có chủ đích: xóa mọi trạng thái/cache phía client của phiên đã đăng xuất.
@@ -39,7 +43,7 @@ export function UserMenu({ user }: { user: ShellUser }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="gap-2 px-2">
+        <Button variant="ghost" size="lg" className="gap-2 px-2 hover:bg-transparent dark:hover:bg-transparent">
           <Avatar className="size-8">
             {user.hasAvatar ? <AvatarImage src={`/api/me/avatar?v=${user.avatarVersion ?? 0}`} alt="" /> : null}
             <AvatarFallback>{initials(user.name)}</AvatarFallback>
@@ -53,12 +57,12 @@ export function UserMenu({ user }: { user: ShellUser }) {
         <DropdownMenuItem asChild>
           <Link href="/settings/profile">
             <UserIcon className="size-4" />
-            {vi.nav.profile}
+            {t.nav.profile}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void logout()}>
           <LogOut className="size-4" />
-          {vi.nav.logout}
+          {t.nav.logout}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -12,8 +12,8 @@ import { ErrorState, LoadingList } from '@/components/shared/states';
 import { SyncedText, type SyncedSegment } from '@/components/player/synced-text';
 import { VoicePlayer } from '@/components/player/voice-player';
 import { ApiError, api } from '@/lib/api-client';
-import { fmtDateTime, fmtDuration } from '@/lib/format';
-import { vi } from '@/lib/i18n/vi';
+import { fmtDuration } from '@/lib/format';
+import { useFormat, useT } from '@/lib/i18n/client';
 
 type VoiceDetailDto = {
   id: string;
@@ -29,6 +29,8 @@ type ProjectVoices = { voices: { id: string; title: string }[] };
 
 /** Trang nghe voice: trình phát + văn bản đồng bộ + kịch bản gốc; chọn giữa các voice của Project (FR-002, FR-027). */
 export function VoiceView({ voiceId, projectId }: { voiceId: string; projectId: string }) {
+  const t = useT();
+  const fx = useFormat();
   const router = useRouter();
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -42,7 +44,7 @@ export function VoiceView({ voiceId, projectId }: { voiceId: string; projectId: 
 
   if (voice.isPending) return <LoadingList rows={4} />;
   if (voice.isError) {
-    return <ErrorState message={voice.error instanceof ApiError && voice.error.status === 404 ? vi.voices.notFound : voice.error.message} onRetry={() => void voice.refetch()} />;
+    return <ErrorState message={voice.error instanceof ApiError && voice.error.status === 404 ? t.voices.notFound : voice.error.message} onRetry={() => void voice.refetch()} />;
   }
   const v = voice.data;
   const others = project.data?.voices ?? [];
@@ -53,13 +55,13 @@ export function VoiceView({ voiceId, projectId }: { voiceId: string; projectId: 
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-semibold">{v.title}</h1>
           <p className="text-sm text-muted-foreground">
-            {vi.voices.duration} {fmtDuration(v.durationMs)} · {fmtDateTime(v.createdAt)}
+            {t.voices.duration} {fmtDuration(v.durationMs)} · {fx.dateTime(v.createdAt)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {others.length > 1 ? (
             <Select value={voiceId} onValueChange={(id) => router.push(`/projects/${projectId}/voices/${id}`)}>
-              <SelectTrigger className="w-56" aria-label={vi.voices.switchVoice}>
+              <SelectTrigger className="w-56" aria-label={t.voices.switchVoice}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -72,7 +74,7 @@ export function VoiceView({ voiceId, projectId }: { voiceId: string; projectId: 
             </Select>
           ) : null}
           <Button asChild variant="outline" size="sm">
-            <Link href={`/projects/${projectId}`}>{vi.voices.backToProject}</Link>
+            <Link href={`/projects/${projectId}`}>{t.voices.backToProject}</Link>
           </Button>
         </div>
       </div>
@@ -81,15 +83,15 @@ export function VoiceView({ voiceId, projectId }: { voiceId: string; projectId: 
 
       <Tabs defaultValue="synced">
         <TabsList>
-          <TabsTrigger value="synced">{vi.voices.synced}</TabsTrigger>
-          <TabsTrigger value="original">{vi.voices.original}</TabsTrigger>
+          <TabsTrigger value="synced">{t.voices.synced}</TabsTrigger>
+          <TabsTrigger value="original">{t.voices.original}</TabsTrigger>
         </TabsList>
         <TabsContent value="synced">
           <SyncedText audioRef={audioRef} segments={v.segments} />
         </TabsContent>
         <TabsContent value="original">
           <ScrollArea className="h-[28rem] rounded-md border">
-            <pre className="whitespace-pre-wrap break-words p-4 font-sans text-sm">{raw.data?.rawText ?? vi.common.loading}</pre>
+            <pre className="whitespace-pre-wrap break-words p-4 font-sans text-sm">{raw.data?.rawText ?? t.common.loading}</pre>
           </ScrollArea>
         </TabsContent>
       </Tabs>

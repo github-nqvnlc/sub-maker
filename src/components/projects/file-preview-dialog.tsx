@@ -5,20 +5,24 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorState, LoadingList } from '@/components/shared/states';
+import { CuePreview } from '@/components/projects/cue-preview';
 import { api } from '@/lib/api-client';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 
 type FileDetail = {
   id: string;
   originalName: string;
   segmentCount: number;
   charCount: number;
+  hasTimecodes?: boolean;
+  durationMs?: number | null;
   rawText: string;
   segments: { idx: number; text: string; charCount: number }[];
 };
 
 /** Xem trước các đoạn sẽ được đọc (FR-011) và văn bản gốc của tệp (FR-010). */
 export function FilePreviewDialog({ fileId, onClose }: { fileId: string | null; onClose: () => void }) {
+  const t = useT();
   const q = useQuery({
     queryKey: ['file', fileId],
     enabled: !!fileId,
@@ -27,12 +31,12 @@ export function FilePreviewDialog({ fileId, onClose }: { fileId: string | null; 
 
   return (
     <Dialog open={!!fileId} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{q.data?.originalName ?? vi.files.previewTitle}</DialogTitle>
+          <DialogTitle>{q.data?.originalName ?? t.files.previewTitle}</DialogTitle>
           <DialogDescription>
-            {q.data ? `${q.data.segmentCount} ${vi.files.segments} · ${q.data.charCount} ${vi.files.chars}. ` : ''}
-            {vi.files.previewDesc}
+            {q.data ? `${q.data.segmentCount} ${t.files.segments} · ${q.data.charCount} ${t.files.chars}. ` : ''}
+            {t.files.previewDesc}
           </DialogDescription>
         </DialogHeader>
         {q.isPending ? (
@@ -42,9 +46,15 @@ export function FilePreviewDialog({ fileId, onClose }: { fileId: string | null; 
         ) : (
           <Tabs defaultValue="segments">
             <TabsList>
-              <TabsTrigger value="segments">{vi.files.previewTitle}</TabsTrigger>
-              <TabsTrigger value="raw">{vi.files.original}</TabsTrigger>
+              <TabsTrigger value="segments">{t.files.previewTitle}</TabsTrigger>
+              {q.data.hasTimecodes ? <TabsTrigger value="cues">{t.files.tabCues}</TabsTrigger> : null}
+              <TabsTrigger value="raw">{t.files.original}</TabsTrigger>
             </TabsList>
+            {q.data.hasTimecodes ? (
+              <TabsContent value="cues">
+                <CuePreview fileId={q.data.id} durationMs={q.data.durationMs ?? null} />
+              </TabsContent>
+            ) : null}
             <TabsContent value="segments">
               <ScrollArea className="h-80 rounded-md border">
                 <ol className="divide-y">

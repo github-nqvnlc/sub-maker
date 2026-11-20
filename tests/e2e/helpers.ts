@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { E2E_ADMIN, ORIGIN, expect } from './fixtures';
 
@@ -28,6 +30,27 @@ export async function uploadScript(page: Page, projectId: string, lines: string[
     headers: hdr,
   });
   expect(res.status(), `tải kịch bản: ${await res.text()}`).toBe(201);
+  return res.json();
+}
+
+/** Tải một tệp trong tests/fixtures (ví dụ sample-10s.srt) lên Project; trả về bản ghi tệp. */
+export async function uploadSampleSrt(page: Page, projectId: string, fixtureName = 'sample-10s.srt'): Promise<{ id: string; hasTimecodes?: boolean; cueCount?: number }> {
+  const buffer = fs.readFileSync(path.resolve(process.cwd(), 'tests/fixtures', fixtureName));
+  const res = await page.request.post(`/api/projects/${projectId}/files`, {
+    multipart: { file: { name: fixtureName, mimeType: 'application/x-subrip', buffer } },
+    headers: hdr,
+  });
+  expect(res.status(), `tải phụ đề: ${await res.text()}`).toBe(201);
+  return res.json();
+}
+
+/** Bắt đầu tiến trình ở chế độ khớp mốc thời gian (spec 003). */
+export async function startTimedVoice(page: Page, projectId: string, fileId: string, opts: { mergeCues?: boolean } = {}): Promise<{ id: string }> {
+  const res = await page.request.post(`/api/projects/${projectId}/jobs`, {
+    data: { fileId, timing: { mode: 'timed', mergeCues: opts.mergeCues ?? true } },
+    headers: hdr,
+  });
+  expect(res.status(), `bắt đầu voice khớp mốc: ${await res.text()}`).toBeLessThan(300);
   return res.json();
 }
 

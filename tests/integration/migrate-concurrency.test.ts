@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { describe, expect, it } from 'vitest';
+import { SETTING_DEFAULTS } from '@/lib/settings-defaults';
 
 /**
  * Web (instrumentation) và worker cùng khởi động sẽ cùng gọi runMigrations() trên CSDL TRỐNG.
@@ -33,7 +34,7 @@ describe('migration chạy đồng thời', () => {
       const settings = await check.query(`select count(*)::int as n from system_settings`);
       await check.end();
       expect(tables.rows[0].n).toBe(1);
-      expect(settings.rows[0].n).toBe(5); // seed không bị nhân đôi
+      expect(settings.rows[0].n).toBe(Object.keys(SETTING_DEFAULTS).length); // seed không bị nhân đôi, đủ mọi khóa mặc định
     } finally {
       await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
       await admin.end();

@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RangePicker, lastDays, type DateRange } from '@/components/dashboard/range-picker';
-import { StatCard, fmtNum, fmtUsd } from '@/components/dashboard/stat-card';
+import { StatCard } from '@/components/dashboard/stat-card';
 import { EmptyState, ErrorState, LoadingList } from '@/components/shared/states';
 import { api } from '@/lib/api-client';
-import { fmtBytes, fmtDateTime } from '@/lib/format';
-import { vi } from '@/lib/i18n/vi';
+import { fmtBytes } from '@/lib/format';
+import { useFormat, useT } from '@/lib/i18n/client';
+import type { Dict } from '@/lib/i18n/types';
 
 type Stats = {
   totals: {
@@ -34,19 +35,21 @@ type Stats = {
   }[];
 };
 
-const SORTS = [
-  { value: 'chars', label: vi.adminStats.chars },
-  { value: 'projects', label: vi.adminStats.projects },
-  { value: 'voices', label: vi.adminStats.voices },
-  { value: 'cost', label: vi.adminStats.cost },
-  { value: 'storage', label: vi.adminStats.storage },
-  { value: 'lastActive', label: vi.adminStats.lastActive },
-] as const;
-
-const usd = (n: number | null) => (n === null ? '—' : fmtUsd(n));
+const sortOptions = (t: Dict) =>
+  [
+    { value: 'chars', label: t.adminStats.chars },
+    { value: 'projects', label: t.adminStats.projects },
+    { value: 'voices', label: t.adminStats.voices },
+    { value: 'cost', label: t.adminStats.cost },
+    { value: 'storage', label: t.adminStats.storage },
+    { value: 'lastActive', label: t.adminStats.lastActive },
+  ] as const;
 
 /** Thống kê Administrator (FR-039): tổng hợp toàn hệ thống + từng User; chỉ số liệu, không có nội dung Project. */
 export function AdminStatsView() {
+  const t = useT();
+  const fx = useFormat();
+  const usd = (n: number | null) => (n === null ? '—' : fx.usd(n));
   const [range, setRange] = useState<DateRange>(() => lastDays(30));
   const [sort, setSort] = useState<string>('chars');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
@@ -61,8 +64,8 @@ export function AdminStatsView() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{vi.adminStats.title}</h1>
-          <p className="text-sm text-muted-foreground">{vi.adminStats.subtitle}</p>
+          <h1 className="text-2xl font-semibold">{t.adminStats.title}</h1>
+          <p className="text-sm text-muted-foreground">{t.adminStats.subtitle}</p>
         </div>
         <RangePicker value={range} onChange={setRange} />
       </div>
@@ -74,55 +77,55 @@ export function AdminStatsView() {
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label={vi.adminStats.users} value={fmtNum(q.data.totals.users)} testId="admin-stat-users" />
-            <StatCard label={vi.adminStats.projects} value={fmtNum(q.data.totals.projects)} testId="admin-stat-projects" />
-            <StatCard label={vi.adminStats.voices} value={fmtNum(q.data.totals.voices)} testId="admin-stat-voices" />
-            <StatCard label={vi.adminStats.storage} value={fmtBytes(q.data.totals.storageUsedBytes)} testId="admin-stat-storage" />
-            <StatCard label={vi.adminStats.chars} value={fmtNum(q.data.totals.chars)} testId="admin-stat-chars" />
-            <StatCard label={vi.adminStats.scopeGlobal} value={fmtNum(q.data.totals.charsByScope.global)} testId="admin-stat-global" />
-            <StatCard label={vi.adminStats.scopeUser} value={fmtNum(q.data.totals.charsByScope.user)} testId="admin-stat-own" />
+            <StatCard label={t.adminStats.users} value={fx.number(q.data.totals.users)} testId="admin-stat-users" />
+            <StatCard label={t.adminStats.projects} value={fx.number(q.data.totals.projects)} testId="admin-stat-projects" />
+            <StatCard label={t.adminStats.voices} value={fx.number(q.data.totals.voices)} testId="admin-stat-voices" />
+            <StatCard label={t.adminStats.storage} value={fmtBytes(q.data.totals.storageUsedBytes)} testId="admin-stat-storage" />
+            <StatCard label={t.adminStats.chars} value={fx.number(q.data.totals.chars)} testId="admin-stat-chars" />
+            <StatCard label={t.adminStats.scopeGlobal} value={fx.number(q.data.totals.charsByScope.global)} testId="admin-stat-global" />
+            <StatCard label={t.adminStats.scopeUser} value={fx.number(q.data.totals.charsByScope.user)} testId="admin-stat-own" />
             <StatCard
-              label={vi.adminStats.cost}
-              value={q.data.totals.costEstimateUsd === null ? vi.dashboard.costNA : fmtUsd(q.data.totals.costEstimateUsd)}
+              label={t.adminStats.cost}
+              value={q.data.totals.costEstimateUsd === null ? t.dashboard.costNA : fx.usd(q.data.totals.costEstimateUsd)}
               muted={q.data.totals.costEstimateUsd === null}
               testId="admin-stat-cost"
             />
           </div>
-          <p className="text-xs text-muted-foreground">{vi.adminStats.anonymizedNote}</p>
+          <p className="text-xs text-muted-foreground">{t.adminStats.anonymizedNote}</p>
 
           <div className="flex flex-wrap items-center gap-2">
             <Select value={sort} onValueChange={setSort}>
-              <SelectTrigger className="w-56" aria-label={vi.adminStats.sortBy}>
+              <SelectTrigger className="w-56" aria-label={t.adminStats.sortBy}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SORTS.map((s) => (
+                {sortOptions(t).map((s) => (
                   <SelectItem key={s.value} value={s.value}>
-                    {vi.adminStats.sortBy}: {s.label}
+                    {t.adminStats.sortBy}: {s.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" onClick={() => setOrder(order === 'desc' ? 'asc' : 'desc')}>
-              {order === 'desc' ? vi.projects.desc : vi.projects.asc}
+              {order === 'desc' ? t.projects.desc : t.projects.asc}
             </Button>
           </div>
 
           {q.data.users.length === 0 ? (
-            <EmptyState title={vi.adminStats.empty} />
+            <EmptyState title={t.adminStats.empty} />
           ) : (
             <div className="w-full overflow-x-auto rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{vi.adminStats.colUser}</TableHead>
-                    <TableHead className="text-right">{vi.adminStats.projects}</TableHead>
-                    <TableHead className="text-right">{vi.adminStats.voices}</TableHead>
-                    <TableHead className="text-right">{vi.adminStats.colGlobal}</TableHead>
-                    <TableHead className="text-right">{vi.adminStats.colOwn}</TableHead>
-                    <TableHead className="text-right">{vi.adminStats.cost}</TableHead>
-                    <TableHead className="text-right">{vi.adminStats.storage}</TableHead>
-                    <TableHead>{vi.adminStats.lastActive}</TableHead>
+                    <TableHead>{t.adminStats.colUser}</TableHead>
+                    <TableHead className="text-right">{t.adminStats.projects}</TableHead>
+                    <TableHead className="text-right">{t.adminStats.voices}</TableHead>
+                    <TableHead className="text-right">{t.adminStats.colGlobal}</TableHead>
+                    <TableHead className="text-right">{t.adminStats.colOwn}</TableHead>
+                    <TableHead className="text-right">{t.adminStats.cost}</TableHead>
+                    <TableHead className="text-right">{t.adminStats.storage}</TableHead>
+                    <TableHead>{t.adminStats.lastActive}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -132,13 +135,13 @@ export function AdminStatsView() {
                         <div className="font-medium">{r.user.displayName}</div>
                         <div className="text-xs text-muted-foreground">{r.user.email}</div>
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">{fmtNum(r.projects)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{fmtNum(r.voices)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{fmtNum(r.charsByScope.global)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{fmtNum(r.charsByScope.user)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fx.number(r.projects)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fx.number(r.voices)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fx.number(r.charsByScope.global)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fx.number(r.charsByScope.user)}</TableCell>
                       <TableCell className="text-right tabular-nums">{usd(r.costEstimateUsd)}</TableCell>
                       <TableCell className="text-right tabular-nums">{fmtBytes(r.storageUsedBytes)}</TableCell>
-                      <TableCell className="whitespace-nowrap text-xs">{r.user.lastActiveAt ? fmtDateTime(r.user.lastActiveAt) : vi.adminStats.never}</TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">{r.user.lastActiveAt ? fx.dateTime(r.user.lastActiveAt) : t.adminStats.never}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

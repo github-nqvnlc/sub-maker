@@ -18,6 +18,8 @@ export type MeDto = {
   canUseCustomAi: boolean;
   storageUsedBytes: number;
   storageQuotaBytes: number;
+  locale: 'vi' | 'en';
+  theme: 'light' | 'dark' | 'system';
 };
 
 export async function toMe(user: AuthUser): Promise<MeDto> {
@@ -32,13 +34,20 @@ export async function toMe(user: AuthUser): Promise<MeDto> {
     canUseCustomAi: user.canUseCustomAi,
     storageUsedBytes: user.storageUsedBytes,
     storageQuotaBytes: userQuotaBytes,
+    locale: user.locale,
+    theme: user.theme,
   };
 }
 
-export async function updateProfile(userId: string, patch: { displayName?: string; bio?: string | null }): Promise<void> {
+export async function updateProfile(
+  userId: string,
+  patch: { displayName?: string; bio?: string | null; locale?: 'vi' | 'en'; theme?: 'light' | 'dark' | 'system' },
+): Promise<void> {
   const set: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
   if (patch.displayName !== undefined) set.name = patch.displayName;
   if (patch.bio !== undefined) set.bio = patch.bio === '' ? null : patch.bio;
+  if (patch.locale !== undefined) set.locale = patch.locale;
+  if (patch.theme !== undefined) set.theme = patch.theme;
   await getDb().update(users).set(set).where(eq(users.id, userId));
 }
 

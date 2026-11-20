@@ -59,6 +59,8 @@ const FPT_MARKETPLACE: ProviderCatalog = {
   // Đã kiểm chứng (S3): 1.500 ký tự được chấp nhận, 10.001 bị 422. Giữ 5.000 làm giới hạn an toàn (đoạn thực tế ≤ 400 ký tự).
   maxCharsPerRequest: 5000,
   minChars: 1,
+  // Theo docs/fpt.ai: gói Thường (FPT.AI-VITs) ~30 yêu cầu/phút/khóa; dùng làm mức chung cho cả nhà cung cấp (thận trọng).
+  requestsPerMinute: 30,
 };
 
 const OPENAI_VOICES: VoiceInfo[] = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'].map((id) =>

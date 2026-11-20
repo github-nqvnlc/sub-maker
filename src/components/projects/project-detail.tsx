@@ -17,10 +17,10 @@ import { FilePreviewDialog } from '@/components/projects/file-preview-dialog';
 import { JobTable, type JobRowDto } from '@/components/projects/job-table';
 import { UploadDropzone } from '@/components/projects/upload-dropzone';
 import { ApiError, api, apiDelete } from '@/lib/api-client';
-import { fmtBytes, fmtDateTime, fmtDuration } from '@/lib/format';
-import { vi } from '@/lib/i18n/vi';
+import { fmtBytes, fmtDuration } from '@/lib/format';
+import { useFormat, useT } from '@/lib/i18n/client';
 
-type FileDto = { id: string; originalName: string; ext: string; sizeBytes: number; charCount: number; segmentCount: number; createdAt: string };
+type FileDto = { id: string; originalName: string; ext: string; sizeBytes: number; charCount: number; segmentCount: number; hasTimecodes?: boolean; cueCount?: number | null; durationMs?: number | null; createdAt: string };
 type VoiceDto = { id: string; title: string; durationMs: number; sizeBytes: number; createdAt: string };
 export type ProjectDetailDto = {
   id: string;
@@ -37,6 +37,8 @@ export type ProjectDetailDto = {
 const ACTIVE = new Set(['queued', 'running']);
 
 export function ProjectDetail({ projectId }: { projectId: string }) {
+  const t = useT();
+  const fx = useFormat();
   const qc = useQueryClient();
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
@@ -54,7 +56,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
 
   if (q.isPending) return <LoadingList rows={4} />;
   if (q.isError) {
-    return <ErrorState message={q.error instanceof ApiError && q.error.status === 404 ? vi.projects.notFound : q.error.message} onRetry={() => void q.refetch()} />;
+    return <ErrorState message={q.error instanceof ApiError && q.error.status === 404 ? t.projects.notFound : q.error.message} onRetry={() => void q.refetch()} />;
   }
   const p = q.data;
   const fileNames = new Map(p.files.map((f) => [f.id, f.originalName]));
@@ -66,39 +68,39 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold">{p.name}</h1>
           <Badge variant="secondary">{p.providerType}</Badge>
-          {activeJobs > 0 ? <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">{vi.projects.running}</Badge> : null}
+          {activeJobs > 0 ? <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">{t.projects.running}</Badge> : null}
           <div className="ml-auto flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-              {vi.projects.edit}
+              {t.projects.edit}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setDeleteProject(true)}>
-              {vi.projects.delete}
+              {t.projects.delete}
             </Button>
           </div>
         </div>
         {p.description ? <p className="max-w-3xl whitespace-pre-line text-sm text-muted-foreground">{p.description}</p> : null}
         <p className="text-xs text-muted-foreground">
-          {vi.projects.createdAt} {fmtDateTime(p.createdAt)}
+          {t.projects.createdAt} {fx.dateTime(p.createdAt)}
         </p>
       </div>
 
       <Tabs defaultValue="files">
         <TabsList>
           <TabsTrigger value="files">
-            {vi.projects.tabFiles} ({p.files.length})
+            {t.projects.tabFiles} ({p.files.length})
           </TabsTrigger>
           <TabsTrigger value="jobs">
-            {vi.projects.tabJobs} ({p.jobs.length})
+            {t.projects.tabJobs} ({p.jobs.length})
           </TabsTrigger>
           <TabsTrigger value="voices">
-            {vi.projects.tabVoices} ({p.voices.length})
+            {t.projects.tabVoices} ({p.voices.length})
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="files" className="space-y-4">
           <UploadDropzone projectId={p.id} onUploaded={(id) => setPreviewId(id)} />
           {p.files.length === 0 ? (
-            <EmptyState title={vi.files.empty} />
+            <EmptyState title={t.files.empty} />
           ) : (
             <ul className="space-y-2">
               {p.files.map((f) => (
@@ -111,23 +113,24 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                           <Badge variant="outline">.{f.ext}</Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {f.segmentCount} {vi.files.segments} · {f.charCount} {vi.files.chars} · {fmtBytes(f.sizeBytes)} · {fmtDateTime(f.createdAt)}
+                          {f.segmentCount} {t.files.segments} · {f.charCount} {t.files.chars} · {fmtBytes(f.sizeBytes)} · {fx.dateTime(f.createdAt)}
+                          {f.hasTimecodes ? ` · ${t.files.hasTimecodes}` : ''}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button size="sm" variant="outline" onClick={() => setPreviewId(f.id)}>
-                          {vi.files.preview}
+                          {t.files.preview}
                         </Button>
                         <Button asChild size="sm" variant="outline">
                           <a href={`/api/files/${f.id}/raw`} download>
-                            {vi.files.download}
+                            {t.files.download}
                           </a>
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => setDeleteFile(f)}>
-                          {vi.files.delete}
+                          {t.files.delete}
                         </Button>
                         <Button size="sm" onClick={() => setStartFileId(f.id)}>
-                          {vi.files.createVoice}
+                          {t.files.createVoice}
                         </Button>
                       </div>
                     </CardContent>
@@ -144,7 +147,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
 
         <TabsContent value="voices">
           {p.voices.length === 0 ? (
-            <EmptyState title={vi.voices.empty} />
+            <EmptyState title={t.voices.empty} />
           ) : (
             <ul className="space-y-2">
               {p.voices.map((v) => (
@@ -154,11 +157,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                       <div className="min-w-0">
                         <p className="truncate font-medium">{v.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          {vi.voices.duration} {fmtDuration(v.durationMs)} · {fmtBytes(v.sizeBytes)} · {fmtDateTime(v.createdAt)}
+                          {t.voices.duration} {fmtDuration(v.durationMs)} · {fmtBytes(v.sizeBytes)} · {fx.dateTime(v.createdAt)}
                         </p>
                       </div>
                       <Button asChild size="sm">
-                        <Link href={`/projects/${p.id}/voices/${v.id}`}>{vi.voices.open}</Link>
+                        <Link href={`/projects/${p.id}/voices/${v.id}`}>{t.voices.open}</Link>
                       </Button>
                     </CardContent>
                   </Card>
@@ -173,22 +176,22 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       <ConfirmDialog
         open={deleteProject}
         onOpenChange={setDeleteProject}
-        title={vi.projects.deleteTitle}
+        title={t.projects.deleteTitle}
         description={
           <>
             <p className="font-medium text-foreground">{p.name}</p>
-            <p>{vi.projects.deleteDesc}</p>
+            <p>{t.projects.deleteDesc}</p>
           </>
         }
-        confirmLabel={vi.projects.delete}
+        confirmLabel={t.projects.delete}
         onConfirm={async () => {
           try {
             await apiDelete(`/api/projects/${p.id}`);
-            toast.success(vi.projects.deleted);
+            toast.success(t.projects.deleted);
             await qc.invalidateQueries({ queryKey: ['projects'] });
             router.push('/projects');
           } catch (e) {
-            toast.error(e instanceof Error ? e.message : vi.common.genericError);
+            toast.error(e instanceof Error ? e.message : t.common.genericError);
           }
         }}
       />
@@ -197,22 +200,22 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       <ConfirmDialog
         open={!!deleteFile}
         onOpenChange={(o) => !o && setDeleteFile(null)}
-        title={vi.files.deleteTitle}
+        title={t.files.deleteTitle}
         description={
           <>
             <p className="font-medium text-foreground">{deleteFile?.originalName}</p>
-            <p>{vi.files.deleteDesc}</p>
+            <p>{t.files.deleteDesc}</p>
           </>
         }
-        confirmLabel={vi.files.delete}
+        confirmLabel={t.files.delete}
         onConfirm={async () => {
           if (!deleteFile) return;
           try {
             await apiDelete(`/api/files/${deleteFile.id}`);
-            toast.success(vi.files.deleted);
+            toast.success(t.files.deleted);
             await qc.invalidateQueries({ queryKey: ['project', projectId] });
           } catch (e) {
-            toast.error(e instanceof Error ? e.message : vi.common.genericError);
+            toast.error(e instanceof Error ? e.message : t.common.genericError);
           }
         }}
       />

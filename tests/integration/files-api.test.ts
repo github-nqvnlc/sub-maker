@@ -103,12 +103,12 @@ describe('upload kịch bản (FR-009, FR-011)', () => {
     expect(await headObject(row!.storageKey)).toMatchObject({ size: new TextEncoder().encode(text).length });
   });
 
-  it('.md và .skt được bóc định dạng/mốc thời gian', async () => {
+  it('.md và .srt được bóc định dạng/mốc thời gian', async () => {
     const pid = await newProject(a);
     const md = await (await a.client.post(`/api/projects/${pid}/files`, { form: form('# Tiêu đề\n\nĐây là **đậm** và [liên kết](https://x.vn).', 'a.md') })).json();
     expect(md.segments.map((s: { text: string }) => s.text)).toEqual(['Tiêu đề', 'Đây là đậm và liên kết.']);
-    const skt = await (await a.client.post(`/api/projects/${pid}/files`, { form: form('1\n00:00:01,000 --> 00:00:02,000\nXin chào.\n\n2\n00:00:03,000 --> 00:00:04,000\nTạm biệt.', 'a.skt') })).json();
-    expect(skt.segments.map((s: { text: string }) => s.text)).toEqual(['Xin chào.', 'Tạm biệt.']);
+    const srt = await (await a.client.post(`/api/projects/${pid}/files`, { form: form('1\n00:00:01,000 --> 00:00:02,000\nXin chào.\n\n2\n00:00:03,000 --> 00:00:04,000\nTạm biệt.', 'a.srt') })).json();
+    expect(srt.segments.map((s: { text: string }) => s.text)).toEqual(['Xin chào.', 'Tạm biệt.']);
   });
 
   it('GET chi tiết trả văn bản gốc và các đoạn; /raw tải đúng nội dung có Content-Disposition', async () => {

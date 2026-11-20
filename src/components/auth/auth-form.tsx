@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
+import type { Dict } from '@/lib/i18n/types';
 
 type Mode = 'login' | 'register';
 
@@ -16,15 +17,16 @@ function safeNext(next: string | null): string {
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/projects';
 }
 
-function messageFor(status: number, code: string | undefined, mode: Mode): string {
-  if (status === 429) return vi.auth.tooManyAttempts;
-  if (status === 403) return vi.auth.accountDisabled;
-  if (code === 'USER_ALREADY_EXISTS' || code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') return vi.auth.emailTaken;
-  if (mode === 'login') return vi.auth.invalidCredentials;
-  return vi.common.genericError;
+function messageFor(t: Dict, status: number, code: string | undefined, mode: Mode): string {
+  if (status === 429) return t.auth.tooManyAttempts;
+  if (status === 403) return t.auth.accountDisabled;
+  if (code === 'USER_ALREADY_EXISTS' || code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') return t.auth.emailTaken;
+  if (mode === 'login') return t.auth.invalidCredentials;
+  return t.common.genericError;
 }
 
 export function AuthForm({ mode }: { mode: Mode }) {
+  const t = useT();
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState('');
@@ -49,13 +51,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { code?: string; message?: string; error?: { message?: string } };
         // Lỗi chính sách (422) mang thông điệp tiếng Việt cụ thể từ máy chủ
-        setError(res.status === 422 && body.message ? body.message : messageFor(res.status, body.code, mode));
+        setError(res.status === 422 && body.message ? body.message : messageFor(t, res.status, body.code, mode));
         return;
       }
       router.replace(safeNext(params.get('next')));
       router.refresh();
     } catch {
-      setError(vi.common.genericError);
+      setError(t.common.genericError);
     } finally {
       setBusy(false);
     }
@@ -64,23 +66,23 @@ export function AuthForm({ mode }: { mode: Mode }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{isLogin ? vi.auth.loginTitle : vi.auth.registerTitle}</CardTitle>
-        <CardDescription>{isLogin ? vi.auth.loginSubtitle : vi.auth.registerSubtitle}</CardDescription>
+        <CardTitle>{isLogin ? t.auth.loginTitle : t.auth.registerTitle}</CardTitle>
+        <CardDescription>{isLogin ? t.auth.loginSubtitle : t.auth.registerSubtitle}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="space-y-4" noValidate>
           {!isLogin ? (
             <div className="space-y-2">
-              <Label htmlFor="name">{vi.auth.displayName}</Label>
+              <Label htmlFor="name">{t.auth.displayName}</Label>
               <Input id="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoComplete="name" required />
             </div>
           ) : null}
           <div className="space-y-2">
-            <Label htmlFor="email">{vi.auth.email}</Label>
+            <Label htmlFor="email">{t.auth.email}</Label>
             <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">{vi.auth.password}</Label>
+            <Label htmlFor="password">{t.auth.password}</Label>
             <Input
               id="password"
               type="password"
@@ -89,7 +91,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
               autoComplete={isLogin ? 'current-password' : 'new-password'}
               required
             />
-            {!isLogin ? <p className="text-xs text-muted-foreground">{vi.auth.passwordHint}</p> : null}
+            {!isLogin ? <p className="text-xs text-muted-foreground">{t.auth.passwordHint}</p> : null}
           </div>
           {error ? (
             <p role="alert" className="text-sm text-destructive">
@@ -97,15 +99,15 @@ export function AuthForm({ mode }: { mode: Mode }) {
             </p>
           ) : null}
           <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? vi.auth.submitting : isLogin ? vi.auth.submitLogin : vi.auth.submitRegister}
+            {busy ? t.auth.submitting : isLogin ? t.auth.submitLogin : t.auth.submitRegister}
           </Button>
           <p className="text-center text-sm text-muted-foreground">
-            {isLogin ? vi.auth.noAccount : vi.auth.haveAccount}{' '}
+            {isLogin ? t.auth.noAccount : t.auth.haveAccount}{' '}
             <Link href={isLogin ? '/register' : '/login'} className="font-medium text-foreground underline underline-offset-4">
-              {isLogin ? vi.auth.goRegister : vi.auth.goLogin}
+              {isLogin ? t.auth.goRegister : t.auth.goLogin}
             </Link>
           </p>
-          {isLogin ? <p className="text-center text-xs text-muted-foreground">{vi.auth.forgotPasswordInfo}</p> : null}
+          {isLogin ? <p className="text-center text-xs text-muted-foreground">{t.auth.forgotPasswordInfo}</p> : null}
         </form>
       </CardContent>
     </Card>

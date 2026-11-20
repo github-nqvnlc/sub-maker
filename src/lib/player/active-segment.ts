@@ -9,7 +9,7 @@
  */
 export type TimelineSeg = { idx: number; startMs: number; endMs: number };
 
-export function findActiveIndex(timeline: readonly TimelineSeg[], tMs: number): number {
+export function findActiveIndex<T extends { startMs: number }>(timeline: readonly T[], tMs: number): number {
   if (timeline.length === 0) return -1;
   let lo = 0;
   let hi = timeline.length - 1;

@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: User description: "Phần mềm web quản lý (CRUDS) việc tạo voice từ kịch bản/subtitle (.skt, .md, .txt): tạo/xem/sửa/xóa/tìm kiếm Project; upload file subtitle để AI sinh voice; xem log chi tiết, chạy nền; nghe voice và highlight đúng câu đang đọc theo thời gian thực."
+**Input**: User description: "Phần mềm web quản lý (CRUDS) việc tạo voice từ kịch bản/subtitle (.srt, .md, .txt): tạo/xem/sửa/xóa/tìm kiếm Project; upload file subtitle để AI sinh voice; xem log chi tiết, chạy nền; nghe voice và highlight đúng câu đang đọc theo thời gian thực."
 
 ## Clarifications
 
@@ -22,7 +22,7 @@
 
 ### User Story 1 - Tạo Project và sinh voice từ file subtitle (Priority: P1)
 
-Người dùng tạo một Project mới (tên, mô tả, chọn nhà cung cấp AI giọng nói), sau đó upload một file kịch bản/subtitle (.skt, .md hoặc .txt). Hệ thống tách nội dung thành các câu/đoạn, dùng AI tạo giọng đọc cho toàn bộ nội dung và lưu thành một "voice" thuộc Project. Người dùng theo dõi log chi tiết từng bước ngay trên màn hình.
+Người dùng tạo một Project mới (tên, mô tả, chọn nhà cung cấp AI giọng nói), sau đó upload một file kịch bản/subtitle (.srt, .md hoặc .txt). Hệ thống tách nội dung thành các câu/đoạn, dùng AI tạo giọng đọc cho toàn bộ nội dung và lưu thành một "voice" thuộc Project. Người dùng theo dõi log chi tiết từng bước ngay trên màn hình.
 
 **Why this priority**: Đây là giá trị cốt lõi của sản phẩm. Chỉ cần có luồng này là đã có MVP dùng được: từ kịch bản ra được file giọng đọc.
 
@@ -31,7 +31,7 @@ Người dùng tạo một Project mới (tên, mô tả, chọn nhà cung cấp
 **Acceptance Scenarios**:
 
 1. **Given** người dùng đang ở danh sách Project, **When** nhập tên, mô tả, chọn nhà cung cấp AI và lưu, **Then** Project mới xuất hiện trong danh sách và có thể mở ra.
-2. **Given** một Project đã tạo, **When** người dùng upload file .skt, .md hoặc .txt hợp lệ và chọn giọng đọc, **Then** hệ thống tạo một tiến trình sinh voice mới và hiển thị log trạng thái theo thời gian thực.
+2. **Given** một Project đã tạo, **When** người dùng upload file .srt, .md hoặc .txt hợp lệ và chọn giọng đọc, **Then** hệ thống tạo một tiến trình sinh voice mới và hiển thị log trạng thái theo thời gian thực.
 3. **Given** tiến trình đang chạy, **When** có sự kiện mới (đọc file, tách câu, gửi từng đoạn, nhận kết quả, ghép audio, hoàn tất/lỗi), **Then** log trên màn hình cập nhật ngay, mỗi dòng có thời điểm, mức độ (thông tin/cảnh báo/lỗi) và nội dung dễ hiểu.
 4. **Given** file có định dạng không hỗ trợ, rỗng hoặc vượt giới hạn kích thước, **When** upload, **Then** hệ thống từ chối kèm thông báo rõ lý do và không tạo tiến trình.
 5. **Given** tiến trình hoàn tất, **When** người dùng mở Project, **Then** voice được lưu vào danh sách voice của Project và có thể nghe lại.
@@ -191,7 +191,7 @@ Administrator thiết lập cấu hình nhà cung cấp AI dùng chung cho toàn
 - Số liệu thống kê khi tiến trình bị dừng/lỗi giữa chừng: chỉ tính phần thực sự đã gọi nhà cung cấp.
 - Nhà cung cấp không trả số token (chỉ có ký tự): thống kê hiển thị đơn vị mà nhà cung cấp đo được, không bịa số.
 - File chứa nhiều ngôn ngữ, ký tự đặc biệt, emoji, markup Markdown (tiêu đề, danh sách, liên kết): hệ thống chỉ đọc phần nội dung nói được, bỏ ký hiệu định dạng, và cho người dùng thấy văn bản sẽ được đọc trước khi chạy.
-- File .skt/.srt có mốc thời gian sẵn: mốc thời gian không dùng để quyết định audio; thời lượng thật lấy từ audio sinh ra (xem Assumptions).
+- File .srt có mốc thời gian sẵn: mốc thời gian không dùng để quyết định audio; thời lượng thật lấy từ audio sinh ra (xem Assumptions).
 - File rất dài vượt giới hạn mỗi lần gọi của nhà cung cấp: tự chia theo câu/đoạn, ghép lại theo đúng thứ tự.
 - Một phần đoạn bị lỗi (hết hạn mức, mạng lỗi, nhà cung cấp quá tải): thử lại tự động có giới hạn; nếu vẫn lỗi, tiến trình chuyển "lỗi" nhưng giữ phần đã xong để chạy tiếp từ chỗ dở thay vì làm lại từ đầu.
 - Khóa/tài khoản nhà cung cấp hết số dư hoặc không có quyền với giọng/model đã chọn: báo rõ nguyên nhân bằng ngôn ngữ dễ hiểu, không lộ khóa bí mật.
@@ -224,7 +224,7 @@ Administrator thiết lập cấu hình nhà cung cấp AI dùng chung cho toàn
 
 **Upload subtitle và tạo voice**
 
-- **FR-009**: Hệ thống MUST cho phép upload file kịch bản/subtitle định dạng .skt, .md, .txt vào một Project, kiểm tra định dạng, mã hóa ký tự (UTF-8) và kích thước tối đa 2 MB mỗi file trước khi chấp nhận.
+- **FR-009**: Hệ thống MUST cho phép upload file kịch bản/subtitle định dạng .srt, .md, .txt vào một Project, kiểm tra định dạng, mã hóa ký tự (UTF-8) và kích thước tối đa 2 MB mỗi file trước khi chấp nhận.
 - **FR-010**: Hệ thống MUST lưu file gốc đã upload và cho phép xem lại nội dung văn bản sau khi upload.
 - **FR-011**: Hệ thống MUST tách nội dung thành các câu/đoạn theo thứ tự, loại bỏ ký hiệu định dạng không đọc được (Markdown, mốc thời gian, thẻ) và cho người dùng xem trước nội dung sẽ được đọc.
 - **FR-012**: Hệ thống MUST tạo giọng đọc bằng nhà cung cấp AI được chọn, cho phép chọn giọng đọc và tốc độ trong phạm vi nhà cung cấp hỗ trợ, và xử lý giới hạn độ dài mỗi lần gọi bằng cách tự chia nhỏ rồi ghép đúng thứ tự.
@@ -277,7 +277,7 @@ Administrator thiết lập cấu hình nhà cung cấp AI dùng chung cho toàn
 - **User Account (Tài khoản)**: Người dùng hệ thống, có vai trò (Administrator hoặc User), trạng thái (hoạt động/bị khóa) và hồ sơ cá nhân (ảnh đại diện, tên hiển thị, giới thiệu). Sở hữu các Project của mình.
 - **Usage Record (Bản ghi sử dụng AI)**: Một lần gọi nhà cung cấp, gắn User, Project, nhà cung cấp, số ký tự/token và chi phí ước tính; là nguồn của thống kê.
 - **Project**: Đơn vị làm việc. Có chủ sở hữu (User), tên, mô tả, nhà cung cấp AI mặc định, thời điểm tạo/cập nhật. Sở hữu các file subtitle, tiến trình và voice.
-- **Subtitle File (Kịch bản)**: File gốc người dùng upload (.skt/.md/.txt) cùng văn bản đã chuẩn hóa. Thuộc một Project; có thể dùng cho nhiều tiến trình.
+- **Subtitle File (Kịch bản)**: File gốc người dùng upload (.srt/.md/.txt) cùng văn bản đã chuẩn hóa. Thuộc một Project; có thể dùng cho nhiều tiến trình.
 - **Segment (Câu/Đoạn)**: Một đơn vị văn bản được tách từ kịch bản theo thứ tự. Sau khi tạo voice có thêm mốc bắt đầu/kết thúc trong audio.
 - **Voice Job (Tiến trình tạo voice)**: Một lần chạy sinh voice. Có cấu hình (nhà cung cấp, giọng, tốc độ, file nguồn), trạng thái, tiến độ, thời điểm, và nhật ký.
 - **Voice (Voice đã tạo)**: Kết quả của một tiến trình hoàn tất: file audio, tổng thời lượng và danh sách mốc thời gian của các Segment. Thuộc Project.
@@ -310,7 +310,7 @@ Administrator thiết lập cấu hình nhà cung cấp AI dùng chung cho toàn
 - **Đăng ký**: Đăng ký mở bằng email/tên đăng nhập và mật khẩu; phiên bản đầu KHÔNG có xác minh email, đăng nhập qua bên thứ ba hay quên mật khẩu tự phục vụ (đã chốt ở bước lập kế hoạch); khi User quên mật khẩu, Administrator đặt lại.
 - **Hạn mức và tính phí** (đã làm rõ): User mới dùng ngay sau khi đăng ký, không cần duyệt. Mức sử dụng AI chỉ được thống kê; tính phí theo mức sử dụng và hạn mức/chặn tự động theo User thuộc giai đoạn sau. Rủi ro chấp nhận: ai đăng ký cũng có thể dùng cấu hình chung nên chi phí do hệ thống chịu, được giảm nhẹ bằng giới hạn tốc độ đăng ký và số tiến trình đồng thời (FR-025, FR-034) và Administrator khóa User khi cần. Chi phí của cấu hình riêng do User chịu.
 - **"Voice được upload trong Project"** được hiểu là danh sách các voice (audio) thuộc Project do hệ thống tạo ra từ subtitle; không có chức năng upload audio có sẵn của người dùng ở phiên bản này.
-- **Định dạng .skt**: Coi là kịch bản văn bản thuần, có thể kèm mốc thời gian giống file phụ đề. Mốc thời gian (nếu có) được bỏ qua khi sinh voice; thời lượng thật lấy từ audio. Nếu sau này có đặc tả .skt riêng, sẽ bổ sung.
+- **Định dạng .srt**: Phụ đề chuẩn SubRip (số thứ tự, dòng mốc thời gian, chữ); không còn hỗ trợ định dạng riêng .skt. Ở chế độ đọc liên tục, số thứ tự và mốc thời gian bị bỏ qua khi sinh voice; thời lượng thật lấy từ audio.
 - **Ngôn ngữ**: Nội dung chính là tiếng Việt; giao diện tiếng Việt. Chất lượng tiếng Việt của từng nhà cung cấp cần được người dùng nghe thử.
 - **Mốc thời gian từng câu**: Nhà cung cấp không trả mốc thời gian nên được suy ra bằng cách sinh voice theo từng câu/nhóm câu rồi ghép; vì vậy độ chính xác theo câu/đoạn, không theo từng từ. Highlight từng từ nằm ngoài phạm vi.
 - **Quyền truy cập nhà cung cấp** (đã làm rõ): Cấu hình chung do Administrator nhập qua giao diện cài đặt; User được phép có thể nhập cấu hình riêng thay thế. Khóa của User thường không bao giờ được nhập qua giao diện thông thường nếu họ không nằm trong danh sách. Số dư, giá và giới hạn do nhà cung cấp quyết định; hệ thống chỉ ghi nhận mức sử dụng (ký tự, số lần gọi) để người dùng biết.

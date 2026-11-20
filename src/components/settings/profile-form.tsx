@@ -13,7 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { ErrorState, LoadingList } from '@/components/shared/states';
 import { ApiError, api, apiDelete, apiPatch } from '@/lib/api-client';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 
 type Me = {
   displayName: string;
@@ -35,6 +35,7 @@ export function ProfileForm() {
 }
 
 function ProfileFields({ data }: { data: Me }) {
+  const t = useT();
   const qc = useQueryClient();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -47,13 +48,13 @@ function ProfileFields({ data }: { data: Me }) {
     mutationFn: () => apiPatch<Me>('/api/me', { displayName: name, bio }),
     onSuccess: () => {
       setFieldErrors({});
-      toast.success(vi.profile.saved);
+      toast.success(t.profile.saved);
       void qc.invalidateQueries({ queryKey: ['me'] });
       router.refresh();
     },
     onError: (e) => {
       if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
-      else toast.error(e instanceof Error ? e.message : vi.common.genericError);
+      else toast.error(e instanceof Error ? e.message : t.common.genericError);
     },
   });
 
@@ -64,13 +65,13 @@ function ProfileFields({ data }: { data: Me }) {
       return api('/api/me/avatar', { method: 'PUT', body: form });
     },
     onSuccess: () => {
-      toast.success(vi.profile.avatarSaved);
+      toast.success(t.profile.avatarSaved);
       setAvatarVersion((v) => v + 1);
       void qc.invalidateQueries({ queryKey: ['me'] });
       router.refresh();
     },
     onError: (e) => {
-      const msg = e instanceof ApiError ? (e.fields?.file ?? e.message) : vi.common.genericError;
+      const msg = e instanceof ApiError ? (e.fields?.file ?? e.message) : t.common.genericError;
       toast.error(msg);
     },
   });
@@ -78,7 +79,7 @@ function ProfileFields({ data }: { data: Me }) {
   const remove = useMutation({
     mutationFn: () => apiDelete('/api/me/avatar'),
     onSuccess: () => {
-      toast.success(vi.profile.avatarRemoved);
+      toast.success(t.profile.avatarRemoved);
       void qc.invalidateQueries({ queryKey: ['me'] });
       router.refresh();
     },
@@ -90,8 +91,8 @@ function ProfileFields({ data }: { data: Me }) {
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>{vi.profile.title}</CardTitle>
-          <CardDescription>{vi.profile.description}</CardDescription>
+          <CardTitle>{t.profile.title}</CardTitle>
+          <CardDescription>{t.profile.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex items-center gap-4">
@@ -102,21 +103,21 @@ function ProfileFields({ data }: { data: Me }) {
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" disabled={upload.isPending} onClick={() => fileRef.current?.click()}>
-                  {vi.profile.chooseAvatar}
+                  {t.profile.chooseAvatar}
                 </Button>
                 {data.hasAvatar ? (
                   <Button type="button" variant="ghost" size="sm" disabled={remove.isPending} onClick={() => remove.mutate()}>
-                    {vi.profile.removeAvatar}
+                    {t.profile.removeAvatar}
                   </Button>
                 ) : null}
               </div>
-              <p className="text-xs text-muted-foreground">{vi.profile.avatarHint}</p>
+              <p className="text-xs text-muted-foreground">{t.profile.avatarHint}</p>
               <input
                 ref={fileRef}
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 className="hidden"
-                aria-label={vi.profile.avatar}
+                aria-label={t.profile.avatar}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) upload.mutate(f);
@@ -134,23 +135,23 @@ function ProfileFields({ data }: { data: Me }) {
             }}
           >
             <div className="space-y-2">
-              <Label htmlFor="displayName">{vi.profile.displayName}</Label>
+              <Label htmlFor="displayName">{t.profile.displayName}</Label>
               <Input id="displayName" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
               {fieldErrors.displayName ? <p className="text-sm text-destructive">{fieldErrors.displayName}</p> : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bio">{vi.profile.bio}</Label>
-              <Textarea id="bio" value={bio} onChange={(e) => setBio(e.target.value)} maxLength={500} rows={4} placeholder={vi.profile.bioPlaceholder} />
+              <Label htmlFor="bio">{t.profile.bio}</Label>
+              <Textarea id="bio" value={bio} onChange={(e) => setBio(e.target.value)} maxLength={500} rows={4} placeholder={t.profile.bioPlaceholder} />
               {fieldErrors.bio ? <p className="text-sm text-destructive">{fieldErrors.bio}</p> : null}
             </div>
             <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? vi.common.loading : vi.common.save}
+              {save.isPending ? t.common.loading : t.common.save}
             </Button>
           </form>
 
           <div className="space-y-2 border-t pt-4">
             <div className="flex justify-between text-sm">
-              <span>{vi.profile.storage}</span>
+              <span>{t.profile.storage}</span>
               <span className="text-muted-foreground">
                 {mb(data.storageUsedBytes)} / {mb(data.storageQuotaBytes)}
               </span>
@@ -166,6 +167,7 @@ function ProfileFields({ data }: { data: Me }) {
 }
 
 function PasswordForm() {
+  const t = useT();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -175,18 +177,18 @@ function PasswordForm() {
       setErrors({});
       setCurrent('');
       setNext('');
-      toast.success(vi.profile.passwordChanged);
+      toast.success(t.profile.passwordChanged);
     },
     onError: (e) => {
       if (e instanceof ApiError && e.fields) setErrors(e.fields);
-      else toast.error(vi.common.genericError);
+      else toast.error(t.common.genericError);
     },
   });
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{vi.profile.passwordTitle}</CardTitle>
-        <CardDescription>{vi.auth.passwordHint}</CardDescription>
+        <CardTitle>{t.profile.passwordTitle}</CardTitle>
+        <CardDescription>{t.auth.passwordHint}</CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -197,17 +199,17 @@ function PasswordForm() {
           }}
         >
           <div className="space-y-2">
-            <Label htmlFor="currentPassword">{vi.profile.currentPassword}</Label>
+            <Label htmlFor="currentPassword">{t.profile.currentPassword}</Label>
             <Input id="currentPassword" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
             {errors.currentPassword ? <p className="text-sm text-destructive">{errors.currentPassword}</p> : null}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="newPassword">{vi.profile.newPassword}</Label>
+            <Label htmlFor="newPassword">{t.profile.newPassword}</Label>
             <Input id="newPassword" type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
             {errors.newPassword ? <p className="text-sm text-destructive">{errors.newPassword}</p> : null}
           </div>
           <Button type="submit" disabled={change.isPending || !current || !next}>
-            {vi.profile.changePassword}
+            {t.profile.changePassword}
           </Button>
         </form>
       </CardContent>

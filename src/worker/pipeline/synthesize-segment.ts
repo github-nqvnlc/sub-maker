@@ -46,6 +46,8 @@ export type SynthContext = {
   settings: { model: string | null; voice: string; speed: number | null };
   pricePerMillionChars: number | null;
   signal: AbortSignal;
+  /** Giới hạn yêu cầu/phút của cấu hình AI (spec 003); chờ lượt trước mỗi lần gọi nhà cung cấp, không chờ khi trúng cache. */
+  limiter?: { acquire(signal?: AbortSignal): Promise<void> } | null;
   retry: RetryPolicy;
   log: (level: LogLevel, code: string, message: string, meta?: Record<string, unknown>) => Promise<void>;
 };
@@ -90,6 +92,14 @@ export async function synthesizeSegment(c: SynthContext, idx: number, text: stri
 
   for (let attempt = 1; attempt <= c.retry.maxAttempts; attempt++) {
     if (c.signal.aborted) throw abortError();
+    if (c.limiter) {
+      try {
+        await c.limiter.acquire(c.signal);
+      } catch (e) {
+        if (isAbort(e, c.signal)) throw abortError();
+        throw e;
+      }
+    }
     await setSegment(c.jobId, idx, { status: 'running', attempts: attempt, errorCode: null });
     await c.log('info', 'SEGMENT_REQUEST', `Đoạn ${idx + 1}: gửi ${chars} ký tự tới nhà cung cấp${attempt > 1 ? ` (lần ${attempt})` : ''}`, { idx, chars, attempt });
 

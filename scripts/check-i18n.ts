@@ -6,6 +6,8 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { en } from '../src/lib/i18n/en';
+import { vi } from '../src/lib/i18n/vi';
 
 const ROOTS = ['src/app', 'src/components'];
 const EXT = new Set(['.ts', '.tsx']);
@@ -16,7 +18,9 @@ function* walk(dir: string): Generator<string> {
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, ent.name);
     if (ent.isDirectory()) {
-      if (full.split(path.sep).join('/') === 'src/app/api') continue;
+      // src/app/api: thông báo lỗi do máy chủ trả; src/app/(dev): trang kiểm thử nội bộ (chỉ E2E/dev), không thuộc giao diện người dùng
+      const rel = full.split(path.sep).join('/');
+      if (rel === 'src/app/api' || rel === 'src/app/(dev)') continue;
       yield* walk(full);
     }
     else if (EXT.has(path.extname(ent.name))) yield full;
@@ -41,8 +45,34 @@ for (const root of ROOTS) {
   }
 }
 
+// ---- Đa ngôn ngữ (spec 003, FR-023): từ điển vi/en đủ khóa, không rỗng, cùng giữ chỗ; giao diện không nhập vi trực tiếp ----
+function leaves(obj: unknown, prefix = ''): Array<[string, string]> {
+  if (typeof obj === 'string') return [[prefix, obj]];
+  if (obj && typeof obj === 'object') return Object.entries(obj).flatMap(([k, v]) => leaves(v, prefix ? `${prefix}.${k}` : k));
+  return [];
+}
+const holders = (v: string) => [...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!).sort().join(',');
+const viLeaves = new Map(leaves(vi));
+const enLeaves = new Map(leaves(en));
+for (const [k, v] of viLeaves) {
+  const e = enLeaves.get(k);
+  if (e === undefined) violations.push(`Thiếu khóa ở en.ts: ${k}`);
+  else if (e.trim() === '') violations.push(`Chuỗi rỗng ở en.ts: ${k}`);
+  else if (holders(v) !== holders(e)) violations.push(`Giữ chỗ khác nhau giữa vi và en: ${k} (${holders(v)} ≠ ${holders(e)})`);
+}
+for (const k of enLeaves.keys()) if (!viLeaves.has(k)) violations.push(`Thừa khóa ở en.ts (không có ở vi.ts): ${k}`);
+
+const IMPORT_VI = /from\s+['"]@\/lib\/i18n\/vi['"]/;
+for (const root of ROOTS) {
+  if (!fs.existsSync(root)) continue;
+  for (const file of walk(root)) {
+    const src = fs.readFileSync(file, 'utf8');
+    if (IMPORT_VI.test(src)) violations.push(`${file.split(path.sep).join('/')}: nhập trực tiếp '@/lib/i18n/vi' — dùng useT()/getT() để theo ngôn ngữ người dùng chọn`);
+  }
+}
+
 if (violations.length > 0) {
-  console.error(`Có ${violations.length} chuỗi tiếng Việt cứng trong giao diện (hãy chuyển vào src/lib/i18n/vi.ts):`);
+  console.error(`Có ${violations.length} vi phạm i18n (chuỗi tiếng Việt cứng trong giao diện, từ điển lệch nhau hoặc nhập vi trực tiếp):`);
   for (const v of violations) console.error('  ' + v);
   process.exit(1);
 }

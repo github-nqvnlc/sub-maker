@@ -9,18 +9,40 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ErrorState, LoadingList } from '@/components/shared/states';
 import { ApiError, api, apiPut } from '@/lib/api-client';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
+import type { Dict } from '@/lib/i18n/types';
 
-type Settings = { maxFileBytes: number; userQuotaBytes: number; maxConcurrentJobs: number; maxJobsPerUser: number; segmentConcurrency: number };
+type Settings = {
+  maxFileBytes: number;
+  userQuotaBytes: number;
+  maxConcurrentJobs: number;
+  maxJobsPerUser: number;
+  segmentConcurrency: number;
+  timingMaxSlipMs: number;
+  timingMaxCompressPct: number;
+  timingPartMinutes: number;
+  timingMergeGapMs: number;
+  rpmFptMarketplace: number;
+  rpmShopaikeyOpenai: number;
+  rpmShopaikeyMinimax: number;
+};
 type Field = { key: keyof Settings; label: string; hint: string; unit: 'mb' | 'int'; min: number; max?: number };
 
 const MB = 1024 * 1024;
-const FIELDS: Field[] = [
-  { key: 'maxFileBytes', label: vi.adminSettings.maxFileBytes, hint: vi.adminSettings.maxFileBytesHint, unit: 'mb', min: 0.001, max: 50 },
-  { key: 'userQuotaBytes', label: vi.adminSettings.userQuotaBytes, hint: vi.adminSettings.userQuotaHint, unit: 'mb', min: 1 },
-  { key: 'maxConcurrentJobs', label: vi.adminSettings.maxConcurrentJobs, hint: vi.adminSettings.concurrencyHint, unit: 'int', min: 1, max: 50 },
-  { key: 'maxJobsPerUser', label: vi.adminSettings.maxJobsPerUser, hint: vi.adminSettings.concurrencyHint, unit: 'int', min: 1, max: 50 },
-  { key: 'segmentConcurrency', label: vi.adminSettings.segmentConcurrency, hint: vi.adminSettings.segmentHint, unit: 'int', min: 1, max: 16 },
+const fieldsOf = (t: Dict): Field[] => [
+  { key: 'maxFileBytes', label: t.adminSettings.maxFileBytes, hint: t.adminSettings.maxFileBytesHint, unit: 'mb', min: 0.001, max: 50 },
+  { key: 'userQuotaBytes', label: t.adminSettings.userQuotaBytes, hint: t.adminSettings.userQuotaHint, unit: 'mb', min: 1 },
+  { key: 'maxConcurrentJobs', label: t.adminSettings.maxConcurrentJobs, hint: t.adminSettings.concurrencyHint, unit: 'int', min: 1, max: 50 },
+  { key: 'maxJobsPerUser', label: t.adminSettings.maxJobsPerUser, hint: t.adminSettings.concurrencyHint, unit: 'int', min: 1, max: 50 },
+  { key: 'segmentConcurrency', label: t.adminSettings.segmentConcurrency, hint: t.adminSettings.segmentHint, unit: 'int', min: 1, max: 16 },
+  // Voice khớp mốc thời gian phụ đề (spec 003)
+  { key: 'timingMaxSlipMs', label: t.adminSettings.timingMaxSlipMs, hint: t.adminSettings.timingMaxSlipHint, unit: 'int', min: 100, max: 2000 },
+  { key: 'timingMaxCompressPct', label: t.adminSettings.timingMaxCompressPct, hint: t.adminSettings.timingMaxCompressHint, unit: 'int', min: 100, max: 150 },
+  { key: 'timingPartMinutes', label: t.adminSettings.timingPartMinutes, hint: t.adminSettings.timingPartHint, unit: 'int', min: 1, max: 30 },
+  { key: 'timingMergeGapMs', label: t.adminSettings.timingMergeGapMs, hint: t.adminSettings.timingMergeGapHint, unit: 'int', min: 200, max: 3000 },
+  { key: 'rpmFptMarketplace', label: t.adminSettings.rpmFptMarketplace, hint: t.adminSettings.rpmHint, unit: 'int', min: 0, max: 600 },
+  { key: 'rpmShopaikeyOpenai', label: t.adminSettings.rpmShopaikeyOpenai, hint: t.adminSettings.rpmHint, unit: 'int', min: 0, max: 600 },
+  { key: 'rpmShopaikeyMinimax', label: t.adminSettings.rpmShopaikeyMinimax, hint: t.adminSettings.rpmHint, unit: 'int', min: 0, max: 600 },
 ];
 
 const toDisplay = (f: Field, v: number) => String(f.unit === 'mb' ? +(v / MB).toFixed(3) : v);
@@ -35,6 +57,8 @@ export function SystemSettingsForm() {
 }
 
 function Form({ initial }: { initial: Settings }) {
+  const t = useT();
+  const FIELDS = fieldsOf(t);
   const qc = useQueryClient();
   const [text, setText] = useState<Record<string, string>>(() => Object.fromEntries(FIELDS.map((f) => [f.key, toDisplay(f, initial[f.key])])));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -49,22 +73,22 @@ function Form({ initial }: { initial: Settings }) {
   const save = useMutation({
     mutationFn: () => apiPut<Settings>('/api/admin/settings', Object.fromEntries(FIELDS.map((f) => [f.key, toStored(f, text[f.key]!)]))),
     onSuccess: (data) => {
-      toast.success(vi.adminSettings.saved);
+      toast.success(t.adminSettings.saved);
       qc.setQueryData(['admin-settings'], data);
       setText(Object.fromEntries(FIELDS.map((f) => [f.key, toDisplay(f, data[f.key])])));
       setErrors({});
     },
     onError: (e) => {
       if (e instanceof ApiError && e.fields) setErrors(e.fields);
-      else toast.error(e instanceof Error ? e.message : vi.common.genericError);
+      else toast.error(e instanceof Error ? e.message : t.common.genericError);
     },
   });
 
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">{vi.adminSettings.title}</h1>
-        <p className="text-sm text-muted-foreground">{vi.adminSettings.subtitle}</p>
+        <h1 className="text-2xl font-semibold">{t.adminSettings.title}</h1>
+        <p className="text-sm text-muted-foreground">{t.adminSettings.subtitle}</p>
       </div>
       <form
         onSubmit={(e) => {
@@ -87,12 +111,12 @@ function Form({ initial }: { initial: Settings }) {
                   className="max-w-48"
                 />
                 <p className="text-xs text-muted-foreground">{f.hint}</p>
-                {invalid(f) ? <p className="text-xs text-destructive">{vi.adminSettings.invalid}</p> : null}
+                {invalid(f) ? <p className="text-xs text-destructive">{t.adminSettings.invalid}</p> : null}
                 {errors[f.key] ? <p className="text-xs text-destructive">{errors[f.key]}</p> : null}
               </div>
             ))}
             <Button type="submit" disabled={save.isPending || anyInvalid}>
-              {save.isPending ? vi.common.loading : vi.adminSettings.save}
+              {save.isPending ? t.common.loading : t.adminSettings.save}
             </Button>
           </CardContent>
         </Card>

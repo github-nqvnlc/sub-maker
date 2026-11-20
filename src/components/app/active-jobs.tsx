@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Progress } from '@/components/ui/progress';
 import { StatusBadge, type JobStatus } from '@/components/jobs/status-badge';
 import { api } from '@/lib/api-client';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 
 type ActiveJob = { id: string; projectId: string; status: JobStatus; settings: { voice: string }; progressDone: number; progressTotal: number };
 
@@ -17,6 +17,7 @@ type ActiveJob = { id: string; projectId: string; status: JobStatus; settings: {
  * và quay lại được (FR-018, US2). Cập nhật định kỳ bằng API danh sách tiến trình của tôi.
  */
 export function ActiveJobs() {
+  const t = useT();
   const q = useQuery({
     queryKey: ['active-jobs'],
     queryFn: () => api<ActiveJob[]>('/api/jobs?status=running,queued,interrupted&limit=20'),
@@ -28,15 +29,15 @@ export function ActiveJobs() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2" aria-label={vi.activeJobs.title}>
+        <Button variant="outline" size="sm" className="gap-2" aria-label={t.activeJobs.title}>
           <Loader2 className="size-4 animate-spin" aria-hidden />
           <span>
-            {jobs.length} {vi.activeJobs.count}
+            {jobs.length} {t.activeJobs.count}
           </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 space-y-2 p-3">
-        <p className="text-sm font-medium">{vi.activeJobs.title}</p>
+        <p className="text-sm font-medium">{t.activeJobs.title}</p>
         <ul className="space-y-2">
           {jobs.map((j) => (
             <li key={j.id}>

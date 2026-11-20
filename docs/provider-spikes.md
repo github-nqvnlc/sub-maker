@@ -48,3 +48,18 @@ Cập nhật các nơi sau cho khớp thực tế:
 | ShopAIKey — OpenAI TTS (`/tts/openai/speech`) | ❌ `tts-1`/`tts-1-hd`/`tts-1-1106` → 404 `not_found` (lặp lại nhiều lần, thêm 503 "quá tải" thoáng qua); `gpt-4o-mini-tts` → 503 `No available channel … under group image`; `/v1/audio/speech` cũng 404 | Khóa **không dùng được kênh OpenAI TTS** (group `image`). Adapter gọi đúng endpoint/body như tài liệu §11.1 |
 | ShopAIKey — MiniMax TTS (`/tts/minimax/t2a_v2`) | ✅ 200, trả MP3 (hex trong `data.audio`, bắt đầu ID3) với `speech-02-hd` + `language_boost: Vietnamese` | **Khóa này dùng được MiniMax.** Đã thêm adapter `shopaikey_minimax`; chạy trọn đường với khóa thật bằng `tests/integration/real-providers.test.ts` (3 đoạn → voice hoàn tất, usage đúng) |
 | ShopAIKey — Gemini TTS (`/tts/google/generations`) | ⚠️ 503 "dịch vụ quá tải" (chưa xác định được) | Thử lại sau |
+
+## Khớp mốc phụ đề: thời lượng đọc sau khi cắt lặng (2026-11-20, spec 003 — task T045)
+
+Đo bằng **3 cue đầu của tệp mẫu** (≤ 10 giây, tổng 122 ký tự) với FPT AI Marketplace, model `FPT.AI-VITs`, giọng `banmai`, tốc độ mặc định. `trimSilence` cắt khoảng lặng đầu/cuối (ngưỡng −45 dB, giữ 30 ms mỗi phía).
+
+| Cue | Khe (ms) | Thô (ms) | Sau cắt lặng (ms) | Lặng nhà cung cấp thêm (ms) | Tỷ lệ thô | Tỷ lệ sau cắt |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 "Bạn đã nghe hai bài phát biểu…" | 4375 | 3860 | 3493 | 367 | 0,88 | 0,80 |
+| 2 "Nhưng Tập Cận Bình không…" | 3437 | 2943 | 2600 | 343 | 0,86 | 0,76 |
+| 3 "Không Putin." | 1000 | 1207 | 953 | 254 | **1,21** | **0,95** |
+
+- **Giả thuyết ở research R3 được xác nhận**: nhà cung cấp thêm khoảng 250–370 ms im lặng mỗi cue. Cue khe 1 giây "Không Putin." tràn khe 21% khi đo thô nhưng **vừa khe (0,95) sau khi cắt lặng**, không cần nén.
+- Nén `atempo` 1,25× cho cue này còn 771 ms (đúng ≈ 953/1,25). Chưa thể nghe thử tự động; việc nghe chất lượng giọng sau nén phải do người dùng kiểm tra tay trên máy (hai tệp PCM 24 kHz mono s16le đã lưu ở thư mục tạm của phiên, không đưa vào repo). Mặc định `timingMaxCompressPct = 125` được giữ; hạ về 115 trong Cài đặt hệ thống nếu nghe thấy méo.
+- Số đo thô trước đó trên 40 cue (27% cue tràn khe) đã **đánh giá quá cao** tỷ lệ tràn thật vì chưa cắt lặng; tỷ lệ thật sẽ thấp hơn.
+- Chi phí: 122 ký tự ≈ 0,002 USD (gói Thường).

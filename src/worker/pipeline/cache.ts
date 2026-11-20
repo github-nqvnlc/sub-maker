@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '../../lib/db';
 import { audioCache } from '../../lib/db/schema';
 import { pcmDurationMs, pcmToWav, wavToPcm } from '../../lib/audio/ffmpeg';
-import type { ProviderType } from '../../lib/schemas/common';
+import { contentHash, type CacheKeyInput } from '../../lib/audio/cache-key';
 import { deleteObject, getObjectBuffer, putObject } from '../../lib/storage/client';
 import { storageKeys } from '../../lib/storage/keys';
 import { releaseBytes, reserveBytes } from '../../lib/storage/quota';
@@ -15,22 +14,8 @@ import { releaseBytes, reserveBytes } from '../../lib/storage/quota';
  * Cấu hình chung/riêng KHÔNG nằm trong hash vì âm thanh theo (model, voice, speed) là như nhau.
  */
 
-export type CacheKeyInput = {
-  userId: string;
-  providerType: ProviderType;
-  model: string | null;
-  voice: string;
-  speed: number | null;
-  text: string;
-};
-
-const FORMAT = 'pcm24k-mono-s16';
-
-export function contentHash(i: CacheKeyInput): string {
-  return createHash('sha256')
-    .update([i.userId, i.providerType, i.model ?? '', i.voice, i.speed ?? 'default', FORMAT, i.text.normalize('NFC')].join('\u0000'), 'utf8')
-    .digest('hex');
-}
+export { contentHash };
+export type { CacheKeyInput };
 
 export type CachedAudio = { id: string; pcm: Buffer; durationMs: number };
 

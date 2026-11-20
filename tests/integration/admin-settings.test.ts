@@ -28,7 +28,27 @@ describe('/api/admin/settings', () => {
   });
 
   it('đọc giá trị mặc định', async () => {
-    expect(await get()).toEqual({ maxFileBytes: 2_097_152, userQuotaBytes: 524_288_000, maxConcurrentJobs: 3, maxJobsPerUser: 2, segmentConcurrency: 3 });
+    expect(await get()).toEqual({
+      maxFileBytes: 2_097_152,
+      userQuotaBytes: 524_288_000,
+      maxConcurrentJobs: 3,
+      maxJobsPerUser: 2,
+      segmentConcurrency: 3,
+      timingMaxSlipMs: 500,
+      timingMaxCompressPct: 125,
+      timingPartMinutes: 10,
+      timingMergeGapMs: 1000,
+      rpmFptMarketplace: 0,
+      rpmShopaikeyOpenai: 0,
+      rpmShopaikeyMinimax: 0,
+    });
+  });
+
+  it('ghi và đọc lại các khóa đặt mốc (spec 003) trong khoảng hợp lệ', async () => {
+    const res = await put({ timingMaxSlipMs: 300, timingMaxCompressPct: 115, timingPartMinutes: 5, timingMergeGapMs: 800, rpmFptMarketplace: 20 });
+    expect(res.status).toBe(200);
+    expect(await get()).toMatchObject({ timingMaxSlipMs: 300, timingMaxCompressPct: 115, timingPartMinutes: 5, timingMergeGapMs: 800, rpmFptMarketplace: 20 });
+    await put({ timingMaxSlipMs: 500, timingMaxCompressPct: 125, timingPartMinutes: 10, timingMergeGapMs: 1000, rpmFptMarketplace: 0 });
   });
 
   it('ghi từng phần và đọc lại đúng', async () => {
@@ -47,6 +67,15 @@ describe('/api/admin/settings', () => {
     ['quá lớn', { segmentConcurrency: 1000 }],
     ['khóa lạ', { somethingElse: 1 }],
     ['quota nhỏ hơn 1 MB', { userQuotaBytes: 10 }],
+    ['độ trễ tối đa dưới 100 ms', { timingMaxSlipMs: 50 }],
+    ['độ trễ tối đa trên 2000 ms', { timingMaxSlipMs: 2001 }],
+    ['mức nén dưới 100%', { timingMaxCompressPct: 99 }],
+    ['mức nén trên 150%', { timingMaxCompressPct: 151 }],
+    ['cửa sổ phần 0 phút', { timingPartMinutes: 0 }],
+    ['cửa sổ phần 31 phút', { timingPartMinutes: 31 }],
+    ['khoảng nghỉ ghép dưới 200 ms', { timingMergeGapMs: 100 }],
+    ['rpm âm', { rpmFptMarketplace: -1 }],
+    ['rpm trên 600', { rpmShopaikeyMinimax: 601 }],
   ])('giá trị %s → 422 và không thay đổi gì', async (_name, body) => {
     const before = await get();
     expect((await put(body)).status).toBe(422);

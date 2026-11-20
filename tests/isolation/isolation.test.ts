@@ -51,6 +51,11 @@ const textForm = (text: string) => {
 const makeProject = (u: TestUser) => newProject(u);
 const makeFileIn = async (u: TestUser, projectId: string) => (await uploadScript(u, projectId, 'Một dòng đủ dài để đọc.')).id;
 const makeFile = async (u: TestUser) => makeFileIn(u, await newProject(u));
+/** Tệp .srt có mốc thời gian (spec 003): dùng cho xem trước cue và ước tính. */
+const makeSrtFile = async (u: TestUser) => {
+  const srt = ['1', '00:00:00,000 --> 00:00:01,500', 'Xin chào các bạn.', '', '2', '00:00:02,000 --> 00:00:03,500', 'Đây là phụ đề thử.', ''].join('\n');
+  return (await uploadScript(u, await newProject(u), srt, 'thu.srt')).id;
+};
 const makeVoice = async (u: TestUser) => {
   const projectId = await newProject(u);
   const job = await startJob(u, projectId, await makeFileIn(u, projectId));
@@ -106,6 +111,13 @@ const CASES: Record<string, Case> = {
   'GET /files/{fileId}': { kind: 'resource', setup: async ({ a }) => ({ fileId: await makeFile(a) }) },
   'DELETE /files/{fileId}': { kind: 'resource', setup: async ({ a }) => ({ fileId: await makeFile(a) }) },
   'GET /files/{fileId}/raw': { kind: 'resource', setup: async ({ a }) => ({ fileId: await makeFile(a) }) },
+  // Spec 003 — cue phụ đề và ước tính (tài nguyên thuộc User A; User B phải nhận 404)
+  'GET /files/{fileId}/cues': { kind: 'resource', setup: async ({ a }) => ({ fileId: await makeSrtFile(a) }) },
+  'POST /files/{fileId}/estimate': {
+    kind: 'resource',
+    setup: async ({ a }) => ({ fileId: await makeSrtFile(a) }),
+    init: { json: { timing: { mode: 'timed', mergeCues: true } } },
+  },
   'GET /projects/{projectId}/jobs': { kind: 'resource', setup: async ({ a }) => ({ projectId: await makeProject(a) }) },
   'POST /projects/{projectId}/jobs': {
     kind: 'resource',

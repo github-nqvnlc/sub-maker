@@ -10,12 +10,13 @@ import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EmptyState, ErrorState, LoadingList } from '@/components/shared/states';
 import { api, apiDelete, apiPost } from '@/lib/api-client';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 
 type U = { id: string; email: string; displayName: string; role: 'admin' | 'user'; status: string; canUseCustomAi: boolean };
 
 /** Quản lý "Danh sách User được dùng cấu hình AI riêng" (FR-042): thêm/gỡ, có tìm kiếm. */
 export function CustomAiUsers() {
+  const t = useT();
   const qc = useQueryClient();
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -50,26 +51,26 @@ export function CustomAiUsers() {
   const add = useMutation({
     mutationFn: (userId: string) => apiPost('/api/admin/custom-ai-users', { userId }),
     onSuccess: () => {
-      toast.success(vi.aiConfig.added);
+      toast.success(t.aiConfig.added);
       refresh();
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : vi.common.genericError),
+    onError: (e) => toast.error(e instanceof Error ? e.message : t.common.genericError),
   });
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">{vi.aiConfig.customUsersTitle}</h1>
-        <p className="text-sm text-muted-foreground">{vi.aiConfig.customUsersDescription}</p>
+        <h1 className="text-2xl font-semibold">{t.aiConfig.customUsersTitle}</h1>
+        <p className="text-sm text-muted-foreground">{t.aiConfig.customUsersDescription}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{vi.aiConfig.addUser}</CardTitle>
+          <CardTitle className="text-base">{t.aiConfig.addUser}</CardTitle>
           <CardDescription />
         </CardHeader>
         <CardContent className="space-y-3">
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={vi.aiConfig.addPlaceholder} aria-label={vi.aiConfig.addUser} />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.aiConfig.addPlaceholder} aria-label={t.aiConfig.addUser} />
           {debounced.length >= 2 ? (
             candidates.isPending ? (
               <LoadingList rows={2} />
@@ -82,26 +83,26 @@ export function CustomAiUsers() {
                       <div className="truncate text-xs text-muted-foreground">{u.email}</div>
                     </div>
                     <Button size="sm" disabled={add.isPending} onClick={() => add.mutate(u.id)}>
-                      {vi.aiConfig.addUser}
+                      {t.aiConfig.addUser}
                     </Button>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">{vi.aiConfig.noCandidates}</p>
+              <p className="text-sm text-muted-foreground">{t.aiConfig.noCandidates}</p>
             )
           ) : null}
         </CardContent>
       </Card>
 
-      <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={vi.common.search} aria-label={vi.common.search} className="max-w-sm" />
+      <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t.common.search} aria-label={t.common.search} className="max-w-sm" />
 
       {list.isPending ? (
         <LoadingList rows={3} />
       ) : list.isError ? (
         <ErrorState message={list.error.message} onRetry={() => void list.refetch()} />
       ) : list.data.length === 0 ? (
-        <EmptyState title={filter ? vi.common.noResults : vi.aiConfig.listEmpty} />
+        <EmptyState title={filter ? t.common.noResults : t.aiConfig.listEmpty} />
       ) : (
         <ul className="divide-y rounded-lg border">
           {list.data.map((u) => (
@@ -113,7 +114,7 @@ export function CustomAiUsers() {
               <div className="flex items-center gap-2">
                 {u.status !== 'active' ? <Badge variant="destructive">{u.status}</Badge> : null}
                 <Button size="sm" variant="outline" onClick={() => setRemoveTarget(u)}>
-                  {vi.aiConfig.removeUser}
+                  {t.aiConfig.removeUser}
                 </Button>
               </div>
             </li>
@@ -124,18 +125,18 @@ export function CustomAiUsers() {
       <ConfirmDialog
         open={!!removeTarget}
         onOpenChange={(o) => !o && setRemoveTarget(null)}
-        title={vi.aiConfig.removeTitle}
+        title={t.aiConfig.removeTitle}
         description={
           <>
             <p className="font-medium text-foreground">{removeTarget?.email}</p>
-            <p>{vi.aiConfig.removeDesc}</p>
+            <p>{t.aiConfig.removeDesc}</p>
           </>
         }
-        confirmLabel={vi.aiConfig.removeUser}
+        confirmLabel={t.aiConfig.removeUser}
         onConfirm={async () => {
           if (!removeTarget) return;
           await apiDelete(`/api/admin/custom-ai-users/${removeTarget.id}`);
-          toast.success(vi.aiConfig.removed);
+          toast.success(t.aiConfig.removed);
           refresh();
         }}
       />

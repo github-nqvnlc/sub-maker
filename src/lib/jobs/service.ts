@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '../db';
 import { jobLogs, jobSegments, voiceJobs, voices } from '../db/schema';
-import { HttpError, notFound, validation } from '../api/errors';
+import { HttpError, conflict, notFound, validation } from '../api/errors';
 import { appendLogSafe } from './log';
 import type { AuthUser } from '../auth/guards';
 import { resolveConfigForJob } from '../providers/config-service';
@@ -10,6 +10,11 @@ import { resolveSettings } from '../providers/catalog';
 import { getOwnedFile, getOwnedJob, getOwnedProject } from '../projects/access';
 import { jobDto } from '../projects/dto';
 import { hasQuotaFor, QuotaExceededError } from '../storage/quota';
+import { getSettings } from '../settings';
+import { computeEstimate } from './estimate';
+import { planParts } from '../audio/placement';
+import { buildTimingSettings, loadFileCues, TIMED_MAX_CHARS, unitsForTiming } from './timed';
+import { getCatalog } from '../providers/catalog';
 import { enqueueGenerateVoice } from '../../worker/queues';
 import { jobStatusSchema } from '../schemas/common';
 
@@ -19,6 +24,11 @@ export const createJobSchema = z
     model: z.string().trim().max(100).nullable().optional(),
     voice: z.string().trim().max(100).nullable().optional(),
     speed: z.number().finite().nullable().optional(),
+    /** Chế độ khớp mốc thời gian phụ đề (spec 003). Vắng mặt hoặc mode=continuous ⇒ "Đọc liên tục" như spec 001. */
+    timing: z
+      .object({ mode: z.enum(['timed', 'continuous']), mergeCues: z.boolean().optional() })
+      .strict()
+      .optional(),
   })
   .strict();
 export type CreateJobInput = z.infer<typeof createJobSchema>;
@@ -41,8 +51,31 @@ export async function createJob(user: AuthUser, projectId: string, input: Create
   });
   if (!parsed.ok) throw validation(parsed.fields);
 
-  // Hạn mức chặt lúc tạo job mới (job đang chạy được phép hoàn tất)
-  if (!(await hasQuotaFor(user.id, 1))) throw new QuotaExceededError();
+  const timed = input.timing?.mode === 'timed';
+  if (timed && !file.hasTimecodes) throw conflict('NO_TIMECODES');
+  const systemSettings = await getSettings();
+  const timing = buildTimingSettings(input.timing, systemSettings);
+
+  // Hạn mức chặt lúc tạo job mới (job đang chạy được phép hoàn tất). Chế độ khớp mốc: kiểm tra theo ước tính dung lượng
+  let units = file.segmentCount;
+  if (timed) {
+    const cat = getCatalog(project.providerType);
+    const cues = await loadFileCues(file.id);
+    units = unitsForTiming(cues, timing!, Math.min(cat.maxCharsPerRequest, TIMED_MAX_CHARS)).length;
+    if (units === 0) throw validation({ file: 'Tệp không có cue nào đọc được.' });
+    const est = await computeEstimate({
+      user,
+      file,
+      project,
+      settings: { model: parsed.value.model, voice: parsed.value.voice, speed: parsed.value.speed },
+      pricePerMillionChars: resolved.row.pricePerMillionChars,
+      timing: input.timing,
+      systemSettings,
+    });
+    if (!est.quotaOk) throw new QuotaExceededError(est.needBytes);
+  } else if (!(await hasQuotaFor(user.id, 1))) {
+    throw new QuotaExceededError();
+  }
 
   const db = getDb();
   const job = await db.transaction(async (tx) => {
@@ -56,12 +89,12 @@ export async function createJob(user: AuthUser, projectId: string, input: Create
         providerType: project.providerType,
         configId: resolved.row.id,
         configScope: resolved.scope,
-        settings: { model: parsed.value.model, voice: parsed.value.voice, speed: parsed.value.speed },
-        progressTotal: file.segmentCount,
+        settings: { model: parsed.value.model, voice: parsed.value.voice, speed: parsed.value.speed, ...(timing ? { timing } : {}) },
+        progressTotal: units,
       })
       .returning();
-    for (let i = 0; i < file.segmentCount; i += SEGMENT_CHUNK) {
-      const n = Math.min(SEGMENT_CHUNK, file.segmentCount - i);
+    for (let i = 0; i < units; i += SEGMENT_CHUNK) {
+      const n = Math.min(SEGMENT_CHUNK, units - i);
       await tx.insert(jobSegments).values(Array.from({ length: n }, (_, k) => ({ jobId: row!.id, idx: i + k })));
     }
     return row!;
@@ -117,7 +150,31 @@ export async function getJobDetail(ownerId: string, jobId: string) {
     .where(and(eq(jobSegments.jobId, jobId), eq(jobSegments.status, 'failed')))
     .orderBy(asc(jobSegments.idx));
   const v = await voiceIdsByJob([jobId]);
-  return { ...jobDto(job, v.get(jobId) ?? null), failedSegments: failed.map((f) => ({ idx: f.idx, errorCode: f.errorCode ?? 'UNKNOWN' })) };
+  let timing: { mode: 'timed'; mergeCues: boolean; overflowCount: number; parts: { done: number; total: number } } | null = null;
+  if (job.settings.timing) {
+    const [vr] = await db.select({ timeline: voices.timeline }).from(voices).where(eq(voices.jobId, jobId)).limit(1);
+    // Tiến độ theo phần: dựng lại đơn vị xác định từ cue + timing của job, một phần xong khi mọi đơn vị của nó đã `done`
+    const cat = getCatalog(job.providerType);
+    const units = unitsForTiming(await loadFileCues(job.subtitleFileId, db), job.settings.timing, Math.min(cat.maxCharsPerRequest, TIMED_MAX_CHARS));
+    const parts = planParts(units, job.settings.timing.params.partMinutes * 60_000);
+    const states = await db.select({ idx: jobSegments.idx, status: jobSegments.status }).from(jobSegments).where(eq(jobSegments.jobId, jobId));
+    const doneIdx = new Set(states.filter((s) => s.status === 'done').map((s) => s.idx));
+    const done = parts.filter((p) => {
+      for (let i = p.fromUnit; i <= p.toUnit; i++) if (!doneIdx.has(i)) return false;
+      return true;
+    }).length;
+    timing = {
+      mode: 'timed',
+      mergeCues: job.settings.timing.mergeCues,
+      overflowCount: vr ? vr.timeline.filter((t) => t.overflow).length : 0,
+      parts: { done, total: parts.length },
+    };
+  }
+  return {
+    ...jobDto(job, v.get(jobId) ?? null),
+    failedSegments: failed.map((f) => ({ idx: f.idx, errorCode: f.errorCode ?? 'UNKNOWN' })),
+    timing,
+  };
 }
 
 export type LogDto = { id: number; ts: string; level: 'info' | 'warn' | 'error'; code: string; message: string; meta: Record<string, unknown> | null };

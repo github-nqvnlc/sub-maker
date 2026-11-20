@@ -1,6 +1,9 @@
 import { ZodError } from 'zod';
 import { env } from '../env';
 import { vi, type ErrorCode } from '../i18n/vi';
+import { getDict } from '../i18n';
+import { localeFromCookieHeader, type Locale } from '../i18n/locale';
+import { translateFields, translateMessage } from '../i18n/server-messages';
 
 /**
  * Định dạng lỗi chuẩn: { error: { code, message, fields? } } (contracts/openapi.yaml).
@@ -38,13 +41,14 @@ export function zodFields(err: ZodError): Record<string, string> {
 }
 
 /** Chuyển mọi lỗi bắt được thành Response chuẩn (500 không lộ chi tiết). */
-export function toErrorResponse(err: unknown): Response {
-  if (err instanceof HttpError) return errorResponse(err.status, err.code, err.message, err.fields);
+export function toErrorResponse(err: unknown, locale: Locale = 'vi'): Response {
+  // `code` không đổi theo ngôn ngữ; chỉ `message` và `fields` được dịch (spec 003, FR-022)
+  if (err instanceof HttpError) return errorResponse(err.status, err.code, translateMessage(locale, err.message), translateFields(locale, err.fields));
   if (err instanceof ZodError) {
-    return errorResponse(422, 'VALIDATION', vi.errors.VALIDATION, zodFields(err));
+    return errorResponse(422, 'VALIDATION', getDict(locale).errors.VALIDATION, translateFields(locale, zodFields(err)));
   }
   console.error('[api] lỗi không mong đợi:', err instanceof Error ? `${err.name}: ${err.message}` : 'không rõ');
-  return errorResponse(500, 'INTERNAL', vi.errors.INTERNAL);
+  return errorResponse(500, 'INTERNAL', getDict(locale).errors.INTERNAL);
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -84,7 +88,7 @@ export function route<C = RouteContext>(handler: Handler<C>) {
       assertSameOrigin(request);
       return await handler(request, ctx);
     } catch (err) {
-      return toErrorResponse(err);
+      return toErrorResponse(err, localeFromCookieHeader(request.headers.get('cookie')));
     }
   };
 }

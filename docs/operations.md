@@ -185,3 +185,23 @@ Thêm tên miền phụ thứ hai: sửa Public Hostname trực tiếp trên Clo
 > Lưu ý: luồng `--setup-tunnel` đã được kiểm tra bằng phản hồi API giả, **chưa chạy với tài khoản Cloudflare thật**. Lần đầu hãy theo dõi
 > kết quả trên Cloudflare Zero Trust → Networks → Tunnels.
 
+## 9. Font chữ tiếng Việt và giao diện Sáng/Tối (spec 003)
+
+- **Font**: giao diện dùng **Be Vietnam Pro** (có đủ bộ ký tự tiếng Việt; Outfit trước đây chỉ có latin/latin-ext). `next/font` tải font từ Google Fonts **một lần lúc build** rồi phục vụ cùng ứng dụng, nên **máy build cần ra được Internet** (Docker build, `npm run build`); lúc chạy không gọi dịch vụ bên thứ ba. Nếu build ngoại tuyến, tải tệp font về repo và dùng `next/font/local` thay cho `next/font/google` ở `src/app/layout.tsx`.
+- **Trang kiểm thử chữ** `/dev/typography` chỉ bật khi `NODE_ENV !== 'production'` hoặc `E2E_MODE=1`; môi trường thật trả 404.
+- **Build thiếu bộ nhớ**: nếu `next build` báo `JavaScript heap out of memory` ở bước "Collecting page data" (máy ít RAM/đang chạy nhiều tiến trình), giảm số worker: `NEXT_BUILD_CPUS=2 npm run build`.
+- **Theme**: lựa chọn Sáng/Tối/Theo hệ thống lưu ở trình duyệt (khóa `theme` trong localStorage) và, khi đã đăng nhập, ở tài khoản (`users.theme`).
+
+## 10. Voice khớp mốc thời gian phụ đề (spec 003): cài đặt hệ thống
+
+Chỉnh ở **Quản trị → Cài đặt hệ thống** (có hiệu lực ngay cho tiến trình tạo sau đó; tiến trình đã tạo giữ tham số đã chốt lúc tạo):
+
+| Khóa | Mặc định | Khoảng | Ý nghĩa |
+|------|----------|--------|---------|
+| `timingMaxSlipMs` | 500 | 100–2000 | Độ trễ tối đa của một đoạn so với mốc phụ đề; vượt thì đoạn bị đánh dấu cảnh báo (voice vẫn được tạo). |
+| `timingMaxCompressPct` | 125 | 100–150 | Mức nén thời lượng tối đa khi lời đọc dài hơn khe (125 = nhanh hơn tối đa 1,25 lần). Nén quá mạnh làm giọng méo; hạ về 115 nếu nghe thấy méo. |
+| `timingPartMinutes` | 10 | 1–30 | Cửa sổ chia phần cho phụ đề dài (log và tiến độ theo phần). |
+| `timingMergeGapMs` | 1000 | 200–3000 | Khoảng nghỉ tối đa giữa hai cue vẫn được ghép chung một câu. |
+| `rpmFptMarketplace`, `rpmShopaikeyOpenai`, `rpmShopaikeyMinimax` | 0 | 0–600 | Giới hạn yêu cầu/phút ghi đè mặc định của catalog (FPT: 30/phút theo tài liệu — chỉ là ước tính). 0 = dùng mặc định. Tiến trình chờ rồi tiếp tục khi chạm giới hạn, không thất bại. |
+
+**Kiểm thử với nhà cung cấp giả**: ngoài các kịch bản lỗi hiện có, địa chỉ gốc nhận thêm thành phần ghép bằng dấu `+`: `ms-<n>` (thời lượng = ký tự × n ms), `pad-<n>` (thêm n ms im lặng ở đầu/cuối), `429-<k>` (k yêu cầu đầu trả 429), `blocked-<từ khóa>` (chặn nội dung có từ khóa) — ví dụ `/s/ms-120+pad-200/v1`.

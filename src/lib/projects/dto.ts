@@ -24,6 +24,10 @@ export const fileDto = (f: FileRow) => ({
   sizeBytes: f.sizeBytes,
   charCount: f.charCount,
   segmentCount: f.segmentCount,
+  hasTimecodes: f.hasTimecodes,
+  cueCount: f.cueCount,
+  durationMs: f.durationMs,
+  warningCount: f.cueWarningCount,
   createdAt: f.createdAt.toISOString(),
 });
 
@@ -34,7 +38,12 @@ export const jobDto = (j: JobRow, voiceId: string | null = null) => ({
   status: j.status,
   providerType: j.providerType,
   configScope: j.configScope,
-  settings: { model: j.settings.model ?? null, voice: j.settings.voice, speed: j.settings.speed ?? null },
+  settings: {
+    model: j.settings.model ?? null,
+    voice: j.settings.voice,
+    speed: j.settings.speed ?? null,
+    timing: j.settings.timing ? { mode: j.settings.timing.mode, mergeCues: j.settings.timing.mergeCues } : null,
+  },
   progressDone: j.progressDone,
   progressTotal: j.progressTotal,
   errorCode: j.errorCode,

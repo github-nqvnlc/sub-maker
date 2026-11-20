@@ -1,13 +1,3 @@
-<!--
-Sync Impact Report (tạm thời, xóa trước khi commit)
-- Thay đổi phiên bản: (template chưa điền) → 1.0.0
-- Nguyên tắc thêm mới: I–VI (xem bên dưới)
-- Mục thêm mới: Ràng buộc kỹ thuật & triển khai; Quy trình phát triển & chất lượng
-- Mục bị xóa: không
-- TODO hoãn lại: backend và cơ sở dữ liệu chưa chọn (quyết định ở /speckit-plan, rồi cập nhật
-  mục "Ràng buộc kỹ thuật & triển khai" nếu cần)
--->
-
 # Sub Maker Constitution
 
 ## Core Principles
@@ -85,17 +75,23 @@ và không phát sinh lặp.
 
 **Lý do**: Các rủi ro lớn nhất (rò dữ liệu, tốn tiền, mất tiến trình) khó phát hiện bằng mắt.
 
-### VI. Giao diện nhất quán, tiếng Việt, dùng được trên mọi màn hình
+### VI. Giao diện nhất quán, tiếng Việt là mặc định, dùng được trên mọi màn hình
 
-- Giao diện MUST dùng tiếng Việt, theo đúng theme và thành phần chung của hệ thống thiết kế đã
-  chọn; MUST NOT tự viết kiểu riêng cho thứ đã có thành phần chuẩn.
+- Giao diện MUST đầy đủ bằng tiếng Việt, là ngôn ngữ mặc định. MAY thêm ngôn ngữ giao diện khác
+  (hiện thêm English) với điều kiện: mọi ngôn ngữ có đủ khóa chữ (kiểm tra tự động), khóa thiếu
+  bản dịch MUST rơi về tiếng Việt và MUST NOT hiện khóa kỹ thuật, và lựa chọn của người dùng
+  MUST được ghi nhớ. Nội dung do người dùng tạo (tên Project, nội dung phụ đề) MUST NOT bị dịch.
+- Giao diện MUST theo đúng theme và thành phần chung của hệ thống thiết kế đã chọn; MUST NOT tự
+  viết kiểu riêng cho thứ đã có thành phần chuẩn.
 - Mọi màn hình MUST có đủ trạng thái: đang tải, rỗng, lỗi, không có kết quả.
 - Thao tác xem, nghe, theo dõi tiến trình MUST dùng được trên điện thoại và máy tính bảng.
 - Thao tác xóa (một hoặc nhiều) MUST có bước xác nhận nêu rõ số lượng và hậu quả.
 - Thông báo lỗi MUST nêu nguyên nhân và bước nên làm tiếp theo, không lộ tên kỹ thuật nội bộ.
-- Tìm kiếm tiếng Việt MUST chấp nhận gõ không dấu.
+- Tìm kiếm tiếng Việt MUST chấp nhận gõ không dấu, ở mọi ngôn ngữ giao diện.
 
 **Lý do**: Người dùng không phải kỹ thuật viên; sự nhất quán giảm lỗi thao tác và công sức bảo trì.
+Người dùng chính nói tiếng Việt nên tiếng Việt luôn đầy đủ; ngôn ngữ khác mở rộng đối tượng dùng
+mà không được làm giảm trải nghiệm tiếng Việt.
 
 ## Ràng buộc kỹ thuật và triển khai
 
@@ -115,8 +111,8 @@ và không phát sinh lặp.
   `docs/shopaikey-guide.md`; điểm chưa kiểm chứng trong đó MUST được thử thật trước khi dựa vào.
 - **Văn bản và âm thanh**: văn bản MUST chuẩn hóa Unicode NFC và UTF-8; chia câu/đoạn theo giới
   hạn từng nhà cung cấp; mốc thời gian theo câu/đoạn (không theo từng từ).
-- **Định dạng .skt**: coi là văn bản thuần (có thể có mốc thời gian bị bỏ qua) cho đến khi có
-  đặc tả riêng.
+- **Định dạng phụ đề**: dùng chuẩn SubRip `.srt` (số thứ tự, dòng mốc `hh:mm:ss,mmm --> hh:mm:ss,mmm`,
+  chữ); không dùng định dạng riêng `.skt`. Kịch bản `.txt` và `.md` vẫn được hỗ trợ.
 
 ## Quy trình phát triển và chất lượng
 
@@ -128,7 +124,8 @@ và không phát sinh lặp.
   đề, chỉnh văn bản trong ứng dụng thuộc giai đoạn sau và MUST NOT làm sớm khi chưa có spec.
 - Mỗi thay đổi MUST được rà soát đối chiếu Core Principles; vi phạm MUST được ghi lại cùng lý do
   trong mục theo dõi độ phức tạp của plan.
-- Tài liệu và thông báo giao diện dùng tiếng Việt; tên mã (biến, hàm, bảng) dùng tiếng Anh.
+- Tài liệu dự án (spec, plan, README, hướng dẫn vận hành) dùng tiếng Việt; thông báo giao diện
+  theo ngôn ngữ người dùng đã chọn (mặc định tiếng Việt); tên mã (biến, hàm, bảng) dùng tiếng Anh.
 - Nội dung do AI sinh ra có thể cần gắn nhãn theo nền tảng và luật nơi phát hành; quyền thương mại
   với audio phụ thuộc điều khoản nhà cung cấp và MUST được xác minh trước khi User dùng thương mại.
 
@@ -143,4 +140,4 @@ và không phát sinh lặp.
 - **Rà soát tuân thủ**: mọi plan MUST có bước kiểm tra constitution trước khi thiết kế và sau khi
   thiết kế; mọi lần review MUST đối chiếu Nguyên tắc I, II và IV (bảo mật và chi phí) trước tiên.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-19 | **Last Amended**: 2026-11-19
+**Version**: 1.1.0 | **Ratified**: 2026-11-19 | **Last Amended**: 2026-11-20

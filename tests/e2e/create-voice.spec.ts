@@ -96,7 +96,7 @@ test.describe('tạo voice từ kịch bản (US1)', () => {
 
     // Sai định dạng (chặn ngay ở phía client)
     await page.getByLabel('Tải kịch bản lên').setInputFiles({ name: 'a.pdf', mimeType: 'application/pdf', buffer: Buffer.from('x') });
-    await expect(formAlert(page)).toContainText('.txt, .md, .skt');
+    await expect(formAlert(page)).toContainText('.txt, .md, .srt');
 
     // Quá 2 MB (máy chủ từ chối)
     await page.getByLabel('Tải kịch bản lên').setInputFiles({ name: 'lon.txt', mimeType: 'text/plain', buffer: Buffer.alloc(2 * 1024 * 1024 + 100, 97) });

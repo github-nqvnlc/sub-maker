@@ -1,4 +1,4 @@
-export type ScriptExt = 'txt' | 'md' | 'skt';
+export type ScriptExt = 'txt' | 'md' | 'srt';
 
 export type ScriptErrorCode = 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'INVALID_ENCODING' | 'BINARY' | 'EMPTY';
 
@@ -13,7 +13,7 @@ export class ScriptError extends Error {
   }
 }
 
-const EXTS: readonly ScriptExt[] = ['txt', 'md', 'skt'];
+const EXTS: readonly ScriptExt[] = ['txt', 'md', 'srt'];
 
 export function extOf(fileName: string): ScriptExt | null {
   const m = /\.([A-Za-z0-9]+)$/.exec(fileName.trim());
@@ -33,7 +33,7 @@ export function decodeUtf8(buf: Uint8Array): string {
   // Byte NUL gần như chắc chắn là tệp nhị phân (PDF, ảnh, Office…)
   const sample = buf.subarray(0, Math.min(buf.length, 8192));
   if (sample.includes(0)) {
-    throw new ScriptError('BINARY', 'Tệp có vẻ là dữ liệu nhị phân, không phải văn bản. Chỉ hỗ trợ tệp văn bản .txt, .md hoặc .skt.');
+    throw new ScriptError('BINARY', 'Tệp có vẻ là dữ liệu nhị phân, không phải văn bản. Chỉ hỗ trợ tệp văn bản .txt, .md hoặc .srt.');
   }
   let text: string;
   try {
@@ -50,7 +50,7 @@ export function validateScript(
   maxBytes: number,
 ): { ext: ScriptExt; text: string } {
   const ext = extOf(fileName);
-  if (!ext) throw new ScriptError('UNSUPPORTED_TYPE', 'Định dạng không được hỗ trợ. Chỉ nhận tệp .txt, .md hoặc .skt.');
+  if (!ext) throw new ScriptError('UNSUPPORTED_TYPE', 'Định dạng không được hỗ trợ. Chỉ nhận tệp .txt, .md hoặc .srt.');
   if (buf.length === 0) throw new ScriptError('EMPTY', 'Tệp rỗng.');
   if (buf.length > maxBytes) {
     throw new ScriptError('TOO_LARGE', `Tệp lớn hơn ${(maxBytes / (1024 * 1024)).toFixed(maxBytes % (1024 * 1024) === 0 ? 0 : 1)} MB cho phép.`);

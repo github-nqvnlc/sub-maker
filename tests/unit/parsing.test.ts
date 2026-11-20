@@ -4,7 +4,7 @@ import { decodeUtf8 } from '@/lib/parsing/detect';
 import { markdownToParagraphs } from '@/lib/parsing/markdown';
 import { normalizeInline } from '@/lib/parsing/normalize';
 import { buildSegments, splitLongSentence, splitSentences } from '@/lib/parsing/segmenter';
-import { sktToParagraphs } from '@/lib/parsing/skt';
+import { srtToParagraphs } from '@/lib/parsing/srt';
 
 const MB = 1024 * 1024;
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -21,11 +21,11 @@ const errorOf = (fn: () => unknown): ScriptError => {
 };
 
 describe('kiểm tra tệp (FR-009)', () => {
-  it('nhận .txt, .md, .skt không phân biệt hoa/thường; từ chối đuôi khác', () => {
+  it('nhận .txt, .md, .srt không phân biệt hoa/thường; từ chối đuôi khác', () => {
     expect(extOf('a.TXT')).toBe('txt');
     expect(extOf('Kịch bản.Md')).toBe('md');
-    expect(extOf('x.skt')).toBe('skt');
-    for (const bad of ['a.pdf', 'a.docx', 'a.srt', 'a', 'a.txt.exe', '.txt.bak']) {
+    expect(extOf('x.srt')).toBe('srt');
+    for (const bad of ['a.pdf', 'a.docx', 'a.skt', 'a.vtt', 'a', 'a.txt.exe', '.txt.bak']) {
       expect(extOf(bad), bad).toBeNull();
     }
     expect(errorOf(() => parse('a.pdf', 'xin chào')).code).toBe('UNSUPPORTED_TYPE');
@@ -52,7 +52,7 @@ describe('kiểm tra tệp (FR-009)', () => {
 
   it('tệp chỉ có ký hiệu/mốc thời gian/emoji (không còn nội dung đọc được) → EMPTY', () => {
     expect(errorOf(() => parse('a.txt', '😀😀 ... --- !!!')).code).toBe('EMPTY');
-    expect(errorOf(() => parse('a.skt', '1\n00:00:01,000 --> 00:00:02,000\n\n')).code).toBe('EMPTY');
+    expect(errorOf(() => parse('a.srt', '1\n00:00:01,000 --> 00:00:02,000\n\n')).code).toBe('EMPTY');
     expect(errorOf(() => parse('a.md', '---\ntitle: x\n---\n\n```js\ncode()\n```\n')).code).toBe('EMPTY');
   });
 });
@@ -97,27 +97,41 @@ describe('Markdown', () => {
   });
 });
 
-describe('.skt / phụ đề', () => {
+describe('.srt / phụ đề', () => {
   const srt = ['1', '00:00:01,000 --> 00:00:03,500', 'Xin chào các bạn.', '', '2', '00:00:04,000 --> 00:00:07,000', 'Hôm nay chúng ta học', 'về lịch sử Việt Nam.', '', '3', '00:00:08,000 --> 00:00:09,000', '<i>Cảm ơn đã xem!</i>'].join('\n');
 
   it('bỏ số thứ tự và mốc thời gian, nối các dòng trong cùng một cue', () => {
-    expect(sktToParagraphs(srt)).toEqual(['Xin chào các bạn.', 'Hôm nay chúng ta học về lịch sử Việt Nam.', 'Cảm ơn đã xem!']);
+    expect(srtToParagraphs(srt)).toEqual(['Xin chào các bạn.', 'Hôm nay chúng ta học về lịch sử Việt Nam.', 'Cảm ơn đã xem!']);
   });
 
   it('xử lý CRLF, WebVTT, thẻ {\\an8} và mốc [hh:mm:ss] ở đầu dòng', () => {
     const vtt = 'WEBVTT\r\n\r\n00:00:01.000 --> 00:00:02.000 align:start\r\n{\\an8}Dòng một.\r\n\r\n[00:05] Dòng hai.\r\n';
-    expect(sktToParagraphs(vtt)).toEqual(['Dòng một.', 'Dòng hai.']);
+    expect(srtToParagraphs(vtt)).toEqual(['Dòng một.', 'Dòng hai.']);
   });
 
   it('dòng chỉ có số mà KHÔNG đứng trước mốc thời gian thì được giữ (ví dụ năm, số liệu)', () => {
     // cùng một cue nên được nối với dòng kế tiếp, nhưng số "2024" không bị coi là chỉ số cue và bỏ đi
-    expect(sktToParagraphs('2024\nNăm nay thật tuyệt.')).toEqual(['2024 Năm nay thật tuyệt.']);
-    expect(sktToParagraphs('2024\n\nNăm nay thật tuyệt.')).toEqual(['2024', 'Năm nay thật tuyệt.']);
+    expect(srtToParagraphs('2024\nNăm nay thật tuyệt.')).toEqual(['2024 Năm nay thật tuyệt.']);
+    expect(srtToParagraphs('2024\n\nNăm nay thật tuyệt.')).toEqual(['2024', 'Năm nay thật tuyệt.']);
+  });
+
+  it('đoạn đầu (≤ 10 giây) của tệp mẫu tham-quyen-2026.srt: chỉ còn chữ đọc', () => {
+    const sample = [
+      '1', '00:00:00,300 --> 00:00:04,675', 'Bạn đã nghe hai bài phát biểu', 'ở Thẩm Quyến ngày 18 tháng 11.', '',
+      '2', '00:00:05,005 --> 00:00:08,442', 'Nhưng Tập Cận Bình không', 'nhắc đến Nga một lần nào.', '',
+      '3', '00:00:08,772 --> 00:00:09,772', 'Không Putin.',
+    ].join('\n');
+    expect(srtToParagraphs(sample)).toEqual([
+      'Bạn đã nghe hai bài phát biểu ở Thẩm Quyến ngày 18 tháng 11.',
+      'Nhưng Tập Cận Bình không nhắc đến Nga một lần nào.',
+      'Không Putin.',
+    ]);
+    expect(extOf('tham-quyen-2026.srt')).toBe('srt');
   });
 
   it('mốc thời gian không ảnh hưởng nội dung đọc', () => {
-    const a = parse('a.skt', srt);
-    const b = parse('a.skt', srt.replace(/00:00:0\d,\d{3}/g, '09:59:59,999'));
+    const a = parse('a.srt', srt);
+    const b = parse('a.srt', srt.replace(/00:00:0\d,\d{3}/g, '09:59:59,999'));
     expect(a.segments).toEqual(b.segments);
     expect(a.contentHash).toBe(b.contentHash);
   });

@@ -16,9 +16,9 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { EmptyState, ErrorState, LoadingList } from '@/components/shared/states';
 import { api, apiPost } from '@/lib/api-client';
-import { fmtDateTime } from '@/lib/format';
 import { useProviders } from '@/lib/hooks/use-providers';
-import { vi } from '@/lib/i18n/vi';
+import { useFormat, useT } from '@/lib/i18n/client';
+import type { Dict } from '@/lib/i18n/types';
 
 export type ProjectSummary = {
   id: string;
@@ -36,18 +36,21 @@ type ListResult = { items: ProjectSummary[]; total: number; page: number; pageSi
 const PAGE_SIZE = 20;
 const ALL = 'all';
 
-const SORTS = [
-  { value: 'updatedAt', label: vi.projects.sortUpdated },
-  { value: 'createdAt', label: vi.projects.sortCreated },
-  { value: 'name', label: vi.projects.sortName },
-  { value: 'voiceCount', label: vi.projects.sortVoices },
-] as const;
+const sortOptions = (t: Dict) =>
+  [
+    { value: 'updatedAt', label: t.projects.sortUpdated },
+    { value: 'createdAt', label: t.projects.sortCreated },
+    { value: 'name', label: t.projects.sortName },
+    { value: 'voiceCount', label: t.projects.sortVoices },
+  ] as const;
 
 /**
  * Danh sách Project: tìm kiếm (gõ không dấu được), sắp xếp, lọc, phân trang, chọn nhiều để xóa hàng loạt
  * (FR-004..008). Bộ lọc nằm trên URL nên làm mới/chia sẻ liên kết vẫn giữ nguyên.
  */
 export function ProjectsList() {
+  const t = useT();
+  const fx = useFormat();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -101,12 +104,12 @@ export function ProjectsList() {
   const del = useMutation({
     mutationFn: (ids: string[]) => apiPost<{ deleted: string[]; notFound: string[]; busy: string[] }>('/api/projects/bulk-delete', { ids }),
     onSuccess: (r, ids) => {
-      toast.success(ids.length > 1 ? vi.projects.deletedMany : vi.projects.deleted);
-      if (r.busy.length > 0) toast.error(vi.projects.deleteBusy);
+      toast.success(ids.length > 1 ? t.projects.deletedMany : t.projects.deleted);
+      if (r.busy.length > 0) toast.error(t.projects.deleteBusy);
       setSelected(new Set());
       void qc.invalidateQueries({ queryKey: ['projects'] });
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : vi.common.genericError),
+    onError: (e) => toast.error(e instanceof Error ? e.message : t.common.genericError),
   });
 
   const filtered = q !== '' || provider !== ALL || jobState !== ALL;
@@ -114,7 +117,7 @@ export function ProjectsList() {
   const columns: Column<ProjectSummary>[] = [
     {
       key: 'name',
-      header: vi.projects.colName,
+      header: t.projects.colName,
       cell: (p) => (
         <div className="min-w-0 max-w-xs">
           <Link href={`/projects/${p.id}`} className="block truncate font-medium hover:underline">
@@ -126,34 +129,34 @@ export function ProjectsList() {
     },
     {
       key: 'provider',
-      header: vi.projects.colProvider,
+      header: t.projects.colProvider,
       cell: (p) => <Badge variant="secondary">{providers.data?.find((x) => x.type === p.providerType)?.label ?? p.providerType}</Badge>,
       className: 'hidden md:table-cell',
     },
-    { key: 'voices', header: vi.projects.colVoices, cell: (p) => <span className="tabular-nums">{p.voiceCount}</span> },
+    { key: 'voices', header: t.projects.colVoices, cell: (p) => <span className="tabular-nums">{p.voiceCount}</span> },
     {
       key: 'state',
-      header: vi.projects.colState,
+      header: t.projects.colState,
       cell: (p) =>
         p.runningJobs > 0 || p.failedJobs > 0 ? (
           <div className="flex flex-wrap gap-1">
-            {p.runningJobs > 0 ? <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">{vi.projects.running}</Badge> : null}
-            {p.failedJobs > 0 ? <Badge variant="destructive">{vi.projects.failed}</Badge> : null}
+            {p.runningJobs > 0 ? <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">{t.projects.running}</Badge> : null}
+            {p.failedJobs > 0 ? <Badge variant="destructive">{t.projects.failed}</Badge> : null}
           </div>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         ),
     },
-    { key: 'updated', header: vi.projects.colUpdated, cell: (p) => <span className="whitespace-nowrap text-xs">{fmtDateTime(p.updatedAt)}</span>, className: 'hidden lg:table-cell' },
+    { key: 'updated', header: t.projects.colUpdated, cell: (p) => <span className="whitespace-nowrap text-xs">{fx.dateTime(p.updatedAt)}</span>, className: 'hidden lg:table-cell' },
     {
       key: 'actions',
       header: '',
       cell: (p) => (
         <div className="flex gap-1">
           <Button size="sm" variant="outline" onClick={() => setEdit(p)}>
-            {vi.common.edit}
+            {t.common.edit}
           </Button>
-          <Button size="icon" variant="ghost" aria-label={vi.projects.delete} onClick={() => setConfirmIds([p.id])}>
+          <Button size="icon" variant="ghost" aria-label={t.projects.delete} onClick={() => setConfirmIds([p.id])}>
             <Trash2 className="size-4" />
           </Button>
         </div>
@@ -168,8 +171,8 @@ export function ProjectsList() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">{vi.projects.title}</h1>
-          <p className="text-sm text-muted-foreground">{vi.projects.subtitle}</p>
+          <h1 className="text-2xl font-semibold">{t.projects.title}</h1>
+          <p className="text-sm text-muted-foreground">{t.projects.subtitle}</p>
         </div>
         <CreateProjectDialog />
       </div>
@@ -178,16 +181,16 @@ export function ProjectsList() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={vi.projects.searchPlaceholder}
-          aria-label={vi.common.search}
+          placeholder={t.projects.searchPlaceholder}
+          aria-label={t.common.search}
           className="w-full sm:max-w-xs"
         />
         <Select value={sort} onValueChange={(v) => setParams({ sort: v })}>
-          <SelectTrigger className="w-40" aria-label={vi.projects.sortBy}>
+          <SelectTrigger className="w-40" aria-label={t.projects.sortBy}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SORTS.map((s) => (
+            {sortOptions(t).map((s) => (
               <SelectItem key={s.value} value={s.value}>
                 {s.label}
               </SelectItem>
@@ -195,20 +198,20 @@ export function ProjectsList() {
           </SelectContent>
         </Select>
         <Select value={order} onValueChange={(v) => setParams({ order: v })}>
-          <SelectTrigger className="w-32" aria-label={vi.projects.sortBy}>
+          <SelectTrigger className="w-32" aria-label={t.projects.sortBy}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="asc">{vi.projects.asc}</SelectItem>
-            <SelectItem value="desc">{vi.projects.desc}</SelectItem>
+            <SelectItem value="asc">{t.projects.asc}</SelectItem>
+            <SelectItem value="desc">{t.projects.desc}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={provider} onValueChange={(v) => setParams({ provider: v })}>
-          <SelectTrigger className="w-44" aria-label={vi.projects.provider}>
+          <SelectTrigger className="w-44" aria-label={t.projects.provider}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>{vi.projects.allProviders}</SelectItem>
+            <SelectItem value={ALL}>{t.projects.allProviders}</SelectItem>
             {(providers.data ?? []).map((p) => (
               <SelectItem key={p.type} value={p.type}>
                 {p.label}
@@ -217,14 +220,14 @@ export function ProjectsList() {
           </SelectContent>
         </Select>
         <Select value={jobState} onValueChange={(v) => setParams({ jobState: v })}>
-          <SelectTrigger className="w-44" aria-label={vi.projects.colState}>
+          <SelectTrigger className="w-44" aria-label={t.projects.colState}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>{vi.projects.allStates}</SelectItem>
-            <SelectItem value="running">{vi.projects.stateRunning}</SelectItem>
-            <SelectItem value="failed">{vi.projects.stateFailed}</SelectItem>
-            <SelectItem value="none">{vi.projects.stateNone}</SelectItem>
+            <SelectItem value={ALL}>{t.projects.allStates}</SelectItem>
+            <SelectItem value="running">{t.projects.stateRunning}</SelectItem>
+            <SelectItem value="failed">{t.projects.stateFailed}</SelectItem>
+            <SelectItem value="none">{t.projects.stateNone}</SelectItem>
           </SelectContent>
         </Select>
         {filtered ? (
@@ -236,7 +239,7 @@ export function ProjectsList() {
               setSelected(new Set());
             }}
           >
-            {vi.common.clearFilters}
+            {t.common.clearFilters}
           </Button>
         ) : null}
       </div>
@@ -244,11 +247,11 @@ export function ProjectsList() {
       {selected.size > 0 ? (
         <div className="flex items-center justify-between rounded-lg border bg-accent/40 px-3 py-2" role="status">
           <span className="text-sm">
-            {selected.size} {vi.projects.selectedCount}
+            {selected.size} {t.projects.selectedCount}
           </span>
           <Button size="sm" variant="destructive" onClick={() => setConfirmIds([...selected])}>
             <Trash2 className="size-4" />
-            {vi.projects.deleteSelected}
+            {t.projects.deleteSelected}
           </Button>
         </div>
       ) : null}
@@ -260,7 +263,7 @@ export function ProjectsList() {
       ) : list.data.items.length === 0 ? (
         filtered ? (
           <EmptyState
-            title={vi.common.noResults}
+            title={t.common.noResults}
             action={
               <Button
                 variant="outline"
@@ -269,12 +272,12 @@ export function ProjectsList() {
                   router.replace(pathname);
                 }}
               >
-                {vi.common.clearFilters}
+                {t.common.clearFilters}
               </Button>
             }
           />
         ) : (
-          <EmptyState icon={FolderOpen} title={vi.projects.emptyTitle} description={vi.projects.emptyDesc} action={<CreateProjectDialog />} />
+          <EmptyState icon={FolderOpen} title={t.projects.emptyTitle} description={t.projects.emptyDesc} action={<CreateProjectDialog />} />
         )
       ) : (
         <>
@@ -284,8 +287,8 @@ export function ProjectsList() {
             rowId={(p) => p.id}
             selected={selected}
             onSelectedChange={setSelected}
-            selectAllLabel={vi.projects.selectAll}
-            selectLabel={vi.projects.selectRow}
+            selectAllLabel={t.projects.selectAll}
+            selectLabel={t.projects.selectRow}
           />
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
@@ -294,10 +297,10 @@ export function ProjectsList() {
             {totalPages > 1 ? (
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setParams({ page: String(page - 1) })}>
-                  {vi.common.back}
+                  {t.common.back}
                 </Button>
                 <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setParams({ page: String(page + 1) })}>
-                  {vi.common.next}
+                  {t.common.next}
                 </Button>
               </div>
             ) : null}
@@ -310,16 +313,16 @@ export function ProjectsList() {
       <ConfirmDialog
         open={!!confirmIds}
         onOpenChange={(o) => !o && setConfirmIds(null)}
-        title={confirmIds && confirmIds.length > 1 ? vi.projects.deleteManyTitle : vi.projects.deleteTitle}
+        title={confirmIds && confirmIds.length > 1 ? t.projects.deleteManyTitle : t.projects.deleteTitle}
         description={
           <>
             <p className="font-medium text-foreground">
               {confirmIds?.length ?? 0} Project{confirmNames.length > 0 ? `: ${confirmNames.slice(0, 5).join(', ')}${confirmNames.length > 5 ? '…' : ''}` : ''}
             </p>
-            <p>{vi.projects.deleteDesc}</p>
+            <p>{t.projects.deleteDesc}</p>
           </>
         }
-        confirmLabel={vi.projects.delete}
+        confirmLabel={t.projects.delete}
         onConfirm={async () => {
           if (confirmIds) await del.mutateAsync(confirmIds);
         }}

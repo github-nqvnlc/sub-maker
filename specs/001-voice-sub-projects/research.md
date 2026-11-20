@@ -83,12 +83,12 @@ Mọi điểm "NEEDS CLARIFICATION" của Technical Context được giải quy�
 - **Alternatives**: presigned URL công khai (cần mở MinIO ra ngoài hoặc qua tunnel thứ hai); lưu file trong
   DB (phình DB, không tua tốt).
 
-## R6. Xử lý kịch bản: .txt, .md, .skt
+## R6. Xử lý kịch bản: .txt, .md, .srt
 
 - **Decision** 🔧: một bộ phân tích theo định dạng, đầu ra là danh sách đoạn văn bản "nói được":
-  1. Kiểm tra: đuôi `.txt/.md/.skt`, ≤ 2 MB, **UTF-8 hợp lệ** (BOM được bỏ), không rỗng, không chứa byte nhị phân.
+  1. Kiểm tra: đuôi `.txt/.md/.srt`, ≤ 2 MB, **UTF-8 hợp lệ** (BOM được bỏ), không rỗng, không chứa byte nhị phân.
   2. `.md`: bóc ký hiệu (tiêu đề, danh sách, nhấn mạnh, liên kết, khối mã bị bỏ) bằng bộ phân tích Markdown.
-  3. `.skt` (và `.srt`): coi là văn bản; nhận diện và bỏ dòng số thứ tự + dòng mốc thời gian
+  3. `.srt`: nhận diện và bỏ dòng số thứ tự + dòng mốc thời gian
      (`HH:MM:SS,mmm --> HH:MM:SS,mmm`), thẻ `<...>`/`{...}`. Mốc thời gian bị bỏ qua (spec, Assumptions).
   4. Chuẩn hóa NFC, gộp khoảng trắng, loại emoji và URL dài (đã khuyến nghị ở `docs/fpt-ai-voice-guide.md` §6).
   5. Tách câu bằng `Intl.Segmenter('vi', 'sentence')` kèm quy tắc bổ sung cho dấu ba chấm, viết tắt, số thập phân;

@@ -6,7 +6,7 @@
 
 ## Summary
 
-Ứng dụng web nhiều người dùng: User tự đăng ký, tạo Project, upload kịch bản `.txt/.md/.skt`, hệ thống tách thành đoạn, gọi nhà
+Ứng dụng web nhiều người dùng: User tự đăng ký, tạo Project, upload kịch bản `.txt/.md/.srt`, hệ thống tách thành đoạn, gọi nhà
 cung cấp TTS (FPT.AI, ShopAIKey) từng đoạn, ghép thành một voice kèm mốc thời gian chính xác theo đoạn, và cho nghe với việc làm nổi bật
 đúng câu đang đọc. Administrator cấp sẵn qua cấu hình, quản lý User, cấu hình AI chung, danh sách User được dùng cấu hình AI riêng và xem
 thống kê.
@@ -97,7 +97,7 @@ src/
 │   ├── db/                       # schema Drizzle, migration, truy vấn theo chủ sở hữu
 │   ├── storage/                  # client MinIO, khóa đối tượng, proxy Range
 │   ├── security/                 # safeFetch (SSRF), mã hóa khóa API, giới hạn tốc độ
-│   ├── parsing/                  # đọc .txt/.md/.skt, chuẩn hóa NFC, tách đoạn
+│   ├── parsing/                  # đọc .txt/.md/.srt, chuẩn hóa NFC, tách đoạn
 │   ├── providers/                # adapter fpt_marketplace, shopaikey_openai, shopaikey_minimax, catalog, phân loại lỗi
 │   ├── audio/                    # giải mã/ghép PCM, khoảng lặng, mã hóa mp3, tính timeline
 │   ├── usage/                    # ghi usage, tổng hợp thống kê

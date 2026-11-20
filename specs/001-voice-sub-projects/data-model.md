@@ -96,7 +96,7 @@ Chỉ mục: `(owner_id, updated_at desc)`, `(owner_id, name)`, `(owner_id, prov
 | project_id | uuid FK, cascade | |
 | owner_id | uuid FK | Lặp lại để kiểm tra quyền nhanh |
 | original_name | text | |
-| ext | enum `txt`, `md`, `skt` | |
+| ext | enum `txt`, `md`, `srt` | |
 | size_bytes | int | ≤ `max_file_bytes` |
 | storage_key | text | File gốc trong MinIO |
 | content_hash | text | sha256 văn bản đã chuẩn hóa |
@@ -230,7 +230,7 @@ Chỉ ghi khi **thực sự gọi** nhà cung cấp (cache hit không ghi, FR-04
 | Quy tắc | Nguồn |
 | --- | --- |
 | Tên Project 1–120 ký tự, không toàn khoảng trắng | FR-001, edge case |
-| Tệp: `.txt/.md/.skt`, UTF-8, ≤ 2 MB, không rỗng sau chuẩn hóa | FR-009 |
+| Tệp: `.txt/.md/.srt`, UTF-8, ≤ 2 MB, không rỗng sau chuẩn hóa | FR-009 |
 | Tổng `storage_used_bytes` ≤ hạn mức; chặn upload và tạo job mới khi vượt; worker ghi cache theo chế độ mềm nên job đang chạy luôn được hoàn tất | FR-046 |
 | `base_url` hợp lệ và qua kiểm tra SSRF; khóa API không rỗng khi tạo | FR-041/043, R9 |
 | Chỉ User có `can_use_custom_ai` mới tạo/sửa được cấu hình `scope='user'` | FR-043 |

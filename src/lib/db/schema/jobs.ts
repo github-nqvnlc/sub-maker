@@ -13,6 +13,27 @@ export type JobSettings = {
   speed?: number | null;
   maxCharsPerSegment?: number;
   pauseMs?: { sentence: number; comma: number };
+  /** Chế độ khớp mốc thời gian phụ đề (spec 003). Vắng mặt ⇒ "Đọc liên tục" như spec 001. */
+  timing?: TimingSettings;
+};
+
+/** Tham số được chốt từ cài đặt hệ thống lúc tạo job để kết quả tái lập được. */
+export type TimingParams = {
+  /** độ trễ tối đa so với mốc phụ đề (ms), mặc định 500 */
+  maxSlipMs: number;
+  /** hệ số nén tối đa theo phần trăm, 125 = 1,25× */
+  maxCompressPct: number;
+  /** khoảng nghỉ tối đa giữa hai cue vẫn được ghép chung một câu (ms) */
+  mergeGapMs: number;
+  /** cửa sổ chia phần (phút phụ đề) */
+  partMinutes: number;
+};
+
+export type TimingSettings = {
+  mode: 'timed';
+  /** "Ghép cue cùng câu" (mặc định true) */
+  mergeCues: boolean;
+  params: TimingParams;
 };
 
 /** Audio từng đoạn (PCM chuẩn hóa), cache THEO USER, khóa theo hash nội dung (R7). */
@@ -113,7 +134,26 @@ export const jobLogs = pgTable(
   (t) => [index('job_logs_job_id_idx').on(t.jobId, t.id)],
 );
 
-export type TimelineEntry = { idx: number; startMs: number; endMs: number };
+export type TimelineCue = { n: number; text: string; startMs: number; endMs: number };
+
+/** `idx`/`startMs`/`endMs` luôn có; phần còn lại chỉ có ở voice khớp mốc (spec 003, data-model). */
+export type TimelineEntry = {
+  idx: number;
+  startMs: number;
+  endMs: number;
+  /** văn bản của đơn vị đọc (để trình phát hiển thị không cần bảng khác) */
+  text?: string;
+  /** độ trễ so với mốc phụ đề (≥ 0, ms) */
+  slipMs?: number;
+  /** hệ số nén đã áp dụng (1 = không nén) */
+  compress?: number;
+  /** true khi slipMs > maxSlipMs */
+  overflow?: boolean;
+  /** true khi đoạn bị nhà cung cấp từ chối nội dung: khe im lặng, không có audio */
+  failed?: boolean;
+  /** mốc nội bộ chia theo ký tự + chữ của từng cue (highlight theo cue) */
+  cues?: TimelineCue[];
+};
 
 export const voices = pgTable(
   'voices',

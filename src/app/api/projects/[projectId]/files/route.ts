@@ -10,7 +10,7 @@ export const GET = route(async (request: Request, ctx: RouteContext) => {
   return Response.json(await listFiles(user.id, await pathParam(ctx, 'projectId')));
 });
 
-/** Upload .txt/.md/.skt (FR-009); trả các đoạn đã tách để xem trước (FR-011). */
+/** Upload .txt/.md/.srt (FR-009); trả các đoạn đã tách để xem trước (FR-011). */
 export const POST = route(async (request: Request, ctx: RouteContext) => {
   const user = await requireUser(request);
   const projectId = await pathParam(ctx, 'projectId');

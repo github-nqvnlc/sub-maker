@@ -6,6 +6,8 @@ import { env } from '../env';
 import { getDb } from '../db';
 import { accounts, rateLimits, sessions, users, verifications } from '../db/schema';
 import { vi } from '../i18n/vi';
+import { localeFromCookieHeader } from '../i18n/locale';
+import { translateMessage } from '../i18n/server-messages';
 import { displayNameSchema, passwordSchema } from '../schemas/common';
 
 /**
@@ -80,16 +82,19 @@ function build() {
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         const body = (ctx.body ?? {}) as Record<string, unknown>;
+        // Thông báo lỗi theo ngôn ngữ của yêu cầu (cookie `locale`), cùng cách dịch với các API khác
+        const locale = localeFromCookieHeader(ctx.headers?.get('cookie') ?? ctx.request?.headers.get('cookie'));
+        const msg = (m: string) => translateMessage(locale, m);
         if (ctx.path === '/sign-up/email') {
           const name = displayNameSchema.safeParse(body.name);
           if (!name.success) {
-            throw new APIError('UNPROCESSABLE_ENTITY', { message: name.error.issues[0]?.message ?? vi.validation.nameLength });
+            throw new APIError('UNPROCESSABLE_ENTITY', { message: msg(name.error.issues[0]?.message ?? vi.validation.nameLength) });
           }
         }
         if (ctx.path === '/sign-up/email' || ctx.path === '/change-password' || ctx.path === '/reset-password') {
           const pw = passwordSchema.safeParse(body.password ?? body.newPassword);
           if (!pw.success) {
-            throw new APIError('UNPROCESSABLE_ENTITY', { message: pw.error.issues[0]?.message ?? vi.validation.passwordMin });
+            throw new APIError('UNPROCESSABLE_ENTITY', { message: msg(pw.error.issues[0]?.message ?? vi.validation.passwordMin) });
           }
         }
       }),

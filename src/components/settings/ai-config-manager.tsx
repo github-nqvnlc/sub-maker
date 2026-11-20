@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ErrorState, LoadingList } from '@/components/shared/states';
 import { ApiError, api, apiDelete, apiPost, apiPut } from '@/lib/api-client';
-import { vi } from '@/lib/i18n/vi';
+import { useFormat, useT } from '@/lib/i18n/client';
 
 type Voice = { id: string; label: string };
 type CatalogItem = {
@@ -52,6 +52,7 @@ const DEFAULT_BASE_URL: Record<string, string> = {
 
 /** Quản lý cấu hình nhà cung cấp AI: dùng chung cho Administrator (cấu hình chung) và User được phép (cấu hình riêng). */
 export function AiConfigManager({ scope }: { scope: 'admin' | 'user' }) {
+  const t = useT();
   const base = scope === 'admin' ? '/api/admin/ai-configs' : '/api/me/ai-config';
   const catalog = useQuery({ queryKey: ['providers'], queryFn: () => api<CatalogItem[]>('/api/providers') });
   const configs = useQuery({ queryKey: ['ai-configs', scope], queryFn: () => api<AiConfig[]>(base) });
@@ -66,15 +67,15 @@ export function AiConfigManager({ scope }: { scope: 'admin' | 'user' }) {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">{scope === 'admin' ? vi.aiConfig.adminTitle : vi.aiConfig.userTitle}</h1>
-        <p className="text-sm text-muted-foreground">{scope === 'admin' ? vi.aiConfig.adminDescription : vi.aiConfig.userDescription}</p>
+        <h1 className="text-2xl font-semibold">{scope === 'admin' ? t.aiConfig.adminTitle : t.aiConfig.userTitle}</h1>
+        <p className="text-sm text-muted-foreground">{scope === 'admin' ? t.aiConfig.adminDescription : t.aiConfig.userDescription}</p>
       </div>
       {scope === 'admin' && !anyEnabled ? (
         <Alert variant="destructive">
-          <AlertDescription>{vi.aiConfig.noGlobalWarning}</AlertDescription>
+          <AlertDescription>{t.aiConfig.noGlobalWarning}</AlertDescription>
         </Alert>
       ) : null}
-      <Tabs defaultValue={catalog.data[0]?.type} aria-label={vi.aiConfig.tabs}>
+      <Tabs defaultValue={catalog.data[0]?.type} aria-label={t.aiConfig.tabs}>
         <TabsList className="flex h-auto flex-wrap">
           {catalog.data.map((c) => {
             const cfg = byType.get(c.type);
@@ -82,7 +83,7 @@ export function AiConfigManager({ scope }: { scope: 'admin' | 'user' }) {
               <TabsTrigger key={c.type} value={c.type} className="gap-2">
                 {c.label}
                 <Badge variant={cfg ? (cfg.enabled ? 'default' : 'secondary') : 'outline'} className="text-[10px]">
-                  {cfg ? (cfg.enabled ? vi.aiConfig.configured : vi.aiConfig.disabled) : vi.aiConfig.notConfigured}
+                  {cfg ? (cfg.enabled ? t.aiConfig.configured : t.aiConfig.disabled) : t.aiConfig.notConfigured}
                 </Badge>
               </TabsTrigger>
             );
@@ -106,6 +107,8 @@ export function AiConfigManager({ scope }: { scope: 'admin' | 'user' }) {
 }
 
 function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' | 'user'; base: string; catalog: CatalogItem; config: AiConfig | null }) {
+  const t = useT();
+  const fx = useFormat();
   const qc = useQueryClient();
   const [baseUrl, setBaseUrl] = useState(config?.baseUrl ?? DEFAULT_BASE_URL[catalog.type] ?? '');
   const [apiKey, setApiKey] = useState('');
@@ -142,12 +145,12 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
     onSuccess: () => {
       setErrors({});
       setApiKey('');
-      toast.success(vi.aiConfig.saved);
+      toast.success(t.aiConfig.saved);
       void refresh();
     },
     onError: (e) => {
       if (e instanceof ApiError && e.fields) setErrors(e.fields);
-      else toast.error(e instanceof Error ? e.message : vi.common.genericError);
+      else toast.error(e instanceof Error ? e.message : t.common.genericError);
     },
   });
 
@@ -157,7 +160,7 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
       setTestResult(r);
       void refresh();
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : vi.common.genericError),
+    onError: (e) => toast.error(e instanceof Error ? e.message : t.common.genericError),
   });
 
   const field = (name: string) => (errors[name] ? <p className="text-sm text-destructive">{errors[name]}</p> : null);
@@ -167,7 +170,7 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
       <CardHeader>
         <CardTitle>{catalog.label}</CardTitle>
         {config?.disabledReason === 'owner_removed_from_list' ? (
-          <CardDescription className="text-destructive">{vi.aiConfig.ownerRemoved}</CardDescription>
+          <CardDescription className="text-destructive">{t.aiConfig.ownerRemoved}</CardDescription>
         ) : null}
       </CardHeader>
       <CardContent>
@@ -179,32 +182,32 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
           }}
         >
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor={`${catalog.type}-baseUrl`}>{vi.aiConfig.baseUrl}</Label>
+            <Label htmlFor={`${catalog.type}-baseUrl`}>{t.aiConfig.baseUrl}</Label>
             <Input id={`${catalog.type}-baseUrl`} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-            <p className="text-xs text-muted-foreground">{vi.aiConfig.baseUrlHint}</p>
+            <p className="text-xs text-muted-foreground">{t.aiConfig.baseUrlHint}</p>
             {field('baseUrl')}
           </div>
 
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor={`${catalog.type}-apiKey`}>{vi.aiConfig.apiKey}</Label>
+            <Label htmlFor={`${catalog.type}-apiKey`}>{t.aiConfig.apiKey}</Label>
             <Input
               id={`${catalog.type}-apiKey`}
               type="password"
               autoComplete="off"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={config ? vi.aiConfig.apiKeyKeep : ''}
+              placeholder={config ? t.aiConfig.apiKeyKeep : ''}
             />
             {config ? (
               <p className="text-xs text-muted-foreground">
-                {vi.aiConfig.apiKeyHintLabel}: <code>{config.apiKeyHint}</code>
+                {t.aiConfig.apiKeyHintLabel}: <code>{config.apiKeyHint}</code>
               </p>
             ) : null}
             {field('apiKey')}
           </div>
 
           <div className="space-y-2">
-            <Label>{vi.aiConfig.defaultModel}</Label>
+            <Label>{t.aiConfig.defaultModel}</Label>
             <Select
               value={model}
               onValueChange={(v) => {
@@ -212,11 +215,11 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
                 setVoice(NONE);
               }}
             >
-              <SelectTrigger aria-label={vi.aiConfig.defaultModel}>
+              <SelectTrigger aria-label={t.aiConfig.defaultModel}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NONE}>{vi.aiConfig.none}</SelectItem>
+                <SelectItem value={NONE}>{t.aiConfig.none}</SelectItem>
                 {catalog.models.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
                     {m.id}
@@ -228,13 +231,13 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
           </div>
 
           <div className="space-y-2">
-            <Label>{vi.aiConfig.defaultVoice}</Label>
+            <Label>{t.aiConfig.defaultVoice}</Label>
             <Select value={voice} onValueChange={setVoice}>
-              <SelectTrigger aria-label={vi.aiConfig.defaultVoice}>
+              <SelectTrigger aria-label={t.aiConfig.defaultVoice}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NONE}>{vi.aiConfig.none}</SelectItem>
+                <SelectItem value={NONE}>{t.aiConfig.none}</SelectItem>
                 {voices.map((v) => (
                   <SelectItem key={v.id} value={v.id}>
                     {v.label}
@@ -247,41 +250,41 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
 
           <div className="space-y-2">
             <Label htmlFor={`${catalog.type}-speed`}>
-              {vi.aiConfig.defaultSpeed} ({catalog.speed.min} – {catalog.speed.max})
+              {t.aiConfig.defaultSpeed} ({catalog.speed.min} – {catalog.speed.max})
             </Label>
             <Input id={`${catalog.type}-speed`} inputMode="decimal" value={speed} onChange={(e) => setSpeed(e.target.value)} />
             {field('defaultSpeed')}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={`${catalog.type}-maxChars`}>{vi.aiConfig.maxChars}</Label>
+            <Label htmlFor={`${catalog.type}-maxChars`}>{t.aiConfig.maxChars}</Label>
             <Input id={`${catalog.type}-maxChars`} inputMode="numeric" value={maxChars} onChange={(e) => setMaxChars(e.target.value)} />
             {field('maxCharsPerRequest')}
           </div>
 
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor={`${catalog.type}-price`}>{vi.aiConfig.price}</Label>
+            <Label htmlFor={`${catalog.type}-price`}>{t.aiConfig.price}</Label>
             <Input id={`${catalog.type}-price`} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
-            <p className="text-xs text-muted-foreground">{vi.aiConfig.priceHint}</p>
+            <p className="text-xs text-muted-foreground">{t.aiConfig.priceHint}</p>
             {field('pricePerMillionChars')}
           </div>
 
           <div className="flex items-center gap-2 md:col-span-2">
             <Switch id={`${catalog.type}-enabled`} checked={enabled} onCheckedChange={setEnabled} />
-            <Label htmlFor={`${catalog.type}-enabled`}>{vi.aiConfig.enabled}</Label>
+            <Label htmlFor={`${catalog.type}-enabled`}>{t.aiConfig.enabled}</Label>
           </div>
 
           <div className="flex flex-wrap gap-2 md:col-span-2">
             <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? vi.common.loading : vi.aiConfig.save}
+              {save.isPending ? t.common.loading : t.aiConfig.save}
             </Button>
             {config ? (
               <>
                 <Button type="button" variant="outline" disabled={test.isPending} onClick={() => test.mutate()}>
-                  {test.isPending ? vi.aiConfig.testing : vi.aiConfig.test}
+                  {test.isPending ? t.aiConfig.testing : t.aiConfig.test}
                 </Button>
                 <Button type="button" variant="destructive" onClick={() => setConfirmDelete(true)}>
-                  {vi.aiConfig.delete}
+                  {t.aiConfig.delete}
                 </Button>
               </>
             ) : null}
@@ -290,12 +293,12 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
           {testResult ? (
             <Alert className="md:col-span-2" variant={testResult.ok ? 'default' : 'destructive'}>
               <AlertDescription>
-                <strong>{testResult.ok ? vi.aiConfig.testOk : vi.aiConfig.testFail}</strong> — {testResult.message} ({testResult.latencyMs} ms)
+                <strong>{testResult.ok ? t.aiConfig.testOk : t.aiConfig.testFail}</strong> — {testResult.message} ({testResult.latencyMs} ms)
               </AlertDescription>
             </Alert>
           ) : config?.lastTestAt ? (
             <p className="text-xs text-muted-foreground md:col-span-2">
-              {vi.aiConfig.lastTest}: {new Date(config.lastTestAt).toLocaleString('vi-VN')} — {config.lastTestOk ? vi.aiConfig.testOk : vi.aiConfig.testFail}
+              {t.aiConfig.lastTest}: {fx.dateTime(config.lastTestAt)} — {config.lastTestOk ? t.aiConfig.testOk : t.aiConfig.testFail}
             </p>
           ) : null}
         </form>
@@ -303,12 +306,12 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
         <ConfirmDialog
           open={confirmDelete}
           onOpenChange={setConfirmDelete}
-          title={vi.aiConfig.deleteTitle}
-          description={<p>{vi.aiConfig.deleteDesc}</p>}
-          confirmLabel={vi.aiConfig.delete}
+          title={t.aiConfig.deleteTitle}
+          description={<p>{t.aiConfig.deleteDesc}</p>}
+          confirmLabel={t.aiConfig.delete}
           onConfirm={async () => {
             await apiDelete(`${base}/${catalog.type}`);
-            toast.success(vi.aiConfig.deleted);
+            toast.success(t.aiConfig.deleted);
             await refresh();
           }}
         />

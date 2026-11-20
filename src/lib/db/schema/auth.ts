@@ -35,6 +35,10 @@ export const users = pgTable(
     status: userStatus('status').notNull().default('active'),
     canUseCustomAi: boolean('can_use_custom_ai').notNull().default(false),
     storageUsedBytes: bigint('storage_used_bytes', { mode: 'number' }).notNull().default(0),
+    /** Ngôn ngữ giao diện (spec 003, FR-021): vi | en */
+    locale: text('locale').notNull().default('vi'),
+    /** Chế độ giao diện (spec 003, FR-016): light | dark | system */
+    theme: text('theme').notNull().default('system'),
     lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -44,6 +48,8 @@ export const users = pgTable(
     check('users_name_len', sql`char_length(${t.name}) between 1 and 60`),
     check('users_bio_len', sql`${t.bio} is null or char_length(${t.bio}) <= 500`),
     check('users_storage_nonneg', sql`${t.storageUsedBytes} >= 0`),
+    check('users_locale_valid', sql`${t.locale} in ('vi','en')`),
+    check('users_theme_valid', sql`${t.theme} in ('light','dark','system')`),
     index('users_status_idx').on(t.status),
     index('users_created_idx').on(t.createdAt),
   ],

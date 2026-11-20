@@ -22,6 +22,8 @@ export type AuthUser = {
   storageUsedBytes: number;
   avatarKey: string | null;
   lastActiveAt: Date | null;
+  locale: 'vi' | 'en';
+  theme: 'light' | 'dark' | 'system';
 };
 
 const ACTIVE_TOUCH_MS = 60_000;
@@ -43,6 +45,8 @@ async function loadSessionUser(headers: Headers): Promise<AuthUser | null> {
     storageUsedBytes: row.storageUsedBytes,
     avatarKey: row.avatarKey,
     lastActiveAt: row.lastActiveAt,
+    locale: row.locale === 'en' ? 'en' : 'vi',
+    theme: row.theme === 'light' || row.theme === 'dark' ? row.theme : 'system',
   };
 }
 

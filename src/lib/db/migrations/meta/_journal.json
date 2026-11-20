@@ -29,6 +29,20 @@
       "when": 1795097381934,
       "tag": "0003_remove_fpt_speech",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795097441934,
+      "tag": "0004_rename_skt_to_srt",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795155505653,
+      "tag": "0005_subtitle_cues_and_preferences",
+      "breakpoints": true
     }
   ]
 }

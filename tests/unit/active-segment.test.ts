@@ -54,6 +54,16 @@ describe('findActiveIndex (FR-027)', () => {
     expect(performance.now() - t0).toBeLessThan(500);
   });
 
+  it('chọn cue đang đọc trong một đoạn khớp mốc (mốc nội bộ chia theo ký tự, không cần idx)', () => {
+    const cues = [
+      { n: 10, text: 'Tập nói về một tương lai', startMs: 27_370, endMs: 29_000 },
+      { n: 11, text: 'mở, dựa trên luật lệ,', startMs: 29_000, endMs: 30_800 },
+      { n: 12, text: 'công nghệ và thị trường.', startMs: 30_800, endMs: 32_450 },
+    ];
+    expect([27_370, 28_999, 29_000, 30_799, 30_800, 32_450, 40_000].map((t) => findActiveIndex(cues, t))).toEqual([0, 0, 1, 1, 2, 2, 2]);
+    expect(findActiveIndex(cues, 100)).toBe(0); // trước cue đầu → cue đầu
+  });
+
   it('segmentStartSeconds đổi ms sang giây để tua', () => {
     expect(segmentStartSeconds(T[1]!)).toBe(1.38);
   });

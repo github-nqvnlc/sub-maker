@@ -13,8 +13,9 @@ import { getSettings } from '../settings';
  */
 
 export class QuotaExceededError extends HttpError {
-  constructor() {
-    super(409, 'QUOTA_EXCEEDED');
+  /** `needBytes` (nếu biết) cho giao diện nêu cần giải phóng bao nhiêu dung lượng. */
+  constructor(public readonly needBytes?: number) {
+    super(409, 'QUOTA_EXCEEDED', undefined, needBytes && needBytes > 0 ? { needBytes: String(Math.ceil(needBytes)) } : undefined);
     this.name = 'QuotaExceededError';
   }
 }

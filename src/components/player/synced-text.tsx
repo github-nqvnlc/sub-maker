@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { findActiveIndex, segmentStartSeconds } from '@/lib/player/active-segment';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 import { cn } from '@/lib/utils';
 
-export type SyncedSegment = { idx: number; text: string; startMs: number; endMs: number };
+export type SyncedCue = { n: number; text: string; startMs: number; endMs: number };
+/** `cues`/`failed`/`overflow` chỉ có ở voice khớp mốc thời gian (spec 003). */
+export type SyncedSegment = { idx: number; text: string; startMs: number; endMs: number; cues?: SyncedCue[]; failed?: boolean; overflow?: boolean };
 
 /** Sau khi người dùng tự cuộn/chạm, tạm dừng tự cuộn trong khoảng này để không giật khi họ đang đọc chỗ khác. */
 const USER_SCROLL_PAUSE_MS = 3500;
@@ -17,8 +19,11 @@ const USER_SCROLL_PAUSE_MS = 3500;
  * - cập nhật ngay khi tua hoặc tạm dừng, và bấm vào một đoạn để phát từ đoạn đó.
  */
 export function SyncedText({ audioRef, segments }: { audioRef: React.RefObject<HTMLAudioElement | null>; segments: SyncedSegment[] }) {
+  const t = useT();
   const [active, setActive] = useState(0);
+  const [activeCue, setActiveCue] = useState(-1);
   const activeRef = useRef(0);
+  const activeCueRef = useRef(-1);
   const items = useRef<Array<HTMLButtonElement | null>>([]);
   const pausedScrollUntil = useRef(0);
 
@@ -27,10 +32,18 @@ export function SyncedText({ audioRef, segments }: { audioRef: React.RefObject<H
     if (!audio || segments.length === 0) return;
     let raf = 0;
     const update = () => {
-      const i = findActiveIndex(segments, audio.currentTime * 1000);
+      const t = audio.currentTime * 1000;
+      const i = findActiveIndex(segments, t);
       if (i !== activeRef.current) {
         activeRef.current = i;
         setActive(i);
+      }
+      // Bôi theo cue trong đoạn đang đọc (mốc nội bộ chia theo ký tự) khi voice khớp mốc có cue
+      const cues = segments[i]?.cues;
+      const c = cues && cues.length > 1 && !segments[i]?.failed ? findActiveIndex(cues, t) : -1;
+      if (c !== activeCueRef.current) {
+        activeCueRef.current = c;
+        setActiveCue(c);
       }
     };
     const tick = () => {
@@ -71,10 +84,10 @@ export function SyncedText({ audioRef, segments }: { audioRef: React.RefObject<H
 
   return (
     <div>
-      <p className="mb-2 text-xs text-muted-foreground">{vi.voices.segmentsHint}</p>
+      <p className="mb-2 text-xs text-muted-foreground">{t.voices.segmentsHint}</p>
       <div
         role="list"
-        aria-label={vi.voices.synced}
+        aria-label={t.voices.synced}
         data-testid="synced-text"
         className="max-h-[28rem] space-y-1 overflow-y-auto rounded-lg border p-2"
         onWheel={holdAutoScroll}
@@ -95,9 +108,20 @@ export function SyncedText({ audioRef, segments }: { audioRef: React.RefObject<H
             className={cn(
               'block w-full rounded-md border-l-4 border-transparent px-3 py-2 text-left text-base leading-relaxed transition-colors hover:bg-accent/50',
               i === active && 'border-primary bg-primary/10 font-medium',
+              s.failed && 'opacity-60',
             )}
           >
-            {s.text}
+            {s.cues && s.cues.length > 1 ? (
+              s.cues.map((c, ci) => (
+                <span key={c.n} data-cue-active={i === active && ci === activeCue ? 'true' : undefined} className={cn('rounded px-0.5', i === active && ci === activeCue && 'bg-primary/25')}>
+                  {c.text}
+                  {ci < s.cues!.length - 1 ? ' ' : ''}
+                </span>
+              ))
+            ) : (
+              s.text
+            )}
+            {s.failed ? <span className="ml-2 text-xs font-normal text-muted-foreground">({t.voices.failedSegment})</span> : null}
           </button>
         ))}
       </div>

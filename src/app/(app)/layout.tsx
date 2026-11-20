@@ -17,6 +17,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         email: user.email,
         role: user.role,
         hasAvatar: !!user.avatarKey,
+        theme: user.theme,
+        locale: user.locale,
       }}
       extraHeader={<ActiveJobs />}
     >

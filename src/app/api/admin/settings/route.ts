@@ -14,6 +14,13 @@ const patchSchema = z
     maxConcurrentJobs: z.number().int().min(1).max(50),
     maxJobsPerUser: z.number().int().min(1).max(50),
     segmentConcurrency: z.number().int().min(1).max(16),
+    timingMaxSlipMs: z.number().int().min(100).max(2000),
+    timingMaxCompressPct: z.number().int().min(100).max(150),
+    timingPartMinutes: z.number().int().min(1).max(30),
+    timingMergeGapMs: z.number().int().min(200).max(3000),
+    rpmFptMarketplace: z.number().int().min(0).max(600),
+    rpmShopaikeyOpenai: z.number().int().min(0).max(600),
+    rpmShopaikeyMinimax: z.number().int().min(0).max(600),
   })
   .partial()
   .strict();

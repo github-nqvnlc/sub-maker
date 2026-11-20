@@ -33,4 +33,4 @@
 
 - Ràng buộc kỹ thuật do người dùng chỉ định (NextJS, Tailwind, shadcn/ui + theme, MinIO, Docker, Cloudflare Tunnel) được đặt riêng trong mục Assumptions để bước `/speckit-plan` sử dụng; các Functional Requirements và Success Criteria không nhắc công nghệ.
 - Tên nhà cung cấp AI (FPT.AI, ShopAIKey) xuất hiện trong FR-013 vì là yêu cầu nghiệp vụ do người dùng nêu, không phải chi tiết triển khai.
-- Các điểm mơ hồ (định dạng .skt, mô hình người dùng/đăng nhập, ý nghĩa "voice được upload") đã được chọn mặc định hợp lý và ghi trong Assumptions; có thể xem lại ở `/speckit-clarify`.
+- Các điểm mơ hồ (định dạng .srt, mô hình người dùng/đăng nhập, ý nghĩa "voice được upload") đã được chọn mặc định hợp lý và ghi trong Assumptions; có thể xem lại ở `/speckit-clarify`.

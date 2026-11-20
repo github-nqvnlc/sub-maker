@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -10,9 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { ApiError, apiPatch, apiPost } from '@/lib/api-client';
 import { useProviders } from '@/lib/hooks/use-providers';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
+import { TimingOptions } from '@/components/jobs/timing-options';
 
-export type EditableJob = { id: string; projectId: string; settings: { model: string | null; voice: string; speed: number | null } };
+export type EditableJob = {
+  id: string;
+  projectId: string;
+  settings: { model: string | null; voice: string; speed: number | null; timing?: { mode: 'timed'; mergeCues: boolean } | null };
+};
 
 type Props = {
   job: EditableJob | null;
@@ -27,11 +33,17 @@ export function EditSettingsDialog({ job, providerType, mode, onClose }: Props) 
 }
 
 function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }) {
+  const t = useT();
   const qc = useQueryClient();
+  const router = useRouter();
   const provider = useProviders().data?.find((p) => p.type === providerType);
   const [model, setModel] = useState<string | null>(job.settings.model);
   const [voice, setVoice] = useState<string | null>(job.settings.voice);
   const [speed, setSpeed] = useState<number | null>(job.settings.speed);
+  // Chỉ job đang ở chế độ khớp mốc mới đổi được chế độ ở đây (job đọc liên tục: tạo voice mới để dùng khớp mốc)
+  const wasTimed = !!job.settings.timing;
+  const [timed, setTimed] = useState(wasTimed);
+  const [mergeCues, setMergeCues] = useState(job.settings.timing?.mergeCues ?? true);
   const [error, setError] = useState<string | null>(null);
 
   const effModel = model ?? provider?.models[0]?.id ?? '';
@@ -41,18 +53,30 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
 
   const save = useMutation({
     mutationFn: () => {
-      const body = { model: effModel || null, voice: effVoice, speed: effSpeed };
-      return mode === 'edit' ? apiPatch(`/api/jobs/${job.id}`, body) : apiPost(`/api/jobs/${job.id}/rerun`, body);
+      const body = {
+        model: effModel || null,
+        voice: effVoice,
+        speed: effSpeed,
+        ...(wasTimed ? { timing: timed ? { mode: 'timed' as const, mergeCues } : { mode: 'continuous' as const } } : {}),
+      };
+      return mode === 'edit'
+        ? apiPatch(`/api/jobs/${job.id}`, body)
+        : apiPost<{ id: string }>(`/api/jobs/${job.id}/rerun`, body);
     },
-    onSuccess: () => {
-      toast.success(mode === 'edit' ? vi.jobs.settingsSaved : vi.jobs.rerunStarted);
+    onSuccess: (res) => {
+      toast.success(mode === 'edit' ? t.jobs.settingsSaved : t.jobs.rerunStarted);
       void qc.invalidateQueries({ queryKey: ['project', job.projectId] });
       void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({ queryKey: ['job', job.id] });
+      void qc.invalidateQueries({ queryKey: ['active-jobs'] });
       onClose();
+      if (mode === 'rerun' && res && typeof res === 'object' && 'id' in res) {
+        router.push(`/projects/${job.projectId}/jobs/${(res as { id: string }).id}`);
+      }
     },
     onError: (e) => {
       if (e instanceof ApiError) setError(e.fields ? Object.values(e.fields).join('. ') : e.message);
-      else setError(vi.common.genericError);
+      else setError(t.common.genericError);
     },
   });
 
@@ -60,16 +84,16 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{mode === 'edit' ? vi.jobs.settingsTitle : vi.jobs.rerunTitle}</DialogTitle>
-          <DialogDescription>{mode === 'edit' ? vi.jobs.settingsDesc : vi.jobs.rerunDesc}</DialogDescription>
+          <DialogTitle>{mode === 'edit' ? t.jobs.settingsTitle : t.jobs.rerunTitle}</DialogTitle>
+          <DialogDescription>{mode === 'edit' ? t.jobs.settingsDesc : t.jobs.rerunDesc}</DialogDescription>
         </DialogHeader>
         {!provider ? (
-          <p className="text-sm text-muted-foreground">{vi.common.loading}</p>
+          <p className="text-sm text-muted-foreground">{t.common.loading}</p>
         ) : (
           <div className="space-y-4">
             {provider.models.length > 1 ? (
               <div className="space-y-2">
-                <Label>{vi.jobs.model}</Label>
+                <Label>{t.jobs.model}</Label>
                 <Select
                   value={effModel}
                   onValueChange={(v) => {
@@ -77,7 +101,7 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
                     setVoice(null);
                   }}
                 >
-                  <SelectTrigger aria-label={vi.jobs.model}>
+                  <SelectTrigger aria-label={t.jobs.model}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -91,9 +115,9 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
               </div>
             ) : null}
             <div className="space-y-2">
-              <Label>{vi.jobs.voice}</Label>
+              <Label>{t.jobs.voice}</Label>
               <Select value={effVoice} onValueChange={setVoice}>
-                <SelectTrigger aria-label={vi.jobs.voice}>
+                <SelectTrigger aria-label={t.jobs.voice}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -107,7 +131,7 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
             </div>
             <div className="space-y-2">
               <div className="flex justify-between">
-                <Label htmlFor="job-speed">{vi.jobs.speed}</Label>
+                <Label htmlFor="job-speed">{t.jobs.speed}</Label>
                 <span className="text-sm tabular-nums text-muted-foreground">{effSpeed}</span>
               </div>
               <Slider
@@ -117,9 +141,10 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
                 step={provider.speed.step}
                 value={[effSpeed]}
                 onValueChange={([v]) => setSpeed(v ?? null)}
-                aria-label={vi.jobs.speed}
+                aria-label={t.jobs.speed}
               />
             </div>
+            {wasTimed ? <TimingOptions idPrefix="edit" value={{ timed, mergeCues }} available onChange={(v) => { setTimed(v.timed); setMergeCues(v.mergeCues); }} /> : null}
             {error ? (
               <p role="alert" className="text-sm text-destructive">
                 {error}
@@ -129,10 +154,10 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            {vi.common.cancel}
+            {t.common.cancel}
           </Button>
           <Button disabled={save.isPending || !provider || !effVoice} onClick={() => save.mutate()}>
-            {save.isPending ? vi.common.loading : mode === 'edit' ? vi.jobs.save : vi.jobs.rerun}
+            {save.isPending ? t.common.loading : mode === 'edit' ? t.jobs.save : t.jobs.rerun}
           </Button>
         </DialogFooter>
       </DialogContent>

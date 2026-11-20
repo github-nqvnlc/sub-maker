@@ -18,6 +18,13 @@ import type { AddressInfo } from 'node:net';
  *   - `429-then-ok`: mỗi văn bản bị 429 ở lần gọi đầu tiên, các lần sau thành công.
  *   - `ok-then-5xx-<N>`: N yêu cầu POST đầu thành công, sau đó 503 cho tới khi `reset()` (mô phỏng sự cố giữa chừng).
  *   - `delay-<ms>`: thành công nhưng phản hồi sau <ms> mili giây (để thử dừng tiến trình giữa chừng).
+ *
+ * Thành phần điều khiển thời lượng/lỗi (spec 003), ghép với nhau và với kịch bản trên bằng dấu `+`
+ * (ví dụ `ms-120+pad-200`, `ms-60+blocked-Putin`, `ms-60+429-3`):
+ *   - `ms-<n>`: thời lượng WAV = số ký tự × n ms (mặc định 55, tối thiểu 400 ms).
+ *   - `pad-<n>`: thêm n ms im lặng ở đầu VÀ cuối WAV (để thử bước cắt lặng).
+ *   - `429-<k>`: k yêu cầu POST đầu trả 429 (`retry-after: 0`), sau đó bình thường.
+ *   - `blocked-<từ khóa>`: văn bản chứa từ khóa bị chặn (400 content policy).
  */
 
 export type RecordedRequest = {
@@ -40,9 +47,29 @@ const SAMPLE_RATE = 24_000;
 const MS_PER_CHAR = 55;
 const MIN_MS = 400;
 
-/** WAV PCM 16-bit mono chứa một âm sin nhẹ, độ dài tính theo số ký tự. */
-export function makeWav(durationMs: number, sampleRate = SAMPLE_RATE, freq = 220): Buffer {
-  const samples = Math.max(1, Math.round((durationMs / 1000) * sampleRate));
+export type ScenarioSpec = { base: string; msPerChar: number; padMs: number; rate429: number; blockedKeyword: string | null };
+
+/** Tách chuỗi kịch bản ghép (`a+b+c`) thành kịch bản gốc và các thành phần điều khiển (spec 003). */
+export function parseScenario(raw: string): ScenarioSpec {
+  const spec: ScenarioSpec = { base: 'ok', msPerChar: MS_PER_CHAR, padMs: 0, rate429: 0, blockedKeyword: null };
+  const rest: string[] = [];
+  for (const part of raw.split('+')) {
+    let m: RegExpExecArray | null;
+    if ((m = /^ms-(\d+)$/.exec(part))) spec.msPerChar = Number(m[1]);
+    else if ((m = /^pad-(\d+)$/.exec(part))) spec.padMs = Number(m[1]);
+    else if ((m = /^429-(\d+)$/.exec(part))) spec.rate429 = Number(m[1]);
+    else if (part.startsWith('blocked-')) spec.blockedKeyword = decodeURIComponent(part.slice('blocked-'.length));
+    else rest.push(part);
+  }
+  if (rest.length > 0) spec.base = rest.join('+');
+  return spec;
+}
+
+/** WAV PCM 16-bit mono chứa một âm sin nhẹ, độ dài tính theo số ký tự; `padMs` thêm im lặng ở đầu và cuối. */
+export function makeWav(durationMs: number, sampleRate = SAMPLE_RATE, freq = 220, padMs = 0): Buffer {
+  const toneSamples = Math.max(1, Math.round((durationMs / 1000) * sampleRate));
+  const pad = Math.round((padMs / 1000) * sampleRate);
+  const samples = toneSamples + 2 * pad;
   const dataLen = samples * 2;
   const buf = Buffer.alloc(44 + dataLen);
   buf.write('RIFF', 0);
@@ -58,15 +85,15 @@ export function makeWav(durationMs: number, sampleRate = SAMPLE_RATE, freq = 220
   buf.writeUInt16LE(16, 34);
   buf.write('data', 36);
   buf.writeUInt32LE(dataLen, 40);
-  for (let i = 0; i < samples; i++) {
+  for (let i = 0; i < toneSamples; i++) {
     const v = Math.round(Math.sin((2 * Math.PI * freq * i) / sampleRate) * 3000);
-    buf.writeInt16LE(v, 44 + i * 2);
+    buf.writeInt16LE(v, 44 + (pad + i) * 2);
   }
   return buf;
 }
 
-export function expectedDurationMs(text: string): number {
-  return Math.max(MIN_MS, [...text].length * MS_PER_CHAR);
+export function expectedDurationMs(text: string, msPerChar = MS_PER_CHAR): number {
+  return Math.max(MIN_MS, [...text].length * msPerChar);
 }
 
 const VALID_VOICES = 'banmai, thuminh, leminh, minhquan, ngoclam, giahuy, kimngan, hatieumai, huyphong';
@@ -75,6 +102,7 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
   const requests: RecordedRequest[] = [];
   const seenOnce = new Set<string>();
   let postCount = 0;
+  let served429 = 0;
   const files = new Map<string, { wav: Buffer; polls: number; needPolls: number }>();
   const sockets = new Set<import('node:net').Socket>();
   let pending: Array<() => void> = [];
@@ -96,12 +124,15 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
     const m = /^\/s\/([^/]+)(\/.*)$/.exec(rawUrl.pathname);
     // Link file chung: /files/<id>.wav (không cần tiền tố kịch bản)
     const fileMatch = /^\/(?:s\/[^/]+\/)?files\/([a-z0-9-]+)\.wav$/.exec(rawUrl.pathname);
-    const scenario = m?.[1] ?? 'ok';
+    const rawScenario = m?.[1] ?? 'ok';
+    const spec = parseScenario(rawScenario);
+    const scenario = spec.base;
     const rest = m?.[2] ?? rawUrl.pathname;
+    const wavFor = (text: string) => makeWav(expectedDurationMs(text, spec.msPerChar), SAMPLE_RATE, 220, spec.padMs);
 
     requests.push({
       ts: Date.now(),
-      scenario,
+      scenario: rawScenario,
       method: req.method ?? 'GET',
       path: rawUrl.pathname,
       headers: { ...req.headers },
@@ -129,10 +160,10 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
         });
       }
       if (scenario === '403-model') return json(res, 403, { error: { message: `no access to model ${payload.model}` } });
-      const early = await commonFailures(res, scenario, text, 'mkp');
+      const early = await commonFailures(res, scenario, text, 'mkp', spec);
       if (early) return;
       res.writeHead(200, { 'content-type': 'audio/wav' });
-      return res.end(makeWav(expectedDurationMs(text)));
+      return res.end(wavFor(text));
     }
 
     // ----- ShopAIKey: POST /tts/openai/speech -----
@@ -149,10 +180,10 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
       if (scenario === '403-model') {
         return json(res, 503, { error: { message: 'No available channel for model tts-1 under group default' } });
       }
-      const early = await commonFailures(res, scenario, text, 'sak');
+      const early = await commonFailures(res, scenario, text, 'sak', spec);
       if (early) return;
       const id = randomUUID();
-      files.set(id, { wav: makeWav(expectedDurationMs(text)), polls: 0, needPolls: 0 });
+      files.set(id, { wav: wavFor(text), polls: 0, needPolls: 0 });
       const url =
         scenario === 'redirect-internal' ? 'http://169.254.169.254/latest/meta-data/' : `${origin}/files/${id}.wav`;
       return json(res, 200, { url, key: `audio/${id}.wav`, model: 'tts-1', voice: payload.voice, format: 'wav', mimeType: 'audio/wav' });
@@ -181,12 +212,12 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
       if (scenario === '403-model') {
         return json(res, 503, { error: { message: 'No available channel for model speech-02-hd under group default' } });
       }
-      const early = await commonFailures(res, scenario, text, 'mm');
+      const early = await commonFailures(res, scenario, text, 'mm', spec);
       if (early) return;
       if (scenario === 'bad-hex') {
         return json(res, 200, { data: { audio: 'zz-not-hex' }, base_resp: { status_code: 0, status_msg: 'success' } });
       }
-      const wav = makeWav(expectedDurationMs(text));
+      const wav = wavFor(text);
       return json(res, 200, {
         data: { audio: Buffer.from(wav).toString('hex'), status: 2 },
         extra_info: { audio_length: expectedDurationMs(text), audio_sample_rate: SAMPLE_RATE, usage_characters: [...text].length, audio_format: 'wav' },
@@ -199,8 +230,18 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
   });
 
   /** Các lỗi dùng chung; trả true nếu đã phản hồi. */
-  async function commonFailures(res: http.ServerResponse, scenario: string, text: string, kind: string): Promise<boolean> {
+  async function commonFailures(res: http.ServerResponse, scenario: string, text: string, kind: string, spec: ScenarioSpec): Promise<boolean> {
     postCount += 1;
+    if (spec.rate429 > 0 && served429 < spec.rate429) {
+      served429 += 1;
+      res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '0' });
+      res.end(JSON.stringify({ error: { message: 'rate limit' } }));
+      return true;
+    }
+    if (spec.blockedKeyword && text.includes(spec.blockedKeyword)) {
+      json(res, 400, { error: { message: 'Your request was rejected by the content management policy' } });
+      return true;
+    }
     const after = /^ok-then-5xx-(\d+)$/.exec(scenario);
     if (after) {
       if (postCount > Number(after[1])) {
@@ -283,6 +324,7 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
     seenOnce.clear();
     files.clear();
     postCount = 0;
+    served429 = 0;
   }
 
   server.on('connection', (s) => {

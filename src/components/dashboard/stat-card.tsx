@@ -15,5 +15,3 @@ export function StatCard({ label, value, hint, muted, testId }: { label: string;
   );
 }
 
-export const fmtNum = (n: number): string => n.toLocaleString('vi-VN');
-export const fmtUsd = (n: number): string => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;

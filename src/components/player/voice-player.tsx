@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { fmtDuration } from '@/lib/format';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 
 const RATES = [0.75, 1, 1.25, 1.5, 2];
 
@@ -22,6 +22,7 @@ type Props = {
  * Phần tử <audio> dùng chung với SyncedText qua `audioRef` để highlight đọc đúng `currentTime`.
  */
 export function VoicePlayer({ voiceId, durationMs, audioRef }: Props) {
+  const t = useT();
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(durationMs / 1000);
@@ -71,7 +72,7 @@ export function VoicePlayer({ voiceId, durationMs, audioRef }: Props) {
       <audio ref={audioRef} src={`/api/voices/${voiceId}/audio`} preload="metadata" />
 
       <div className="flex items-center gap-3">
-        <Button size="icon" onClick={toggle} aria-label={playing ? vi.player.pause : vi.player.play} data-testid="play-toggle">
+        <Button size="icon" onClick={toggle} aria-label={playing ? t.player.pause : t.player.play} data-testid="play-toggle">
           {playing ? <Pause className="size-5" /> : <Play className="size-5" />}
         </Button>
         <span className="w-24 shrink-0 text-sm tabular-nums text-muted-foreground" data-testid="time-display">
@@ -90,13 +91,13 @@ export function VoicePlayer({ voiceId, durationMs, audioRef }: Props) {
               setCurrent(v);
             }
           }}
-          aria-label={vi.player.seek}
+          aria-label={t.player.seek}
         />
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{vi.player.speed}</span>
+          <span className="text-xs text-muted-foreground">{t.player.speed}</span>
           <Select
             value={String(rate)}
             onValueChange={(v) => {
@@ -105,7 +106,7 @@ export function VoicePlayer({ voiceId, durationMs, audioRef }: Props) {
               if (audioRef.current) audioRef.current.playbackRate = r;
             }}
           >
-            <SelectTrigger className="h-8 w-20" aria-label={vi.player.speed}>
+            <SelectTrigger className="h-8 w-20" aria-label={t.player.speed}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -129,20 +130,20 @@ export function VoicePlayer({ voiceId, durationMs, audioRef }: Props) {
               setVolume(v);
               if (audioRef.current) audioRef.current.volume = v;
             }}
-            aria-label={vi.player.volume}
+            aria-label={t.player.volume}
           />
         </div>
         <Button asChild variant="outline" size="sm" className="ml-auto">
           <a href={`/api/voices/${voiceId}/audio?download=true`} download>
             <Download className="size-4" />
-            {vi.player.download}
+            {t.player.download}
           </a>
         </Button>
       </div>
 
       {error ? (
         <p role="alert" className="text-sm text-destructive">
-          {vi.player.audioError}
+          {t.player.audioError}
         </p>
       ) : null}
     </div>

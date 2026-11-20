@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 
 type Props = {
   open: boolean;
@@ -33,12 +33,14 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = vi.common.confirm,
+  confirmLabel,
   destructive = true,
   requireText,
   requireTextLabel,
   onConfirm,
 }: Props) {
+  const t = useT();
+  const confirmText = confirmLabel ?? t.common.confirm;
   const [busy, setBusy] = useState(false);
   const [typed, setTyped] = useState('');
   const blocked = requireText ? typed.trim().toLowerCase() !== requireText.trim().toLowerCase() : false;
@@ -67,7 +69,7 @@ export function ConfirmDialog({
           </div>
         ) : null}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>{vi.common.cancel}</AlertDialogCancel>
+          <AlertDialogCancel disabled={busy}>{t.common.cancel}</AlertDialogCancel>
           <Button
             variant={destructive ? 'destructive' : 'default'}
             disabled={busy || blocked}
@@ -82,7 +84,7 @@ export function ConfirmDialog({
               }
             }}
           >
-            {busy ? vi.common.loading : confirmLabel}
+            {busy ? t.common.loading : confirmText}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

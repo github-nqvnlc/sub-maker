@@ -1,8 +1,4 @@
-/** Định dạng hiển thị dùng chung (ngày giờ, thời lượng, dung lượng) theo locale tiếng Việt. */
-
-export const fmtDateTime = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleString('vi-VN') : '');
-
-export const fmtDate = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleDateString('vi-VN') : '');
+/** Định dạng hiển thị dùng chung KHÔNG phụ thuộc ngôn ngữ (thời lượng, dung lượng). Ngày giờ và số theo ngôn ngữ: `useFormat()` (lib/i18n/client). */
 
 export function fmtDuration(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));

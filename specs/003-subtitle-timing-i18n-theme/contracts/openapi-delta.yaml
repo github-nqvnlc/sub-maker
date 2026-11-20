@@ -1,0 +1,236 @@
+# Phần bổ sung cho specs/001-voice-sub-projects/contracts/openapi.yaml (OpenAPI 3.0.3, cùng quy ước: servers `/api`,
+# xác thực cookie phiên, tài nguyên người khác -> 404, lỗi `{ error: { code, message, fields } }`).
+#
+# QUAN TRỌNG: `tests/isolation/isolation.test.ts` chỉ đọc tệp openapi.yaml của spec 001 và kiểm tra MỌI thao tác.
+# Khi triển khai, các mục dưới đây PHẢI được hợp nhất vào tệp đó (task riêng); tệp này là bản thiết kế để duyệt.
+# Mọi thông báo `message` trả về theo ngôn ngữ của người dùng (cookie `locale` hoặc `users.locale`) — xem ui-preferences.md.
+
+paths:
+  /me:
+    patch:
+      tags: [me]
+      summary: Sửa hồ sơ — bổ sung tùy chọn giao diện (FR-016, FR-021)
+      description: Thêm hai trường tùy chọn vào body hiện có; các trường cũ không đổi.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                locale: { type: string, enum: [vi, en] }
+                theme: { type: string, enum: [light, dark, system] }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /files/{fileId}/cues:
+    get:
+      tags: [files]
+      summary: Xem trước các cue theo trang (FR-011)
+      description: Chỉ chủ sở hữu tệp; tệp không có mốc thời gian -> 409 `NO_TIMECODES`. Sắp theo `idx` tăng dần.
+      parameters:
+        - { name: fileId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 100 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, pageSize, warnings, warningCount]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Cue' } }
+                  total: { type: integer }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  warnings: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/CueWarning' } }
+                  warningCount: { type: integer }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Tệp không có mốc thời gian (NO_TIMECODES) }
+
+  /files/{fileId}/estimate:
+    post:
+      tags: [files]
+      summary: Ước tính trước khi tạo voice (FR-008, FR-013)
+      description: |
+        Không gọi nhà cung cấp, không ghi usage. Giá trị tiền chỉ có khi cấu hình AI sẽ dùng đã có `pricePerMillionChars`;
+        nếu không `price` là `null` và `priceConfigured=false` (không bịa số). Dùng đúng cấu hình AI mà job sẽ dùng
+        (riêng nếu đủ điều kiện, ngược lại chung).
+      parameters:
+        - { name: fileId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                model: { type: string, nullable: true, maxLength: 100 }
+                voice: { type: string, nullable: true, maxLength: 100 }
+                speed: { type: number, nullable: true }
+                timing: { $ref: '#/components/schemas/TimingRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Estimate' } } } }
+        '422': { $ref: '#/components/responses/Validation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/jobs:
+    post:
+      tags: [jobs]
+      summary: Bắt đầu tạo voice — bổ sung chế độ khớp mốc (FR-003, FR-007)
+      description: |
+        Thêm trường tùy chọn `timing` vào body hiện có. Vắng mặt hoặc `mode=continuous` ⇒ hành vi cũ.
+        `mode=timed` yêu cầu tệp có `hasTimecodes=true`, ngược lại 409 `NO_TIMECODES`.
+        Máy chủ tính lại ước tính và từ chối `409 QUOTA_EXCEEDED` nếu dung lượng đầu ra ước tính vượt hạn mức còn lại
+        (kèm `needBytes`); các tham số `params` được chốt từ cài đặt hệ thống tại thời điểm này, không nhận từ client.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timing: { $ref: '#/components/schemas/TimingRequest' }
+      responses:
+        '409': { description: NO_TIMECODES hoặc QUOTA_EXCEEDED }
+
+  /jobs/{jobId}:
+    get:
+      tags: [jobs]
+      summary: Chi tiết tiến trình — bổ sung tiến độ theo phần
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timing:
+                    type: object
+                    nullable: true
+                    description: null khi chế độ đọc liên tục
+                    properties:
+                      mode: { type: string, enum: [timed] }
+                      mergeCues: { type: boolean }
+                      parts: { type: object, properties: { done: { type: integer }, total: { type: integer } } }
+                      overflowCount: { type: integer, description: Số đơn vị vượt độ trễ tối đa (cảnh báo) }
+
+  /voices/{voiceId}:
+    get:
+      tags: [voices]
+      summary: Chi tiết voice — timeline mở rộng cho voice khớp mốc
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timeline:
+                    type: array
+                    items: { $ref: '#/components/schemas/TimelineEntry' }
+
+  /admin/settings:
+    get:
+      tags: [admin]
+      summary: Cài đặt hệ thống — thêm khóa đặt mốc
+      description: |
+        Thêm bảy khóa số (khoảng hợp lệ ở `PUT`): `timingMaxSlipMs` 100–2000 (mặc định 500), `timingMaxCompressPct` 100–150
+        (mặc định 125), `timingPartMinutes` 1–30 (mặc định 10), `timingMergeGapMs` 200–3000 (mặc định 1000); cộng ba khóa `rpmFptMarketplace`, `rpmShopaikeyOpenai`, `rpmShopaikeyMinimax` 0–600 (0 = dùng giá trị mặc định của catalog).
+      responses:
+        '200': { description: OK }
+    put:
+      tags: [admin]
+      summary: Cập nhật cài đặt hệ thống — chấp nhận các khóa đặt mốc và rpm* (một phần, giống spec 001)
+      responses:
+        '200': { description: OK }
+
+components:
+  schemas:
+    TimingRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [timed, continuous] }
+        mergeCues: { type: boolean, default: true, description: Chỉ có nghĩa khi mode=timed (FR-007) }
+
+    Cue:
+      type: object
+      required: [idx, n, startMs, endMs, text, speakable, charCount]
+      properties:
+        idx: { type: integer }
+        n: { type: integer, description: Số thứ tự gốc trong tệp (chỉ để đối chiếu) }
+        startMs: { type: integer }
+        endMs: { type: integer }
+        text: { type: string }
+        speakable: { type: boolean }
+        charCount: { type: integer }
+
+    CueWarning:
+      type: object
+      required: [cue, code]
+      properties:
+        cue: { type: integer }
+        code: { type: string, enum: [BAD_RANGE, OUT_OF_ORDER, OVERLAP, NO_SPEECH] }
+
+    Estimate:
+      type: object
+      required: [units, cues, chars, cachedUnits, requests, audioMs, outputBytes, quotaOk, etaMs, priceConfigured]
+      properties:
+        cues: { type: integer, description: 0 khi tệp không có mốc }
+        units: { type: integer }
+        chars: { type: integer, description: Ký tự đọc thực, đã bỏ số thứ tự và mốc }
+        cachedUnits: { type: integer, description: Đơn vị đã có cache của chính người dùng, không phải gọi và không tính phí }
+        requests: { type: integer, description: Số lần phải gọi nhà cung cấp = units - cachedUnits }
+        audioMs: { type: integer, description: "Chế độ khớp mốc: bằng duration_ms của tệp; chế độ đọc liên tục: ước tính theo số ký tự" }
+        outputBytes: { type: integer }
+        quotaOk: { type: boolean }
+        needBytes: { type: integer, description: Chỉ có khi quotaOk=false }
+        etaMs: { type: integer, description: Thời gian xử lý ước tính (có tính giới hạn số yêu cầu/phút) }
+        priceConfigured: { type: boolean }
+        price: { type: number, nullable: true, description: USD; null khi priceConfigured=false }
+
+    TimelineEntry:
+      type: object
+      required: [idx, startMs, endMs]
+      properties:
+        idx: { type: integer }
+        startMs: { type: integer }
+        endMs: { type: integer }
+        text: { type: string, description: Chỉ có ở voice khớp mốc }
+        slipMs: { type: integer }
+        compress: { type: number }
+        overflow: { type: boolean }
+        failed: { type: boolean, description: Đoạn bị chặn nội dung — khe im lặng }
+        cues:
+          type: array
+          items:
+            type: object
+            required: [n, text, startMs, endMs]
+            properties:
+              n: { type: integer }
+              text: { type: string }
+              startMs: { type: integer }
+              endMs: { type: integer }
+
+    File:
+      description: Bổ sung các trường vào đối tượng tệp hiện có.
+      type: object
+      properties:
+        hasTimecodes: { type: boolean }
+        cueCount: { type: integer, nullable: true }
+        durationMs: { type: integer, nullable: true }
+        warningCount: { type: integer }
+
+    Me:
+      description: Bổ sung hai trường vào hồ sơ hiện có.
+      type: object
+      properties:
+        locale: { type: string, enum: [vi, en] }
+        theme: { type: string, enum: [light, dark, system] }

@@ -91,7 +91,7 @@ describe('tạo tiến trình (POST /api/projects/{id}/jobs)', () => {
     const file = await uploadScript(a, pid, SCRIPT_4);
     const ok = await a.client.post(`/api/projects/${pid}/jobs`, { json: { fileId: file.id, model: 'FPT.TTS-pro', voice: 'std_banmai', speed: 1.1 } });
     expect(ok.status).toBe(202);
-    expect((await ok.json()).settings).toEqual({ model: 'FPT.TTS-pro', voice: 'std_banmai', speed: 1.1 });
+    expect((await ok.json()).settings).toEqual({ timing: null, model: 'FPT.TTS-pro', voice: 'std_banmai', speed: 1.1 });
 
     for (const [json, field] of [
       [{ voice: 'khong-co' }, 'voice'],

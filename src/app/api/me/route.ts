@@ -13,6 +13,8 @@ const patchSchema = z
   .object({
     displayName: displayNameSchema.optional(),
     bio: bioSchema.nullable().optional(),
+    locale: z.enum(['vi', 'en']).optional(),
+    theme: z.enum(['light', 'dark', 'system']).optional(),
   })
   .strict();
 
@@ -26,6 +28,12 @@ export const PATCH = route(async (request: Request) => {
   const body = patchSchema.parse(await readJson(request));
   await updateProfile(user.id, body);
   const [row] = await getDb().select().from(users).where(eq(users.id, user.id));
-  const fresh: AuthUser = { ...user, name: row!.name, bio: row!.bio };
+  const fresh: AuthUser = {
+    ...user,
+    name: row!.name,
+    bio: row!.bio,
+    locale: row!.locale === 'en' ? 'en' : 'vi',
+    theme: row!.theme === 'light' || row!.theme === 'dark' ? row!.theme : 'system',
+  };
   return Response.json(await toMe(fresh));
 });

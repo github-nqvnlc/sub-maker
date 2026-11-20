@@ -1,7 +1,7 @@
 # Sub Maker
 
 **Sub Maker** là ứng dụng web nhiều người dùng để **chuyển kịch bản/phụ đề thành giọng đọc AI** (text-to-speech). Mỗi người dùng quản lý các
-**Project**, tải lên kịch bản (`.txt`, `.md`, `.skt`), chọn nhà cung cấp AI và giọng đọc, rồi hệ thống tạo ra **một file voice hoàn chỉnh (MP3)**
+**Project**, tải lên kịch bản (`.txt`, `.md`, `.srt`), chọn nhà cung cấp AI và giọng đọc, rồi hệ thống tạo ra **một file voice hoàn chỉnh (MP3)**
 chạy ngầm ở phía máy chủ. Khi nghe lại, văn bản được **làm nổi bật đúng câu đang đọc** và bấm vào câu nào là phát từ câu đó.
 
 Giao diện hoàn toàn bằng tiếng Việt, dùng được trên điện thoại, máy tính bảng và máy tính.
@@ -37,7 +37,9 @@ Giao diện hoàn toàn bằng tiếng Việt, dùng được trên điện tho�
 | --- | --- |
 | **Tài khoản** | Tự đăng ký (dùng ngay, không cần duyệt), đăng nhập, hồ sơ (tên hiển thị, giới thiệu, ảnh đại diện), đổi mật khẩu. Chính sách mật khẩu: 10–128 ký tự, không toàn chữ số, không thuộc danh sách mật khẩu phổ biến. |
 | **Project** | Tạo / xem / sửa / xóa (một hoặc nhiều cùng lúc, có hộp xác nhận nêu số lượng và hậu quả). **Tìm kiếm không dấu** (gõ `lich su` ra "Lịch sử"), sắp xếp, lọc theo nhà cung cấp và trạng thái tiến trình, phân trang; bộ lọc nằm trên URL nên làm mới trang vẫn giữ. |
-| **Kịch bản** | Tải `.txt`, `.md` (Markdown, giữ đúng thứ tự đoạn), `.skt`; tối đa 2 MB mỗi tệp (Admin chỉnh được); phải là UTF-8. Xem trước các đoạn sẽ đọc trước khi tạo voice. |
+| **Kịch bản** | Tải `.txt`, `.md` (Markdown, giữ đúng thứ tự đoạn), `.srt` (phụ đề SubRip chuẩn; đuôi riêng `.skt` đã bỏ); tối đa 2 MB mỗi tệp (Admin chỉnh được); phải là UTF-8. Xem trước các đoạn sẽ đọc trước khi tạo voice; với `.srt` có thêm tab **Cue và mốc thời gian** (phân trang) kèm cảnh báo chuẩn hóa (mốc ngược, chồng lấn, cue chỉ có ♪/[Music]…). |
+| **Voice khớp mốc phụ đề** | Với `.srt` có mốc, hộp thoại "Tạo voice" bật sẵn **Khớp mốc thời gian phụ đề**: số thứ tự và mốc không được đọc, các cue cùng một câu được ghép đọc liền (**Ghép cue cùng câu**, tắt được), mỗi câu được đặt đúng mốc bắt đầu của cue. Cue đọc dài hơn khe thì mượn khoảng nghỉ liền sau → nén ≤ 1,25× → cue kế trượt nhẹ (≤ 0,5 giây, tự bù). Phụ đề dài chia **phần ~10 phút** tại khoảng nghỉ lớn nhất rồi ghép về đúng mốc tuyệt đối thành **một** voice; tiếp tục không tạo lại đoạn đã xong. Có **ước tính** (ký tự, số lần gọi, thời lượng, dung lượng, thời gian xử lý, tiền nếu đã có đơn giá) trước khi bắt đầu. Chi tiết cài đặt: `docs/operations.md` §10. |
+| **Giao diện** | **Sáng / Tối / Theo hệ thống** (nút ở mọi màn hình, kể cả đăng nhập; ghi nhớ theo trình duyệt và tài khoản; viền ô nhập tương phản ≥ 3:1), **Tiếng Việt / English** (mặc định tiếng Việt; lỗi API, định dạng ngày/số theo ngôn ngữ), font **Be Vietnam Pro** (đủ bộ ký tự tiếng Việt). |
 | **Tạo voice** | Chọn **model, giọng đọc và tốc độ** trong hộp thoại "Tạo voice". Chạy **nền**: đóng trình duyệt, tắt máy vẫn chạy tiếp; worker khởi động lại cũng tự phục hồi. |
 | **Theo dõi** | Nhật ký chi tiết **theo thời gian thực** (SSE; tự chuyển sang hỏi định kỳ nếu mất kết nối), thanh tiến độ, danh sách đoạn lỗi, thanh "tiến trình đang chạy" ở đầu trang. Nhiều tab/thiết bị cùng thấy một log. |
 | **Quản lý tiến trình** | **Dừng**, **tiếp tục** (bỏ qua các đoạn đã xong), **chạy lại** (tạo tiến trình mới; đoạn trùng được lấy từ cache, không tốn phí lặp), **sửa thiết lập** (model/giọng/tốc độ khi đã dừng hoặc lỗi), xóa một hoặc nhiều. |
@@ -59,7 +61,7 @@ Giao diện hoàn toàn bằng tiếng Việt, dùng được trên điện tho�
 ## 2. Cách hoạt động
 
 ```
-Kịch bản (.txt/.md/.skt)
+Kịch bản (.txt/.md/.srt)
    │  ① phân tích: giải mã UTF-8, chuẩn hóa ký tự, tách đoạn (≤ 400 ký tự, tách câu biết viết tắt tiếng Việt)
    ▼
 Danh sách đoạn ──② mỗi đoạn: tra cache → gọi nhà cung cấp (thử lại khi lỗi tạm thời) → WAV
@@ -238,7 +240,7 @@ Mẫu đầy đủ ở `.env.example`. Ứng dụng kiểm tra các biến bằn
 
 ```bash
 npm run lint              # ESLint (có luật cấm chuỗi tiếng Việt cứng trong thành phần giao diện)
-npm run check:i18n        # quét chuỗi tiếng Việt cứng ngoài src/lib/i18n/vi.ts
+npm run check:i18n        # chuỗi tiếng Việt cứng ngoài từ điển + từ điển vi/en đủ khóa, cùng giữ chỗ
 npx tsc --noEmit          # kiểm tra kiểu
 npm test                  # unit + integration + contract   (cần PostgreSQL + MinIO dev đang chạy)
 npm run test:isolation    # cô lập dữ liệu cho mọi thao tác OpenAPI
@@ -247,11 +249,11 @@ npm run test:e2e          # Playwright desktop + mobile; tự dựng web + worke
 
 | Bộ test | Nội dung chính |
 | --- | --- |
-| **unit** | Tách đoạn/Markdown/SKT, ghép audio theo mẫu, highlight, mã hóa, `safeFetch`, ẩn bí mật trong log, máy chủ giả, rà soát route |
+| **unit** | Tách đoạn/Markdown/SRT và cue, đơn vị đọc, đặt mốc/nén/trượt (`placeUnits`, `planParts`), cắt lặng, giới hạn yêu cầu/phút, ghép audio theo mẫu, highlight, mã hóa, `safeFetch`, ẩn bí mật trong log, máy chủ giả, rà soát route, từ điển vi/en, tương phản viền ô nhập |
 | **contract** | Cùng một bộ kịch bản (thành công, 429, 5xx, 401, hết hạn mức, nội dung bị chặn, phản hồi hỏng, timeout, hủy giữa chừng, redirect vào mạng nội bộ…) chạy với **từng adapter** |
 | **integration** | API thật trên PostgreSQL/MinIO thật: xác thực, file, job, SSE, pipeline tạo voice, phục hồi sau sự cố, đồng thời, xóa, tìm kiếm, thống kê, cài đặt, đối soát dung lượng, hiệu năng (SC-006/007/009), không lộ khóa |
 | **isolation** | Mọi đường dẫn OpenAPI: 401 / 404 / quyền admin |
-| **e2e** | Đăng ký/đăng nhập, tạo voice trọn đường (UI → API → hàng đợi → worker → nhà cung cấp giả), nghe & highlight, quản lý/xóa tiến trình, tìm kiếm, chạy nền nhiều tab, dashboard, cài đặt, chọn giọng |
+| **e2e** | Đăng ký/đăng nhập, tạo voice trọn đường (UI → API → hàng đợi → worker → nhà cung cấp giả), voice khớp mốc từ `.srt`, nghe & highlight, quản lý/xóa tiến trình, tìm kiếm, chạy nền nhiều tab, dashboard, cài đặt, chọn giọng, Sáng/Tối, đổi ngôn ngữ, font tiếng Việt, tab quản trị |
 
 **Kiểm thử với nhà cung cấp thật** (tốn phí nhỏ, mặc định bị bỏ qua):
 
@@ -295,7 +297,7 @@ src/
 │   ├── auth/ api/ security/    xác thực, guard, bọc route, mã hóa, safeFetch, che bí mật
 │   ├── db/                     schema Drizzle, migrations, seed
 │   ├── providers/              adapter nhà cung cấp, catalog, phân loại lỗi, cấu hình
-│   ├── parsing/                giải mã UTF-8, Markdown/SKT, tách đoạn
+│   ├── parsing/                giải mã UTF-8, Markdown/SRT, tách đoạn
 │   ├── audio/                  giải mã PCM, ghép theo mẫu, mã hóa MP3
 │   ├── projects/ jobs/ voices/ users/ usage/ storage/ player/
 │   └── i18n/vi.ts              TOÀN BỘ chuỗi tiếng Việt của giao diện
@@ -321,7 +323,7 @@ Toàn bộ nằm dưới `/api`, trả JSON; lỗi có dạng `{ error: { code, 
 | Xác thực | `/auth/*` (Better Auth: đăng ký, đăng nhập, đăng xuất, phiên) |
 | Cá nhân | `GET/PATCH /me`, `/me/avatar`, `POST /me/password`, `/me/ai-config[/{type}[/test]]`, `GET /providers`, `GET /dashboard` |
 | Project | `GET/POST /projects`, `GET/PATCH/DELETE /projects/{id}`, `POST /projects/bulk-delete` |
-| Kịch bản | `GET/POST /projects/{id}/files`, `GET/DELETE /files/{id}`, `GET /files/{id}/raw` |
+| Kịch bản | `GET/POST /projects/{id}/files`, `GET/DELETE /files/{id}`, `GET /files/{id}/raw`, `GET /files/{id}/cues` (phân trang), `POST /files/{id}/estimate` |
 | Tiến trình | `GET/POST /projects/{id}/jobs`, `GET /jobs`, `GET/PATCH/DELETE /jobs/{id}`, `POST /jobs/{id}/stop`, `/resume`, `/rerun`, `POST /jobs/bulk-delete` |
 | Log thời gian thực | `GET /jobs/{id}/logs` (phân trang), `GET /jobs/{id}/events` (SSE, hỗ trợ `Last-Event-ID` để nối lại không mất dòng) |
 | Voice | `GET /voices/{id}`, `GET /voices/{id}/audio` (hỗ trợ `Range`, tải về) |

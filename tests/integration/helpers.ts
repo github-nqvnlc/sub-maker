@@ -86,6 +86,11 @@ export class TestClient {
   private cookies = new Map<string, string>();
   constructor(public label = 'anon') {}
 
+  /** Đặt cookie thủ công (ví dụ `locale` — spec 003) vào jar của client. */
+  setCookie(name: string, value: string): void {
+    this.cookies.set(name, value);
+  }
+
   cookieHeader(): string {
     return [...this.cookies.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
   }

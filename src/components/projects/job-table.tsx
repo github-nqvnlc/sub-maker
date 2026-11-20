@@ -13,8 +13,7 @@ import { EmptyState } from '@/components/shared/states';
 import { EditSettingsDialog } from '@/components/jobs/edit-settings-dialog';
 import { StatusBadge, type JobStatus } from '@/components/jobs/status-badge';
 import { apiPost } from '@/lib/api-client';
-import { fmtDateTime } from '@/lib/format';
-import { vi } from '@/lib/i18n/vi';
+import { useFormat, useT } from '@/lib/i18n/client';
 
 export type JobRowDto = {
   id: string;
@@ -22,7 +21,7 @@ export type JobRowDto = {
   fileId: string;
   status: JobStatus;
   configScope: 'global' | 'user';
-  settings: { model: string | null; voice: string; speed: number | null };
+  settings: { model: string | null; voice: string; speed: number | null; timing?: { mode: 'timed'; mergeCues: boolean } | null };
   progressDone: number;
   progressTotal: number;
   errorMessage: string | null;
@@ -38,6 +37,8 @@ const RESUMABLE: JobStatus[] = ['stopped', 'failed', 'interrupted'];
  * (dừng, tiếp tục, chạy lại, sửa thiết lập, xóa một hoặc nhiều) — FR-002, FR-021..023.
  */
 export function JobTable({ projectId, providerType, jobs, fileNames }: { projectId: string; providerType: string; jobs: JobRowDto[]; fileNames: Map<string, string> }) {
+  const t = useT();
+  const fx = useFormat();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [edit, setEdit] = useState<{ job: JobRowDto; mode: 'edit' | 'rerun' } | null>(null);
@@ -48,12 +49,12 @@ export function JobTable({ projectId, providerType, jobs, fileNames }: { project
     void qc.invalidateQueries({ queryKey: ['projects'] });
     void qc.invalidateQueries({ queryKey: ['active-jobs'] });
   };
-  const onError = (e: unknown) => toast.error(e instanceof Error ? e.message : vi.common.genericError);
+  const onError = (e: unknown) => toast.error(e instanceof Error ? e.message : t.common.genericError);
 
   const stop = useMutation({
     mutationFn: (id: string) => apiPost(`/api/jobs/${id}/stop`, {}),
     onSuccess: () => {
-      toast.success(vi.jobs.stopRequested);
+      toast.success(t.jobs.stopRequested);
       refresh();
     },
     onError,
@@ -61,7 +62,7 @@ export function JobTable({ projectId, providerType, jobs, fileNames }: { project
   const resume = useMutation({
     mutationFn: (id: string) => apiPost(`/api/jobs/${id}/resume`, {}),
     onSuccess: () => {
-      toast.success(vi.jobs.resumed);
+      toast.success(t.jobs.resumed);
       refresh();
     },
     onError,
@@ -69,68 +70,68 @@ export function JobTable({ projectId, providerType, jobs, fileNames }: { project
   const del = useMutation({
     mutationFn: (ids: string[]) => apiPost<{ deleted: string[]; rejectedRunning: string[] }>('/api/jobs/bulk-delete', { ids, stopFirst: true }),
     onSuccess: (r) => {
-      if (r.deleted.length > 0) toast.success(vi.jobs.deleted);
-      if (r.rejectedRunning.length > 0) toast.error(vi.jobs.busyNotice);
+      if (r.deleted.length > 0) toast.success(t.jobs.deleted);
+      if (r.rejectedRunning.length > 0) toast.error(t.jobs.busyNotice);
       setSelected(new Set());
       refresh();
     },
     onError,
   });
 
-  if (jobs.length === 0) return <EmptyState title={vi.jobs.empty} />;
+  if (jobs.length === 0) return <EmptyState title={t.jobs.empty} />;
 
   const columns: Column<JobRowDto>[] = [
-    { key: 'status', header: vi.jobs.colStatus, cell: (j) => <StatusBadge status={j.status} /> },
-    { key: 'file', header: vi.jobs.colFile, cell: (j) => <span className="line-clamp-1 max-w-48 break-all">{fileNames.get(j.fileId) ?? '—'}</span> },
-    { key: 'voice', header: vi.jobs.colVoice, cell: (j) => <span>{j.settings.voice}</span>, className: 'hidden sm:table-cell' },
+    { key: 'status', header: t.jobs.colStatus, cell: (j) => <StatusBadge status={j.status} /> },
+    { key: 'file', header: t.jobs.colFile, cell: (j) => <span className="line-clamp-1 max-w-48 break-all">{fileNames.get(j.fileId) ?? '—'}</span> },
+    { key: 'voice', header: t.jobs.colVoice, cell: (j) => <span>{j.settings.voice}</span>, className: 'hidden sm:table-cell' },
     {
       key: 'progress',
-      header: vi.jobs.colProgress,
+      header: t.jobs.colProgress,
       cell: (j) => (
         <div className="flex min-w-28 items-center gap-2">
-          <Progress value={j.progressTotal > 0 ? (j.progressDone / j.progressTotal) * 100 : 0} className="h-1.5 w-20" aria-label={vi.jobs.progress} />
+          <Progress value={j.progressTotal > 0 ? (j.progressDone / j.progressTotal) * 100 : 0} className="h-1.5 w-20" aria-label={t.jobs.progress} />
           <span className="text-xs tabular-nums text-muted-foreground">
             {j.progressDone}/{j.progressTotal}
           </span>
         </div>
       ),
     },
-    { key: 'created', header: vi.jobs.colCreated, cell: (j) => <span className="whitespace-nowrap text-xs">{fmtDateTime(j.createdAt)}</span>, className: 'hidden md:table-cell' },
+    { key: 'created', header: t.jobs.colCreated, cell: (j) => <span className="whitespace-nowrap text-xs">{fx.dateTime(j.createdAt)}</span>, className: 'hidden md:table-cell' },
     {
       key: 'actions',
-      header: vi.jobs.colActions,
+      header: t.jobs.colActions,
       cell: (j) => (
         <div className="flex flex-wrap gap-1">
           <Button asChild size="sm" variant="outline">
-            <Link href={`/projects/${j.projectId}/jobs/${j.id}`}>{vi.jobs.open}</Link>
+            <Link href={`/projects/${j.projectId}/jobs/${j.id}`}>{t.jobs.open}</Link>
           </Button>
           {j.voiceId ? (
             <Button asChild size="sm">
-              <Link href={`/projects/${j.projectId}/voices/${j.voiceId}`}>{vi.voices.open}</Link>
+              <Link href={`/projects/${j.projectId}/voices/${j.voiceId}`}>{t.voices.open}</Link>
             </Button>
           ) : null}
           {ACTIVE.includes(j.status) ? (
             <Button size="sm" variant="outline" disabled={stop.isPending} onClick={() => stop.mutate(j.id)}>
-              {vi.jobs.stop}
+              {t.jobs.stop}
             </Button>
           ) : null}
           {RESUMABLE.includes(j.status) ? (
             <>
               <Button size="sm" variant="outline" disabled={resume.isPending} onClick={() => resume.mutate(j.id)}>
-                {vi.jobs.resume}
+                {t.jobs.resume}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setEdit({ job: j, mode: 'edit' })}>
-                {vi.jobs.editSettings}
+                {t.jobs.editSettings}
               </Button>
             </>
           ) : null}
           {!ACTIVE.includes(j.status) ? (
             <Button size="sm" variant="outline" onClick={() => setEdit({ job: j, mode: 'rerun' })}>
               <RotateCcw className="size-3.5" />
-              {vi.jobs.rerun}
+              {t.jobs.rerun}
             </Button>
           ) : null}
-          <Button size="icon" variant="ghost" aria-label={vi.jobs.delete} onClick={() => setConfirmIds([j.id])}>
+          <Button size="icon" variant="ghost" aria-label={t.jobs.delete} onClick={() => setConfirmIds([j.id])}>
             <Trash2 className="size-4" />
           </Button>
         </div>
@@ -145,11 +146,11 @@ export function JobTable({ projectId, providerType, jobs, fileNames }: { project
       {selected.size > 0 ? (
         <div className="flex items-center justify-between rounded-lg border bg-accent/40 px-3 py-2" role="status">
           <span className="text-sm">
-            {selected.size} {vi.projects.selectedCount}
+            {selected.size} {t.projects.selectedCount}
           </span>
           <Button size="sm" variant="destructive" onClick={() => setConfirmIds([...selected])}>
             <Trash2 className="size-4" />
-            {vi.jobs.deleteSelected}
+            {t.jobs.deleteSelected}
           </Button>
         </div>
       ) : null}
@@ -160,8 +161,8 @@ export function JobTable({ projectId, providerType, jobs, fileNames }: { project
         rowId={(j) => j.id}
         selected={selected}
         onSelectedChange={setSelected}
-        selectAllLabel={vi.jobs.selectAll}
-        selectLabel={vi.jobs.selectRow}
+        selectAllLabel={t.jobs.selectAll}
+        selectLabel={t.jobs.selectRow}
       />
 
       <EditSettingsDialog job={edit?.job ?? null} mode={edit?.mode ?? 'edit'} providerType={providerType} onClose={() => setEdit(null)} />
@@ -169,17 +170,17 @@ export function JobTable({ projectId, providerType, jobs, fileNames }: { project
       <ConfirmDialog
         open={!!confirmIds}
         onOpenChange={(o) => !o && setConfirmIds(null)}
-        title={confirmIds && confirmIds.length > 1 ? vi.jobs.deleteManyTitle : vi.jobs.deleteTitle}
+        title={confirmIds && confirmIds.length > 1 ? t.jobs.deleteManyTitle : t.jobs.deleteTitle}
         description={
           <>
             <p className="font-medium text-foreground">
-              {confirmIds?.length ?? 0} {vi.jobs.countUnit}
+              {confirmIds?.length ?? 0} {t.jobs.countUnit}
             </p>
-            <p>{vi.jobs.deleteDesc}</p>
-            {confirmHasActive ? <p>{vi.jobs.deleteActiveDesc}</p> : null}
+            <p>{t.jobs.deleteDesc}</p>
+            {confirmHasActive ? <p>{t.jobs.deleteActiveDesc}</p> : null}
           </>
         }
-        confirmLabel={vi.jobs.delete}
+        confirmLabel={t.jobs.delete}
         onConfirm={async () => {
           if (confirmIds) await del.mutateAsync(confirmIds);
         }}

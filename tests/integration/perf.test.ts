@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startMockProvider, type MockProvider } from '../../mock-provider/server';
 import { getDb } from '@/lib/db';
 import { projects } from '@/lib/db/schema';
+import { MAX_CUE_WARNINGS } from '@/lib/parsing/srt';
 import { runGenerateVoice } from '@/worker/jobs/generate-voice';
 import { stopBoss } from '@/worker/queues';
 import { createAdmin, createUser, resetDb, type TestUser } from './helpers';
@@ -22,6 +23,8 @@ beforeAll(async () => {
   await resetDb();
   admin = await createAdmin();
   await putGlobalConfig(admin, mock, 'ok');
+  // Giới hạn mặc định 30 yêu cầu/phút của FPT (spec 003) sẽ làm kịch bản ~50 đoạn chờ > 1 phút: nâng trần để đo xử lý của hệ thống
+  expect((await admin.client.put('/api/admin/settings', { json: { rpmFptMarketplace: 600 } })).status).toBe(200);
   user = await createUser();
 });
 afterAll(async () => {
@@ -97,4 +100,68 @@ describe('hiệu năng (SC-006/007/009)', () => {
     expect(delMs).toBeLessThan(5000);
     for (const id of jobIds) expect((await user.client.get(`/api/jobs/${id}`)).status).toBe(404);
   });
+});
+
+/**
+ * Spec 003 — SC-004 / FR-015: tệp phụ đề lớn nhất mà hệ thống cho phép (≈ 2 MB, hàng chục nghìn cue; CHỈ văn bản, không audio):
+ * tải lên và ghi cue < 10 giây, trang cue đầu < 1 giây, và người dùng khác luôn được phản hồi < 1 giây trong lúc đó.
+ */
+describe('phụ đề lớn (spec 003, SC-004/FR-015)', () => {
+  const stamp = (ms: number) => {
+    const h = Math.floor(ms / 3_600_000);
+    const m = Math.floor((ms % 3_600_000) / 60_000);
+    const sec = Math.floor((ms % 60_000) / 1000);
+    const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+    return `${pad(h)}:${pad(m)}:${pad(sec)},${pad(ms % 1000, 3)}`;
+  };
+  const bigSrt = (cues: number) =>
+    Array.from({ length: cues }, (_, i) => `${i + 1}\n${stamp(i * 1000)} --> ${stamp(i * 1000 + 900)}\nCâu số ${i + 1} của phụ đề tổng hợp để đo tốc độ xử lý.\n`).join('\n');
+
+  it('~1,9 MB, 18.000 cue: tải lên < 10 giây, trang cue đầu < 1 giây, người dùng khác luôn phản hồi < 1 giây', async () => {
+    const text = bigSrt(18_000);
+    const bytes = Buffer.byteLength(text, 'utf8');
+    expect(bytes).toBeLessThan(2_097_152);
+    expect(bytes).toBeGreaterThan(1_500_000);
+
+    const other = await createUser({ name: 'Người dùng khác' });
+    const projectId = await newProject(user, 'Phụ đề lớn');
+    const form = new FormData();
+    form.set('file', new File([text], 'lon.srt', { type: 'text/plain' }));
+
+    const t0 = performance.now();
+    const upload = user.client.post(`/api/projects/${projectId}/files`, { form });
+    const probes: number[] = [];
+    let done = false;
+    const prober = (async () => {
+      while (!done) {
+        const [res, ms] = await timed(() => other.client.get('/api/projects'));
+        expect(res.status).toBe(200);
+        probes.push(ms);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    })();
+    const res = await upload;
+    done = true;
+    await prober;
+    const uploadMs = performance.now() - t0;
+
+    expect(res.status).toBe(201);
+    const file = await res.json();
+    expect(file).toMatchObject({ hasTimecodes: true, cueCount: 18_000 });
+    expect(uploadMs, `tải lên mất ${Math.round(uploadMs)} ms`).toBeLessThan(10_000);
+    expect(probes.length).toBeGreaterThan(0);
+    expect(Math.max(...probes), `người dùng khác chậm nhất ${Math.round(Math.max(...probes))} ms`).toBeLessThan(1000);
+
+    const [page, pageMs] = await timed(() => user.client.get(`/api/files/${file.id}/cues?page=1&pageSize=100`));
+    expect(page.status).toBe(200);
+    const body = await page.json();
+    expect(body).toMatchObject({ total: 18_000, pageSize: 100 });
+    expect(body.items).toHaveLength(100);
+    expect(pageMs, `trang cue đầu mất ${Math.round(pageMs)} ms`).toBeLessThan(1000);
+    expect(body.warnings.length).toBeLessThanOrEqual(MAX_CUE_WARNINGS);
+
+    const [est, estMs] = await timed(() => user.client.post(`/api/files/${file.id}/estimate`, { json: { timing: { mode: 'timed', mergeCues: true } } }));
+    expect(est.status).toBe(200);
+    expect(estMs, `ước tính mất ${Math.round(estMs)} ms`).toBeLessThan(2000); // SC-006 của spec 003 (< 2 giây)
+  }, 60_000);
 });

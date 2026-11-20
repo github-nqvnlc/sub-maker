@@ -1,7 +1,9 @@
+'use client';
+
 import { AlertTriangle, Inbox } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { vi } from '@/lib/i18n/vi';
+import { useT } from '@/lib/i18n/client';
 
 /** Trạng thái rỗng: có thể kèm hành động (ví dụ "Tạo Project đầu tiên"). */
 export function EmptyState({
@@ -27,13 +29,14 @@ export function EmptyState({
 
 /** Trạng thái lỗi: nêu nguyên nhân và cho thử lại. */
 export function ErrorState({ message, onRetry }: { message?: string; onRetry?: () => void }) {
+  const t = useT();
   return (
     <div role="alert" className="flex flex-col items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-8 text-center">
       <AlertTriangle className="size-8 text-destructive" />
-      <p className="text-sm">{message ?? vi.common.genericError}</p>
+      <p className="text-sm">{message ?? t.common.genericError}</p>
       {onRetry ? (
         <Button variant="outline" size="sm" onClick={onRetry}>
-          {vi.common.retry}
+          {t.common.retry}
         </Button>
       ) : null}
     </div>
@@ -42,8 +45,9 @@ export function ErrorState({ message, onRetry }: { message?: string; onRetry?: (
 
 /** Khung chờ cho danh sách/bảng. */
 export function LoadingList({ rows = 5 }: { rows?: number }) {
+  const t = useT();
   return (
-    <div className="space-y-3" aria-busy="true" aria-label={vi.common.loading}>
+    <div className="space-y-3" aria-busy="true" aria-label={t.common.loading}>
       {Array.from({ length: rows }, (_, i) => (
         <Skeleton key={i} className="h-14 w-full" />
       ))}
