@@ -31,7 +31,7 @@ export function FilePreviewDialog({ fileId, onClose }: { fileId: string | null; 
 
   return (
     <Dialog open={!!fileId} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{q.data?.originalName ?? t.files.previewTitle}</DialogTitle>
           <DialogDescription>

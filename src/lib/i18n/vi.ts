@@ -353,6 +353,9 @@ export const vi = {
     countUnit: 'tiến trình',
     busyNotice: 'Một số tiến trình chưa dừng kịp nên chưa được xóa. Hãy thử lại sau ít giây.',
     save: 'Lưu thiết lập',
+    listenPreview: 'Nghe thử',
+    stopPreview: 'Dừng',
+    voicePreviewTooltip: 'Phát đoạn âm thanh mẫu 5 giây của giọng đọc này',
     selectAll: 'Chọn tất cả',
     selectRow: 'Chọn tiến trình',
     // Chế độ khớp mốc thời gian phụ đề (spec 003)

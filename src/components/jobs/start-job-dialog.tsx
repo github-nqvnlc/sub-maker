@@ -15,6 +15,7 @@ import { useProviders } from '@/lib/hooks/use-providers';
 import { useT } from '@/lib/i18n/client';
 import { EstimatePanel, useEstimate } from '@/components/jobs/estimate-panel';
 import { TimingOptions } from '@/components/jobs/timing-options';
+import { VoicePreviewButton } from '@/components/jobs/voice-preview-button';
 
 export type StartableFile = { id: string; originalName: string; segmentCount: number; charCount: number; hasTimecodes?: boolean };
 
@@ -145,18 +146,23 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
 
             <div className="space-y-2">
               <Label>{t.jobs.voice}</Label>
-              <Select value={effVoice} onValueChange={setVoice}>
-                <SelectTrigger aria-label={t.jobs.voice}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(modelInfo?.voices ?? []).map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <Select value={effVoice} onValueChange={setVoice}>
+                    <SelectTrigger aria-label={t.jobs.voice}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(modelInfo?.voices ?? []).map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <VoicePreviewButton providerType={providerType} voiceId={effVoice} />
+              </div>
             </div>
 
             <div className="space-y-2">
