@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -52,6 +53,7 @@ export function JobTable({
   const t = useT();
   const fx = useFormat();
   const qc = useQueryClient();
+  const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [edit, setEdit] = useState<{ job: JobRowDto; mode: 'edit' | 'rerun' } | null>(null);
   const [confirmIds, setConfirmIds] = useState<string[] | null>(null);
@@ -128,7 +130,7 @@ export function JobTable({
       key: 'actions',
       header: t.jobs.colActions,
       cell: (j) => (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
           <Button asChild size="sm" variant="outline">
             <Link href={`/projects/${j.projectId}/jobs/${j.id}`}>{t.jobs.open}</Link>
           </Button>
@@ -188,7 +190,7 @@ export function JobTable({
         rowId={(j) => j.id}
         selected={selected}
         onSelectedChange={setSelected}
-        onRowClick={onPreviewFile ? (j) => onPreviewFile(j.fileId) : undefined}
+        onRowClick={(j) => router.push(`/projects/${j.projectId}/jobs/${j.id}`)}
         selectAllLabel={t.jobs.selectAll}
         selectLabel={t.jobs.selectRow}
       />

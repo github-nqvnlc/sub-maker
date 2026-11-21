@@ -85,7 +85,7 @@ function Form({ initial }: { initial: Settings }) {
   });
 
   return (
-    <div className="w-full max-w-6xl space-y-6">
+    <div className="w-full space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">{t.adminSettings.title}</h1>
         <p className="text-sm text-muted-foreground">{t.adminSettings.subtitle}</p>
@@ -96,12 +96,13 @@ function Form({ initial }: { initial: Settings }) {
           setErrors({});
           save.mutate();
         }}
+        className="w-full"
       >
-        <Card>
+        <Card className="w-full">
           <CardContent className="space-y-6 p-6">
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid w-full grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {FIELDS.map((f) => (
-                <div key={f.key} className="space-y-1.5">
+                <div key={f.key} className="w-full space-y-1.5">
                   <Label htmlFor={`set-${f.key}`} className="font-medium">
                     {f.label}
                   </Label>

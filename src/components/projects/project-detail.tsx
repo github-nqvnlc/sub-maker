@@ -164,21 +164,20 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             <ul className="space-y-2">
               {p.voices.map((v) => (
                 <li key={v.id}>
-                  <Card>
+                  <Card
+                    className="cursor-pointer transition-colors hover:bg-accent/40"
+                    onClick={() => router.push(`/projects/${p.id}/voices/${v.id}`)}
+                  >
                     <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                       <div className="min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => v.fileId && setPreviewId(v.fileId)}
-                          className="cursor-pointer truncate text-left font-medium transition-colors hover:text-primary hover:underline"
-                        >
+                        <p className="truncate font-medium transition-colors hover:text-primary">
                           {v.title}
-                        </button>
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {t.voices.duration} {fmtDuration(v.durationMs)} · {fmtBytes(v.sizeBytes)} · {fx.dateTime(v.createdAt)}
                         </p>
                       </div>
-                      <Button asChild size="sm">
+                      <Button asChild size="sm" onClick={(e) => e.stopPropagation()}>
                         <Link href={`/projects/${p.id}/voices/${v.id}`}>{t.voices.open}</Link>
                       </Button>
                     </CardContent>
