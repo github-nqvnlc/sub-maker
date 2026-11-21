@@ -36,7 +36,19 @@ const RESUMABLE: JobStatus[] = ['stopped', 'failed', 'interrupted'];
  * Danh sách tiến trình của Project: trạng thái, tiến độ và các thao tác quản lý
  * (dừng, tiếp tục, chạy lại, sửa thiết lập, xóa một hoặc nhiều) — FR-002, FR-021..023.
  */
-export function JobTable({ projectId, providerType, jobs, fileNames }: { projectId: string; providerType: string; jobs: JobRowDto[]; fileNames: Map<string, string> }) {
+export function JobTable({
+  projectId,
+  providerType,
+  jobs,
+  fileNames,
+  onPreviewFile,
+}: {
+  projectId: string;
+  providerType: string;
+  jobs: JobRowDto[];
+  fileNames: Map<string, string>;
+  onPreviewFile?: (fileId: string) => void;
+}) {
   const t = useT();
   const fx = useFormat();
   const qc = useQueryClient();
@@ -82,7 +94,22 @@ export function JobTable({ projectId, providerType, jobs, fileNames }: { project
 
   const columns: Column<JobRowDto>[] = [
     { key: 'status', header: t.jobs.colStatus, cell: (j) => <StatusBadge status={j.status} /> },
-    { key: 'file', header: t.jobs.colFile, cell: (j) => <span className="line-clamp-1 max-w-48 break-all">{fileNames.get(j.fileId) ?? '—'}</span> },
+    {
+      key: 'file',
+      header: t.jobs.colFile,
+      cell: (j) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPreviewFile?.(j.fileId);
+          }}
+          className="line-clamp-1 max-w-48 cursor-pointer break-all text-left font-medium transition-colors hover:text-primary hover:underline"
+        >
+          {fileNames.get(j.fileId) ?? '—'}
+        </button>
+      ),
+    },
     { key: 'voice', header: t.jobs.colVoice, cell: (j) => <span>{j.settings.voice}</span>, className: 'hidden sm:table-cell' },
     {
       key: 'progress',
@@ -161,6 +188,7 @@ export function JobTable({ projectId, providerType, jobs, fileNames }: { project
         rowId={(j) => j.id}
         selected={selected}
         onSelectedChange={setSelected}
+        onRowClick={onPreviewFile ? (j) => onPreviewFile(j.fileId) : undefined}
         selectAllLabel={t.jobs.selectAll}
         selectLabel={t.jobs.selectRow}
       />

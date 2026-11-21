@@ -57,6 +57,7 @@ export const jobDto = (j: JobRow, voiceId: string | null = null) => ({
 export const voiceDto = (v: VoiceRow) => ({
   id: v.id,
   title: v.title,
+  fileId: v.subtitleFileId,
   durationMs: v.durationMs,
   sizeBytes: v.sizeBytes,
   createdAt: v.createdAt.toISOString(),

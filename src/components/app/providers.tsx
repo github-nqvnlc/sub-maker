@@ -24,7 +24,7 @@ export function Providers({ children, locale, dict }: { children: React.ReactNod
       <I18nProvider locale={locale} dict={dict}>
         <QueryClientProvider client={client}>
           <TooltipProvider>{children}</TooltipProvider>
-          <Toaster richColors position="top-right" />
+          <Toaster richColors position="bottom-right" />
         </QueryClientProvider>
       </I18nProvider>
     </ThemeProvider>

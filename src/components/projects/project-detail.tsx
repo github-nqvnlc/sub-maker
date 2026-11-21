@@ -21,7 +21,7 @@ import { fmtBytes, fmtDuration } from '@/lib/format';
 import { useFormat, useT } from '@/lib/i18n/client';
 
 type FileDto = { id: string; originalName: string; ext: string; sizeBytes: number; charCount: number; segmentCount: number; hasTimecodes?: boolean; cueCount?: number | null; durationMs?: number | null; createdAt: string };
-type VoiceDto = { id: string; title: string; durationMs: number; sizeBytes: number; createdAt: string };
+type VoiceDto = { id: string; title: string; fileId?: string; durationMs: number; sizeBytes: number; createdAt: string };
 export type ProjectDetailDto = {
   id: string;
   name: string;
@@ -109,7 +109,13 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                     <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="truncate font-medium">{f.originalName}</span>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewId(f.id)}
+                            className="cursor-pointer truncate text-left font-medium transition-colors hover:text-primary hover:underline"
+                          >
+                            {f.originalName}
+                          </button>
                           <Badge variant="outline">.{f.ext}</Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">
@@ -142,7 +148,13 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </TabsContent>
 
         <TabsContent value="jobs">
-          <JobTable projectId={p.id} providerType={p.providerType} jobs={p.jobs} fileNames={fileNames} />
+          <JobTable
+            projectId={p.id}
+            providerType={p.providerType}
+            jobs={p.jobs}
+            fileNames={fileNames}
+            onPreviewFile={(id) => setPreviewId(id)}
+          />
         </TabsContent>
 
         <TabsContent value="voices">
@@ -155,7 +167,13 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                   <Card>
                     <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                       <div className="min-w-0">
-                        <p className="truncate font-medium">{v.title}</p>
+                        <button
+                          type="button"
+                          onClick={() => v.fileId && setPreviewId(v.fileId)}
+                          className="cursor-pointer truncate text-left font-medium transition-colors hover:text-primary hover:underline"
+                        >
+                          {v.title}
+                        </button>
                         <p className="text-xs text-muted-foreground">
                           {t.voices.duration} {fmtDuration(v.durationMs)} · {fmtBytes(v.sizeBytes)} · {fx.dateTime(v.createdAt)}
                         </p>

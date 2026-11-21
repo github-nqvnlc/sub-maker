@@ -85,7 +85,7 @@ function Form({ initial }: { initial: Settings }) {
   });
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="w-full max-w-6xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">{t.adminSettings.title}</h1>
         <p className="text-sm text-muted-foreground">{t.adminSettings.subtitle}</p>
@@ -98,26 +98,32 @@ function Form({ initial }: { initial: Settings }) {
         }}
       >
         <Card>
-          <CardContent className="space-y-5 p-5">
-            {FIELDS.map((f) => (
-              <div key={f.key} className="space-y-1.5">
-                <Label htmlFor={`set-${f.key}`}>{f.label}</Label>
-                <Input
-                  id={`set-${f.key}`}
-                  inputMode="decimal"
-                  value={text[f.key]}
-                  aria-invalid={invalid(f) || !!errors[f.key]}
-                  onChange={(e) => setText({ ...text, [f.key]: e.target.value })}
-                  className="max-w-48"
-                />
-                <p className="text-xs text-muted-foreground">{f.hint}</p>
-                {invalid(f) ? <p className="text-xs text-destructive">{t.adminSettings.invalid}</p> : null}
-                {errors[f.key] ? <p className="text-xs text-destructive">{errors[f.key]}</p> : null}
-              </div>
-            ))}
-            <Button type="submit" disabled={save.isPending || anyInvalid}>
-              {save.isPending ? t.common.loading : t.adminSettings.save}
-            </Button>
+          <CardContent className="space-y-6 p-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {FIELDS.map((f) => (
+                <div key={f.key} className="space-y-1.5">
+                  <Label htmlFor={`set-${f.key}`} className="font-medium">
+                    {f.label}
+                  </Label>
+                  <Input
+                    id={`set-${f.key}`}
+                    inputMode="decimal"
+                    value={text[f.key]}
+                    aria-invalid={invalid(f) || !!errors[f.key]}
+                    onChange={(e) => setText({ ...text, [f.key]: e.target.value })}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">{f.hint}</p>
+                  {invalid(f) ? <p className="text-xs text-destructive">{t.adminSettings.invalid}</p> : null}
+                  {errors[f.key] ? <p className="text-xs text-destructive">{errors[f.key]}</p> : null}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end border-t pt-4">
+              <Button type="submit" disabled={save.isPending || anyInvalid} size="lg">
+                {save.isPending ? t.common.loading : t.adminSettings.save}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </form>
