@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { boolean, check, customType, index, integer, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { users } from './auth';
 
-export const providerType = pgEnum('provider_type', ['fpt_marketplace', 'shopaikey_openai', 'shopaikey_minimax']);
+export const providerType = pgEnum('provider_type', ['fpt_marketplace', 'shopaikey_openai', 'shopaikey_minimax', 'openai_compatible']);
 export const configScope = pgEnum('config_scope', ['global', 'user']);
 export const disabledReason = pgEnum('config_disabled_reason', ['owner_removed_from_list', 'admin_disabled']);
 

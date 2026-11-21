@@ -136,7 +136,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
                   <SelectContent>
                     {provider.models.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
-                        {m.id}
+                        {m.label || m.id}
                       </SelectItem>
                     ))}
                   </SelectContent>

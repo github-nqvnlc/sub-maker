@@ -184,6 +184,10 @@ export const en: Dict = {
     added: 'Added to the list',
     removed: 'Removed from the list',
     tabs: 'Providers',
+    customOption: 'Custom (enter another name)…',
+    customModelPlaceholder: 'Enter model ID (e.g. tts-1, custom-tts…)',
+    customVoicePlaceholder: 'Enter voice ID (e.g. alloy, custom-voice…)',
+    whisperSttHint: 'Note: whisper-1 is an STT (Speech-to-Text) model. Select a TTS model for subtitle voice generation.',
   },
   projects: {
     title: 'Projects',

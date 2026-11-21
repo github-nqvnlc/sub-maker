@@ -43,6 +43,13 @@
       "when": 1795155505653,
       "tag": "0005_subtitle_cues_and_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795166000000,
+      "tag": "0006_add_openai_compatible",
+      "breakpoints": true
     }
   ]
 }

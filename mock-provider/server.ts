@@ -143,7 +143,7 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
 
     const origin = `http://${req.headers.host}`;
 
-    // ----- FPT Marketplace: POST /v1/audio/speech (baseUrl kết thúc bằng /v1) -----
+    // ----- FPT Marketplace / OpenAI SDK: POST /v1/audio/speech -----
     if (req.method === 'POST' && rest === '/v1/audio/speech') {
       const auth = String(req.headers['authorization'] ?? '');
       if (scenario === '401' || !auth.startsWith('Bearer ')) return json(res, 401, { error: { message: 'Invalid token' } });
@@ -164,6 +164,13 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
       if (early) return;
       res.writeHead(200, { 'content-type': 'audio/wav' });
       return res.end(wavFor(text));
+    }
+
+    // ----- OpenAI SDK: GET /v1/models -----
+    if (req.method === 'GET' && rest === '/v1/models') {
+      const auth = String(req.headers['authorization'] ?? '');
+      if (scenario === '401' || !auth.startsWith('Bearer ')) return json(res, 401, { error: { message: 'Invalid token' } });
+      return json(res, 200, { data: [{ id: 'tts-1' }, { id: 'tts-1-hd' }, { id: 'whisper-1' }] });
     }
 
     // ----- ShopAIKey: POST /tts/openai/speech -----

@@ -108,7 +108,7 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
                   <SelectContent>
                     {provider.models.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
-                        {m.id}
+                        {m.label || m.id}
                       </SelectItem>
                     ))}
                   </SelectContent>

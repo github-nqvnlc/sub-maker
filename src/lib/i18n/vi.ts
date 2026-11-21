@@ -180,6 +180,10 @@ export const vi = {
     added: 'Đã thêm vào danh sách',
     removed: 'Đã gỡ khỏi danh sách',
     tabs: 'Nhà cung cấp',
+    customOption: 'Tùy chỉnh (nhập tên khác)…',
+    customModelPlaceholder: 'Nhập mã model theo nhà cung cấp (vd: tts-1, custom-tts…)',
+    customVoicePlaceholder: 'Nhập mã giọng đọc (vd: alloy, custom-voice…)',
+    whisperSttHint: 'Lưu ý: whisper-1 là model STT (Speech-to-Text). Để tạo giọng đọc cho kịch bản phụ đề, hãy chọn model TTS.',
   },
   projects: {
     title: 'Project',

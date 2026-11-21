@@ -115,10 +115,43 @@ const SHOPAIKEY_MINIMAX: ProviderCatalog = {
   minChars: 1,
 };
 
+const OPENAI_SDK_VOICES: VoiceInfo[] = [
+  v('alloy', 'Alloy (Trung tính)', 'neutral'),
+  v('echo', 'Echo (Nam)', 'male'),
+  v('fable', 'Fable (Nam)', 'male'),
+  v('onyx', 'Onyx (Nam trầm)', 'male'),
+  v('nova', 'Nova (Nữ)', 'female'),
+  v('shimmer', 'Shimmer (Nữ ấm)', 'female'),
+  v('ash', 'Ash (Nam tự nhiên)', 'male'),
+  v('ballad', 'Ballad (Nam ấm áp)', 'male'),
+  v('coral', 'Coral (Nữ tươi sáng)', 'female'),
+  v('sage', 'Sage (Nữ tự nhiên)', 'female'),
+  v('verse', 'Verse (Nữ biểu cảm)', 'female'),
+];
+
+const OPENAI_COMPATIBLE_MODELS: ModelInfo[] = [
+  { id: 'tts-1', label: 'tts-1 (TTS tiêu chuẩn)', voices: OPENAI_SDK_VOICES },
+  { id: 'tts-1-hd', label: 'tts-1-hd (TTS chất lượng cao)', voices: OPENAI_SDK_VOICES },
+  { id: 'gpt-4o-mini-audio-preview', label: 'gpt-4o-mini-audio-preview (TTS Audio Preview)', voices: OPENAI_SDK_VOICES },
+  { id: 'gpt-4o-audio-preview', label: 'gpt-4o-audio-preview (TTS Audio Preview)', voices: OPENAI_SDK_VOICES },
+  { id: 'whisper-1', label: 'whisper-1 (STT Speech-to-Text)', voices: OPENAI_SDK_VOICES },
+];
+
+const OPENAI_COMPATIBLE: ProviderCatalog = {
+  type: 'openai_compatible',
+  label: 'OpenAI Compatible (Chuẩn OpenAI SDK)',
+  defaultBaseUrl: 'https://api.openai.com/v1',
+  models: OPENAI_COMPATIBLE_MODELS,
+  speed: { min: 0.25, max: 4, default: 1, step: 0.05 },
+  maxCharsPerRequest: 4096,
+  minChars: 1,
+};
+
 const CATALOGS: Record<ProviderType, ProviderCatalog> = {
   fpt_marketplace: FPT_MARKETPLACE,
   shopaikey_openai: SHOPAIKEY_OPENAI,
   shopaikey_minimax: SHOPAIKEY_MINIMAX,
+  openai_compatible: OPENAI_COMPATIBLE,
 };
 
 export const PROVIDER_TYPES = Object.keys(CATALOGS) as ProviderType[];
@@ -154,11 +187,15 @@ export function resolveSettings(
 
   const model = input.model ?? input.defaults?.model ?? cat.models[0]!.id;
   const modelInfo = cat.models.find((m) => m.id === model);
-  if (!modelInfo) fields.model = 'Model không được hỗ trợ cho nhà cung cấp này';
+  if (!modelInfo && type !== 'openai_compatible') {
+    fields.model = 'Model không được hỗ trợ cho nhà cung cấp này';
+  }
 
-  const voice = input.voice ?? input.defaults?.voice ?? modelInfo?.voices[0]?.id ?? null;
-  if (modelInfo && (!voice || !modelInfo.voices.some((x) => x.id === voice))) {
+  const voice = input.voice ?? input.defaults?.voice ?? modelInfo?.voices[0]?.id ?? (type === 'openai_compatible' ? 'alloy' : null);
+  if (type !== 'openai_compatible' && modelInfo && (!voice || !modelInfo.voices.some((x) => x.id === voice))) {
     fields.voice = 'Giọng đọc không có trong model đã chọn';
+  } else if (!voice) {
+    fields.voice = 'Giọng đọc không được để trống';
   }
 
   const speed: number | null = input.speed ?? input.defaults?.speed ?? cat.speed.default;

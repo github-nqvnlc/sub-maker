@@ -149,7 +149,7 @@ describe('danh mục nhà cung cấp /api/providers', () => {
   it('liệt kê 3 loại kèm model/giọng/tốc độ; khả dụng chỉ khi có cấu hình chung đang bật', async () => {
     const u = await createUser();
     const before = (await (await u.client.get('/api/providers')).json()) as Array<{ type: string; available: boolean; usingOwnConfig: boolean; models: unknown[] }>;
-    expect(before.map((p) => p.type).sort()).toEqual(['fpt_marketplace', 'shopaikey_minimax', 'shopaikey_openai']);
+    expect(before.map((p) => p.type).sort()).toEqual(['fpt_marketplace', 'openai_compatible', 'shopaikey_minimax', 'shopaikey_openai']);
     expect(before.every((p) => !p.available && !p.usingOwnConfig && p.models.length > 0)).toBe(true);
 
     await admin.client.put('/api/admin/ai-configs', { json: input() });

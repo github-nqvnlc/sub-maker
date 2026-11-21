@@ -48,6 +48,7 @@ const DEFAULT_BASE_URL: Record<string, string> = {
   fpt_marketplace: 'https://mkp-api.fptcloud.com/v1',
   shopaikey_openai: 'https://api.shopaikey.com',
   shopaikey_minimax: 'https://api.shopaikey.com',
+  openai_compatible: 'https://api.openai.com/v1',
 };
 
 /** Quản lý cấu hình nhà cung cấp AI: dùng chung cho Administrator (cấu hình chung) và User được phép (cấu hình riêng). */
@@ -112,8 +113,16 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
   const qc = useQueryClient();
   const [baseUrl, setBaseUrl] = useState(config?.baseUrl ?? DEFAULT_BASE_URL[catalog.type] ?? '');
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState(config?.defaultModel ?? NONE);
-  const [voice, setVoice] = useState(config?.defaultVoice ?? NONE);
+
+  const isCustomModelInitially = !!config?.defaultModel && !catalog.models.some((m) => m.id === config.defaultModel);
+  const [modelChoice, setModelChoice] = useState(isCustomModelInitially ? '__custom__' : (config?.defaultModel ?? NONE));
+  const [customModel, setCustomModel] = useState(isCustomModelInitially ? (config?.defaultModel ?? '') : '');
+
+  const knownVoices = catalog.models.flatMap((m) => m.voices);
+  const isCustomVoiceInitially = !!config?.defaultVoice && !knownVoices.some((v) => v.id === config.defaultVoice);
+  const [voiceChoice, setVoiceChoice] = useState(isCustomVoiceInitially ? '__custom__' : (config?.defaultVoice ?? NONE));
+  const [customVoice, setCustomVoice] = useState(isCustomVoiceInitially ? (config?.defaultVoice ?? '') : '');
+
   const [speed, setSpeed] = useState(config?.defaultSpeed != null ? String(config.defaultSpeed) : '');
   const [maxChars, setMaxChars] = useState(String(config?.maxCharsPerRequest ?? catalog.maxCharsPerRequest));
   const [price, setPrice] = useState(config?.pricePerMillionChars != null ? String(config.pricePerMillionChars) : '');
@@ -122,12 +131,16 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const voices = (catalog.models.find((m) => m.id === model)?.voices ?? catalog.models.flatMap((m) => m.voices)).filter(
+  const selectedModelId = modelChoice === '__custom__' ? customModel.trim() : modelChoice;
+  const voices = (catalog.models.find((m) => m.id === selectedModelId)?.voices ?? catalog.models.flatMap((m) => m.voices)).filter(
     (v, i, arr) => arr.findIndex((x) => x.id === v.id) === i,
   );
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['ai-configs', scope] });
   const num = (s: string) => (s.trim() === '' ? null : Number(s));
+
+  const effModel = modelChoice === '__custom__' ? customModel.trim() || null : (modelChoice === NONE ? null : modelChoice);
+  const effVoice = voiceChoice === '__custom__' ? customVoice.trim() || null : (voiceChoice === NONE ? null : voiceChoice);
 
   const save = useMutation({
     mutationFn: () =>
@@ -135,8 +148,8 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
         type: catalog.type,
         baseUrl,
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
-        defaultModel: model === NONE ? null : model,
-        defaultVoice: voice === NONE ? null : voice,
+        defaultModel: effModel,
+        defaultVoice: effVoice,
         defaultSpeed: num(speed),
         maxCharsPerRequest: Number(maxChars),
         pricePerMillionChars: num(price),
@@ -209,10 +222,10 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
           <div className="space-y-2">
             <Label>{t.aiConfig.defaultModel}</Label>
             <Select
-              value={model}
+              value={modelChoice}
               onValueChange={(v) => {
-                setModel(v);
-                setVoice(NONE);
+                setModelChoice(v);
+                setVoiceChoice(NONE);
               }}
             >
               <SelectTrigger aria-label={t.aiConfig.defaultModel}>
@@ -222,17 +235,31 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
                 <SelectItem value={NONE}>{t.aiConfig.none}</SelectItem>
                 {catalog.models.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
-                    {m.id}
+                    {m.label || m.id}
                   </SelectItem>
                 ))}
+                {catalog.type === 'openai_compatible' ? (
+                  <SelectItem value="__custom__">{t.aiConfig.customOption}</SelectItem>
+                ) : null}
               </SelectContent>
             </Select>
+            {modelChoice === '__custom__' ? (
+              <Input
+                placeholder={t.aiConfig.customModelPlaceholder}
+                value={customModel}
+                onChange={(e) => setCustomModel(e.target.value)}
+                className="mt-1.5"
+              />
+            ) : null}
+            {modelChoice === 'whisper-1' ? (
+              <p className="text-xs text-amber-500">{t.aiConfig.whisperSttHint}</p>
+            ) : null}
             {field('defaultModel')}
           </div>
 
           <div className="space-y-2">
             <Label>{t.aiConfig.defaultVoice}</Label>
-            <Select value={voice} onValueChange={setVoice}>
+            <Select value={voiceChoice} onValueChange={setVoiceChoice}>
               <SelectTrigger aria-label={t.aiConfig.defaultVoice}>
                 <SelectValue />
               </SelectTrigger>
@@ -243,8 +270,19 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
                     {v.label}
                   </SelectItem>
                 ))}
+                {catalog.type === 'openai_compatible' ? (
+                  <SelectItem value="__custom__">{t.aiConfig.customOption}</SelectItem>
+                ) : null}
               </SelectContent>
             </Select>
+            {voiceChoice === '__custom__' ? (
+              <Input
+                placeholder={t.aiConfig.customVoicePlaceholder}
+                value={customVoice}
+                onChange={(e) => setCustomVoice(e.target.value)}
+                className="mt-1.5"
+              />
+            ) : null}
             {field('defaultVoice')}
           </div>
 

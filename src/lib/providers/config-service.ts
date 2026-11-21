@@ -7,7 +7,7 @@ import { env } from '../env';
 import { decryptSecret, encryptSecret, secretHint } from '../security/crypto';
 import { createSafeFetch, resolveSafeTarget, SsrfError } from '../security/safe-fetch';
 import { providerTypeSchema } from '../schemas/common';
-import { getCatalog } from './catalog';
+import { PROVIDER_TYPES, getCatalog } from './catalog';
 import { getProvider } from './index';
 import type { CallContext, PollingOptions, ProviderType, TestResult } from './types';
 
@@ -238,7 +238,7 @@ export async function availabilityFor(user: { id: string; canUseCustomAi: boolea
     .from(aiProviderConfigs)
     .where(sql`${aiProviderConfigs.enabled} = true and (${aiProviderConfigs.scope} = 'global' or ${aiProviderConfigs.ownerUserId} = ${user.id})`);
   const out = {} as Record<ProviderType, { available: boolean; usingOwnConfig: boolean }>;
-  for (const type of ['fpt_marketplace', 'shopaikey_openai', 'shopaikey_minimax'] as const) {
+  for (const type of PROVIDER_TYPES) {
     const own = user.canUseCustomAi && rows.some((r) => r.scope === 'user' && r.type === type);
     const global = rows.some((r) => r.scope === 'global' && r.type === type);
     out[type] = { available: own || global, usingOwnConfig: own };

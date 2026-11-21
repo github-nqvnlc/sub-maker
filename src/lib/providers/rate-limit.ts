@@ -77,7 +77,7 @@ export function getLimiter(configId: string, perMinute: number): RateLimiter | n
   return next;
 }
 
-const OVERRIDE_KEY: Record<ProviderType, keyof Settings> = {
+const OVERRIDE_KEY: Partial<Record<ProviderType, keyof Settings>> = {
   fpt_marketplace: 'rpmFptMarketplace',
   shopaikey_openai: 'rpmShopaikeyOpenai',
   shopaikey_minimax: 'rpmShopaikeyMinimax',
@@ -85,7 +85,8 @@ const OVERRIDE_KEY: Record<ProviderType, keyof Settings> = {
 
 /** Số yêu cầu/phút áp dụng: cài đặt hệ thống (nếu > 0) thay mặc định của catalog; 0 = không giới hạn. */
 export function requestsPerMinute(type: ProviderType, settings: Settings): number {
-  const override = settings[OVERRIDE_KEY[type]];
+  const key = OVERRIDE_KEY[type];
+  const override = key ? settings[key] : undefined;
   if (typeof override === 'number' && override > 0) return override;
   return getCatalog(type).requestsPerMinute ?? 0;
 }
