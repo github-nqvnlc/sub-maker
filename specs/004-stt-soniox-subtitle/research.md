@@ -30,7 +30,13 @@ Các quyết định dưới đây dựa trên khảo sát tài liệu chính th
 
 ### R1b. Kiểm chứng tài liệu Soniox (2026-11-23, T014)
 
-Đã đọc trang tham chiếu API chính thức (docs.soniox.com/api-reference/stt/…). **Chưa gọi thử bằng token thật**: việc đó cần token của Administrator và vẫn phải làm thủ công trước khi dùng thật (Hiến pháp).
+Đã đọc trang tham chiếu API chính thức (docs.soniox.com/api-reference/stt/…), rồi **gọi thử bằng token thật ngày 2026-11-23** (biến `SPIKE_SONIOX_KEY` trong `.env`, chạy `SonioxSttClient` của dự án). Kết quả:
+
+- `GET /v1/models`: OK (~1,1 giây); có `stt-async-v6`, `stt-rt-v6`, `stt-async-v5`, `stt-rt-v5` cùng các bản cũ/alias.
+- Âm sin 10 giây (`tests/fixtures/sample-10s.mp3`): upload → phiên âm `completed` sau ~2,5 giây, `audio_duration_ms = 10000`, transcript **rỗng** (0 token) → worker sẽ báo `NO_SPEECH_DETECTED` đúng như thiết kế.
+- Câu tiếng Anh 6,6 giây (giọng đọc Windows): `completed`, `audio_duration_ms = 6558`, 23 token; bộ gom tạo 4 cue `.srt` hợp lệ khớp lời nói.
+- `DELETE` transcription và file: OK; xóa lại transcription đã xóa trả 404 và client coi là thành công.
+- Khác tài liệu: các trường tùy chọn của token (`language`, `is_audio_event`, `translation_status`) có thể là **`null`** thay vì vắng mặt (code đã xử lý được); phản hồi transcription có thêm `enable_audio_event_detection`. Chưa gặp trạng thái `error`/`failed` thật.
 
 - Xác thực: header `Authorization: Bearer <SONIOX_API_KEY>` cho MỌI lệnh gọi (kể cả GET/DELETE).
 - `POST /v1/files` (multipart, trường `file`) → 201 `{ id, filename, size, created_at }`.
