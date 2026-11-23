@@ -6,6 +6,8 @@ export const SETTING_DEFAULTS = {
   userQuotaBytes: 524_288_000,
   maxConcurrentJobs: 3,
   maxJobsPerUser: 2,
+  /** Số STT job đang chờ/đang chạy tối đa mỗi User (spec 004, FR-017) */
+  maxSttJobsPerUser: 2,
   segmentConcurrency: 3,
   /** Voice khớp mốc (spec 003): độ trễ tối đa so với mốc phụ đề (ms) */
   timingMaxSlipMs: 500,

@@ -74,10 +74,10 @@ export const aiConfigInputSchema = z
   .strict();
 export type AiConfigInput = z.infer<typeof aiConfigInputSchema>;
 
-const allowInsecure = () => env().ALLOW_INSECURE_PROVIDER_URLS;
+export const allowInsecure = () => env().ALLOW_INSECURE_PROVIDER_URLS;
 
 /** Kiểm tra `baseUrl` bằng đúng quy tắc safeFetch (https, không địa chỉ nội bộ) ngay lúc lưu. */
-async function assertSafeBaseUrl(baseUrl: string): Promise<void> {
+export async function assertSafeBaseUrl(baseUrl: string): Promise<void> {
   try {
     await resolveSafeTarget(baseUrl, { allowInsecure: allowInsecure() });
   } catch (e) {
@@ -121,8 +121,34 @@ export async function getConfigRow(scope: ConfigScope, ownerUserId: string | nul
   return row ?? null;
 }
 
+/** ShopAIKey: một token dùng cho mọi model đã đăng ký (spec 004, FR-011) — hai adapter chia sẻ khóa và địa chỉ gốc. */
+export const SHOPAIKEY_TYPES: readonly ProviderType[] = ['shopaikey_openai', 'shopaikey_minimax'];
+
 /** Tạo/sửa cấu hình theo (scope, owner, type). `apiKey` trống khi sửa = giữ khóa cũ. */
 export async function upsertConfig(scope: ConfigScope, ownerUserId: string | null, input: AiConfigInput): Promise<AiConfigDto> {
+  // Spec 004: nhà cung cấp chuẩn OpenAI dùng chung nay quản lý ở custom_ai_providers (nhiều provider, có phân quyền)
+  if (scope === 'global' && input.type === 'openai_compatible') {
+    throw new HttpError(422, 'VALIDATION', undefined, { type: 'Nhà cung cấp chuẩn OpenAI dùng chung được quản lý ở mục Nhà cung cấp OpenAI tùy chỉnh.' });
+  }
+  const dto = await upsertOne(scope, ownerUserId, input);
+  if (scope === 'global' && SHOPAIKEY_TYPES.includes(input.type)) await syncShopAIKeySibling(input);
+  return dto;
+}
+
+/** Đồng bộ khóa/địa chỉ/trạng thái bật sang adapter ShopAIKey còn lại (tạo mới nếu chưa có và có khóa). */
+async function syncShopAIKeySibling(input: AiConfigInput): Promise<void> {
+  const sibling = SHOPAIKEY_TYPES.find((t) => t !== input.type)!;
+  const existing = await getConfigRow('global', null, sibling);
+  if (!existing && !input.apiKey) return;
+  await upsertOne('global', null, {
+    type: sibling,
+    baseUrl: input.baseUrl,
+    ...(input.apiKey ? { apiKey: input.apiKey } : {}),
+    ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+  });
+}
+
+async function upsertOne(scope: ConfigScope, ownerUserId: string | null, input: AiConfigInput): Promise<AiConfigDto> {
   const cat = getCatalog(input.type);
   const existing = await getConfigRow(scope, ownerUserId, input.type);
   if (!existing && !input.apiKey) {
@@ -175,8 +201,14 @@ export async function upsertConfig(scope: ConfigScope, ownerUserId: string | nul
 }
 
 export async function deleteConfig(scope: ConfigScope, ownerUserId: string | null, type: ProviderType): Promise<boolean> {
-  const res = await getDb().delete(aiProviderConfigs).where(whereScope(scope, ownerUserId, type)).returning({ id: aiProviderConfigs.id });
-  return res.length > 0;
+  // ShopAIKey dùng chung một token (spec 004): xóa cấu hình chung là xóa cho cả hai adapter
+  const types = scope === 'global' && SHOPAIKEY_TYPES.includes(type) ? SHOPAIKEY_TYPES : [type];
+  let n = 0;
+  for (const t of types) {
+    const res = await getDb().delete(aiProviderConfigs).where(whereScope(scope, ownerUserId, t)).returning({ id: aiProviderConfigs.id });
+    if (t === type) n = res.length;
+  }
+  return n > 0;
 }
 
 /** FR-044: gỡ User khỏi danh sách → cấu hình riêng bị vô hiệu (giữ lại, không xóa). */
@@ -213,7 +245,8 @@ export async function testConfig(scope: ConfigScope, ownerUserId: string | null,
 
 // ---- Chọn cấu hình lúc bắt đầu job -------------------------------------------------------------
 
-export type ResolvedConfig = { row: Row; scope: ConfigScope };
+/** `customProviderId` có giá trị khi job dùng Custom Provider do Administrator tạo (spec 004, FR-022). */
+export type ResolvedConfig = { row: Row; scope: ConfigScope; customProviderId?: string };
 
 /**
  * Chọn cấu hình cho job (data-model.md):
@@ -221,7 +254,42 @@ export type ResolvedConfig = { row: Row; scope: ConfigScope };
  * không có → 409 PROVIDER_NOT_CONFIGURED. Cấu hình riêng LỖI không bao giờ tự rơi về cấu hình chung
  * (việc đó do worker bảo đảm: nó chỉ gọi hàm này một lần lúc bắt đầu).
  */
-export async function resolveConfigForJob(user: { id: string; canUseCustomAi: boolean }, type: ProviderType): Promise<ResolvedConfig> {
+export async function resolveConfigForJob(
+  user: { id: string; canUseCustomAi: boolean; role?: 'admin' | 'user' },
+  type: ProviderType,
+  opts: { customProviderId?: string | null } = {},
+): Promise<ResolvedConfig> {
+  // Custom Provider (spec 004): kiểm tra quyền + trạng thái bật NGAY LÚC GỌI (tạo job, worker nhận job), không rơi về cấu hình khác
+  if (opts.customProviderId) {
+    if (type !== 'openai_compatible') {
+      throw new HttpError(400, 'VALIDATION', undefined, { customProviderId: 'Chỉ Project dùng nhà cung cấp chuẩn OpenAI mới chọn được nhà cung cấp tùy chỉnh.' });
+    }
+    const { getUsableCustomProvider } = await import('./custom-provider-service');
+    const c = await getUsableCustomProvider({ id: user.id, role: user.role ?? 'user' }, opts.customProviderId);
+    const row: Row = {
+      id: c.id,
+      scope: 'global',
+      ownerUserId: null,
+      type: 'openai_compatible',
+      name: c.name,
+      baseUrl: c.baseUrl,
+      apiKeyEnc: c.apiKeyEnc,
+      apiKeyHint: c.apiKeyHint,
+      defaultModel: c.defaultModel,
+      defaultVoice: c.defaultVoice,
+      defaultSpeed: null,
+      maxCharsPerRequest: getCatalog('openai_compatible').maxCharsPerRequest,
+      pricePerMillionChars: c.pricePerMillionChars,
+      enabled: c.enabled,
+      disabledReason: null,
+      lastTestAt: c.lastTestAt,
+      lastTestOk: c.lastTestOk,
+      lastTestMessage: c.lastTestMessage,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    };
+    return { row, scope: 'global', customProviderId: c.id };
+  }
   if (user.canUseCustomAi) {
     const personal = await getConfigRow('user', user.id, type);
     if (personal && personal.enabled) return { row: personal, scope: 'user' };

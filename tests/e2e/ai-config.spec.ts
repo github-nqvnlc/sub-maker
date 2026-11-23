@@ -22,7 +22,7 @@ test.describe('cấu hình AI (US9)', () => {
     await loginViaUi(page, E2E_ADMIN);
     await page.goto('/admin/ai-configs');
 
-    await page.getByRole('tab', { name: /FPT AI Marketplace/ }).click();
+    await page.getByRole('tab', { name: /FPT\.AI/ }).click();
     await page.getByLabel('Địa chỉ gốc (Base URL)').fill(`${mock.url}/s/ok/v1`);
     await page.getByLabel('Khóa API').fill(SHARED_KEY);
     await page.getByRole('button', { name: 'Lưu cấu hình' }).click();

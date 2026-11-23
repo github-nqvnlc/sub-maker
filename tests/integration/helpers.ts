@@ -178,6 +178,7 @@ export async function resetDb(): Promise<void> {
   const db = getDb();
   await db.execute(sql`
     TRUNCATE TABLE job_logs, job_segments, voices, voice_jobs, audio_cache, usage_records,
+      stt_job_logs, stt_jobs, custom_ai_providers, stt_provider_configs,
       segments, subtitle_files, projects, ai_provider_configs,
       sessions, accounts, verifications, rate_limits, users, system_settings
     RESTART IDENTITY CASCADE`);

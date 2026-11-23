@@ -5,6 +5,7 @@ import { users, voiceJobs } from '../../lib/db/schema';
 import { deleteByPrefix } from '../../lib/storage/client';
 import { storageKeys } from '../../lib/storage/keys';
 import { stopAllForUser } from '../../lib/jobs/control';
+import { collectSttCleanup, runSttCleanup } from '../../lib/stt/cleanup';
 import { QUEUES, type DeleteUserPayload } from '../queues';
 
 /**
@@ -14,7 +15,8 @@ import { QUEUES, type DeleteUserPayload } from '../queues';
  *  3. xóa đối tượng MinIO `users/{id}/`;
  *  4. xóa bản ghi User (cascade xóa Project/file/voice/log/cấu hình/cache; `usage_records` đặt NULL
  *     để giữ thống kê tổng hợp ẩn danh);
- *  5. quét MinIO lần nữa phòng đối tượng ghi muộn.
+ *  5. quét MinIO lần nữa phòng đối tượng ghi muộn;
+ *  6. xóa file/bản phiên âm còn trên Soniox của các STT job (spec 004).
  */
 export class JobsStillRunningError extends Error {
   constructor(public readonly count: number) {
@@ -41,8 +43,11 @@ export async function deleteUserData(userId: string): Promise<{ existed: boolean
     if (running > 0) throw new JobsStillRunningError(running);
   }
 
+  // STT (spec 004, FR-021): lấy id dữ liệu trên Soniox trước khi xóa bản ghi (file tạm nằm dưới tiền tố User)
+  const sttItems = user ? await collectSttCleanup({ ownerId: userId }) : [];
   let objectsDeleted = await deleteByPrefix(storageKeys.userPrefix(userId));
   if (user) await db.delete(users).where(eq(users.id, userId));
+  await runSttCleanup(sttItems.map((i) => ({ ...i, key: null })));
   objectsDeleted += await deleteByPrefix(storageKeys.userPrefix(userId));
   return { existed: !!user, objectsDeleted };
 }

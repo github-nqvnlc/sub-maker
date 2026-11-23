@@ -1,0 +1,378 @@
+openapi: 3.1.0
+info:
+  title: Sub Maker STT & Custom AI Providers API Delta
+  version: 0.2.0
+paths:
+  /api/projects/{projectId}/stt:
+    post:
+      summary: Khởi tạo tiến trình tạo phụ đề từ Audio hoặc Video
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Tệp audio (.mp3, .wav, .m4a,...) hoặc video (.mp4, .mov,...)
+                targetFormat:
+                  type: string
+                  enum: [srt, txt, md]
+                  default: srt
+                targetFileName:
+                  type: string
+                  description: Tên kịch bản mong muốn
+                language:
+                  type: string
+                  default: auto
+                  enum: [auto, vi, en]
+                enableDiarization:
+                  type: boolean
+                  default: false
+      responses:
+        '201':
+          description: Đã tạo tiến trình STT và đưa vào hàng đợi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SttJobDto'
+        '400':
+          description: Tệp không hợp lệ hoặc không có luồng âm thanh
+        '413':
+          description: Tệp vượt quá dung lượng tối đa (video 500 MB, audio 100 MB)
+        '429':
+          description: User đã có số job STT đang chờ/chạy bằng maxSttJobsPerUser (mặc định 2)
+        '404':
+          description: Không tìm thấy Project hoặc không có quyền truy cập
+
+  /api/stt/{jobId}:
+    get:
+      summary: Lấy thông tin trạng thái và tiến độ của tiến trình STT
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Chi tiết tiến trình
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SttJobDto'
+        '404':
+          description: Không tìm thấy tiến trình
+
+  # ---- Thay đổi API có sẵn: tạo voice job dùng Custom Provider (FR-022) ----
+  /api/projects/{projectId}/jobs:
+    post:
+      summary: Bắt đầu tạo voice (API có sẵn, chỉ thêm trường customProviderId)
+      description: >
+        Body giữ nguyên createJobSchema hiện có (fileId, model, voice, speed, timing) và thêm customProviderId.
+        customProviderId chỉ được gửi khi Project có providerType = openai_compatible; máy chủ kiểm tra
+        quyền truy cập (public, hoặc restricted có User) và enabled trước khi tạo job.
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileId]
+              properties:
+                fileId:
+                  type: string
+                  format: uuid
+                customProviderId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Custom Provider do Admin tạo; bỏ trống để dùng cấu hình như hiện nay
+      responses:
+        '202':
+          description: Đã tạo voice job và đưa vào hàng đợi
+        '400':
+          description: Gửi customProviderId khi Project không dùng providerType openai_compatible
+        '404':
+          description: Không tìm thấy Project, hoặc Custom Provider không tồn tại, đã tắt, hoặc User không có quyền dùng
+
+  # ---- Admin: Quản lý CRUD Custom AI Providers chuẩn OpenAI ----
+  /api/admin/custom-ai-providers:
+    get:
+      summary: Danh sách tất cả Custom AI Providers do Admin quản lý
+      responses:
+        '200':
+          description: Danh sách Custom AI Providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomAiProviderDto'
+    post:
+      summary: Thêm mới một Custom AI Provider chuẩn OpenAI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomAiProviderInput'
+      responses:
+        '201':
+          description: Tạo thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomAiProviderDto'
+
+  /api/admin/custom-ai-providers/{providerId}:
+    put:
+      summary: Cập nhật Custom AI Provider
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomAiProviderInput'
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomAiProviderDto'
+    delete:
+      summary: Xóa Custom AI Provider
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Đã xóa thành công
+
+  /api/admin/custom-ai-providers/{providerId}/test:
+    post:
+      summary: Kiểm tra kết nối với Custom AI Provider
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Kết quả kiểm tra
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  latencyMs:
+                    type: integer
+                  message:
+                    type: string
+
+components:
+  schemas:
+    SttJobDto:
+      type: object
+      required:
+        - id
+        - projectId
+        - originalFileName
+        - mediaType
+        - targetFormat
+        - targetFileName
+        - status
+        - progressPercent
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        originalFileName:
+          type: string
+        mediaType:
+          type: string
+          enum: [audio, video]
+        targetFormat:
+          type: string
+          enum: [srt, txt, md]
+        targetFileName:
+          type: string
+        status:
+          type: string
+          enum: [queued, extracting, uploading, transcribing, formatting, completed, failed, interrupted]
+        progressPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        stageMessage:
+          type: string
+          nullable: true
+        resultSubtitleFileId:
+          type: string
+          format: uuid
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        logs:
+          type: array
+          description: 50 dòng nhật ký gần nhất từ stt_job_logs (chỉ có ở GET /api/stt/{jobId}); không chứa khóa API
+          items:
+            type: object
+            required: [ts, level, messageKey]
+            properties:
+              ts:
+                type: string
+                format: date-time
+              level:
+                type: string
+                enum: [info, warn, error]
+              messageKey:
+                type: string
+              params:
+                type: object
+                nullable: true
+
+    CustomAiProviderDto:
+      type: object
+      required:
+        - id
+        - name
+        - baseUrl
+        - apiKeyHint
+        - accessMode
+        - enabled
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        baseUrl:
+          type: string
+        apiKeyHint:
+          type: string
+        models:
+          type: array
+          items:
+            type: string
+        defaultModel:
+          type: string
+          nullable: true
+        accessMode:
+          type: string
+          enum: [public, restricted, private]
+        assignedUserIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        enabled:
+          type: boolean
+        lastTestAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastTestOk:
+          type: boolean
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateCustomAiProviderInput:
+      type: object
+      required:
+        - name
+        - baseUrl
+        - apiKey
+        - accessMode
+      properties:
+        name:
+          type: string
+        baseUrl:
+          type: string
+        apiKey:
+          type: string
+        defaultModel:
+          type: string
+        accessMode:
+          type: string
+          enum: [public, restricted, private]
+        assignedUserIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        enabled:
+          type: boolean
+          default: true
+
+    UpdateCustomAiProviderInput:
+      type: object
+      properties:
+        name:
+          type: string
+        baseUrl:
+          type: string
+        apiKey:
+          type: string
+          description: Để trống nếu không muốn đổi khóa hiện tại
+        defaultModel:
+          type: string
+        accessMode:
+          type: string
+          enum: [public, restricted, private]
+        assignedUserIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        enabled:
+          type: boolean

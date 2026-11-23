@@ -17,6 +17,7 @@ type Settings = {
   userQuotaBytes: number;
   maxConcurrentJobs: number;
   maxJobsPerUser: number;
+  maxSttJobsPerUser: number;
   segmentConcurrency: number;
   timingMaxSlipMs: number;
   timingMaxCompressPct: number;
@@ -34,6 +35,7 @@ const fieldsOf = (t: Dict): Field[] => [
   { key: 'userQuotaBytes', label: t.adminSettings.userQuotaBytes, hint: t.adminSettings.userQuotaHint, unit: 'mb', min: 1 },
   { key: 'maxConcurrentJobs', label: t.adminSettings.maxConcurrentJobs, hint: t.adminSettings.concurrencyHint, unit: 'int', min: 1, max: 50 },
   { key: 'maxJobsPerUser', label: t.adminSettings.maxJobsPerUser, hint: t.adminSettings.concurrencyHint, unit: 'int', min: 1, max: 50 },
+  { key: 'maxSttJobsPerUser', label: t.adminSettings.maxSttJobsPerUser, hint: t.adminSettings.sttJobsHint, unit: 'int', min: 1, max: 20 },
   { key: 'segmentConcurrency', label: t.adminSettings.segmentConcurrency, hint: t.adminSettings.segmentHint, unit: 'int', min: 1, max: 16 },
   // Voice khớp mốc thời gian phụ đề (spec 003)
   { key: 'timingMaxSlipMs', label: t.adminSettings.timingMaxSlipMs, hint: t.adminSettings.timingMaxSlipHint, unit: 'int', min: 100, max: 2000 },

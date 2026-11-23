@@ -30,6 +30,7 @@ export type EstimateBody = {
   model: string | null;
   voice: string;
   speed: number | null;
+  customProviderId?: string;
   timing?: { mode: 'timed' | 'continuous'; mergeCues?: boolean };
 };
 

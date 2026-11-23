@@ -37,6 +37,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
   const provider = providers.data?.find((p) => p.type === providerType);
 
   const [fileId, setFileId] = useState<string | null>(null);
+  const [customId, setCustomId] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [voice, setVoice] = useState<string | null>(null);
   const [speed, setSpeed] = useState<number | null>(null);
@@ -44,22 +45,34 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
   const [mergeCues, setMergeCues] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Spec 004: Project chuẩn OpenAI không có cấu hình riêng → chọn một Custom Provider do Administrator cấp quyền
+  const customs = providerType === 'openai_compatible' && !provider?.usingOwnConfig ? (provider?.customProviders ?? []) : [];
+  const custom = customs.find((c) => c.id === customId) ?? customs[0];
+  const modelOptions = custom && custom.models.length > 0 ? custom.models.map((id) => ({ id, label: id })) : (provider?.models ?? []);
+
   // Giá trị hiệu lực: lựa chọn của người dùng, nếu chưa chọn thì mặc định theo catalog (suy ra khi render)
   const effFile = fileId ?? openFileId ?? files[0]?.id ?? '';
-  const effModel = model ?? provider?.models[0]?.id ?? '';
-  const modelInfo = provider?.models.find((m) => m.id === effModel);
-  const effVoice = voice && modelInfo?.voices.some((v) => v.id === voice) ? voice : (modelInfo?.voices[0]?.id ?? '');
+  const effModel = model ?? custom?.defaultModel ?? modelOptions[0]?.id ?? '';
+  // Giọng chuẩn OpenAI giống nhau ở mọi model; model ngoài danh mục dùng danh sách giọng của model đầu
+  const modelInfo = provider?.models.find((m) => m.id === effModel) ?? (custom ? provider?.models[0] : undefined);
+  const customVoice = custom?.defaultVoice && modelInfo?.voices.some((v) => v.id === custom.defaultVoice) ? custom.defaultVoice : null;
+  const effVoice = voice && modelInfo?.voices.some((v) => v.id === voice) ? voice : (customVoice ?? modelInfo?.voices[0]?.id ?? '');
   const effSpeed = speed ?? provider?.speed.default ?? 1;
   // Chế độ khớp mốc: bật sẵn khi tệp có mốc thời gian hợp lệ (spec 003, FR-003)
   const fileInfo = files.find((f) => f.id === effFile);
   const timingAvailable = !!fileInfo?.hasTimecodes;
   const effTimed = timingAvailable && (timedPick ?? true);
   const timing = effTimed ? ({ mode: 'timed', mergeCues } as const) : undefined;
-  const estimate = useEstimate(effFile, { model: effModel || null, voice: effVoice, speed: effSpeed, ...(timing ? { timing } : {}) }, !!openFileId && !!provider?.available);
+  const customBody = custom ? { customProviderId: custom.id } : {};
+  const estimate = useEstimate(
+    effFile,
+    { model: effModel || null, voice: effVoice, speed: effSpeed, ...customBody, ...(timing ? { timing } : {}) },
+    !!openFileId && !!provider?.available,
+  );
   const quotaBlocked = estimate.data?.quotaOk === false;
 
   const start = useMutation({
-    mutationFn: () => apiPost<{ id: string }>(`/api/projects/${projectId}/jobs`, { fileId: effFile, model: effModel, voice: effVoice, speed: effSpeed, ...(timing ? { timing } : {}) }),
+    mutationFn: () => apiPost<{ id: string }>(`/api/projects/${projectId}/jobs`, { fileId: effFile, model: effModel, voice: effVoice, speed: effSpeed, ...customBody, ...(timing ? { timing } : {}) }),
     onSuccess: (job) => {
       toast.success(t.jobs.started);
       void qc.invalidateQueries({ queryKey: ['project', projectId] });
@@ -79,6 +92,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
         if (!o) {
           setError(null);
           setFileId(null);
+          setCustomId(null);
           setTimedPick(null);
           onClose();
         }
@@ -120,7 +134,32 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
               </div>
             ) : null}
 
-            {provider.models.length > 1 ? (
+            {customs.length > 0 ? (
+              <div className="space-y-2">
+                <Label>{t.providersAdmin.customProviderLabel}</Label>
+                <Select
+                  value={custom?.id ?? ''}
+                  onValueChange={(v) => {
+                    setCustomId(v);
+                    setModel(null);
+                    setVoice(null);
+                  }}
+                >
+                  <SelectTrigger aria-label={t.providersAdmin.customProviderLabel}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customs.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
+            {modelOptions.length > 1 ? (
               <div className="space-y-2">
                 <Label>{t.jobs.model}</Label>
                 <Select
@@ -134,7 +173,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {provider.models.map((m) => (
+                    {modelOptions.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
                         {m.label || m.id}
                       </SelectItem>

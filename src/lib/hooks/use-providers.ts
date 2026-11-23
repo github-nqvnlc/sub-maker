@@ -12,6 +12,8 @@ export type ProviderInfo = {
   models: { id: string; label: string; voices: ProviderVoice[] }[];
   speed: { min: number; max: number; default: number; step: number };
   maxCharsPerRequest: number;
+  /** Chỉ với openai_compatible: Custom Provider mà User được dùng (spec 004) */
+  customProviders?: { id: string; name: string; models: string[]; defaultModel: string | null; defaultVoice: string | null }[];
 };
 
 /** Danh mục nhà cung cấp + khả dụng cho User hiện tại (dùng ở biểu mẫu tạo Project và bắt đầu tạo voice). */

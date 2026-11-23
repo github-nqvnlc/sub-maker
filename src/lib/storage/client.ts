@@ -142,3 +142,23 @@ export async function sizeByPrefix(prefix: string): Promise<number> {
   for await (const { size } of listKeys(prefix)) total += size;
   return total;
 }
+
+/** Ghi đối tượng từ luồng (tệp lớn như media STT — spec 004) mà không giữ toàn bộ trong bộ nhớ. */
+export async function putObjectStream(
+  key: string,
+  body: ReadableStream<Uint8Array> | NodeJS.ReadableStream,
+  contentLength: number,
+  contentType = 'application/octet-stream',
+): Promise<void> {
+  const { Readable } = await import('node:stream');
+  const stream = 'getReader' in body ? Readable.fromWeb(body as import('node:stream/web').ReadableStream<Uint8Array>) : body;
+  await s3().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: stream as never, ContentLength: contentLength, ContentType: contentType }));
+}
+
+/** Tải đối tượng về tệp trên đĩa theo luồng. */
+export async function downloadObjectToFile(key: string, filePath: string): Promise<void> {
+  const { createWriteStream } = await import('node:fs');
+  const { pipeline } = await import('node:stream/promises');
+  const res = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+  await pipeline(res.Body as NodeJS.ReadableStream, createWriteStream(filePath));
+}

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { AudioLines } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -16,6 +17,7 @@ import { EditProjectDialog } from '@/components/projects/edit-project-dialog';
 import { FilePreviewDialog } from '@/components/projects/file-preview-dialog';
 import { JobTable, type JobRowDto } from '@/components/projects/job-table';
 import { ScriptEditor } from '@/components/projects/script-editor';
+import { SttActiveBanner, SttDialog } from '@/components/projects/stt-dialog';
 import { UploadDropzone } from '@/components/projects/upload-dropzone';
 import { ApiError, api, apiDelete } from '@/lib/api-client';
 import { fmtBytes, fmtDuration } from '@/lib/format';
@@ -47,6 +49,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [startFileId, setStartFileId] = useState<string | null>(null);
   const [deleteFile, setDeleteFile] = useState<FileDto | null>(null);
+  const [sttOpen, setSttOpen] = useState(false);
 
   const q = useQuery({
     queryKey: ['project', projectId],
@@ -85,6 +88,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </p>
       </div>
 
+      <SttActiveBanner projectId={p.id} onOpen={() => setSttOpen(true)} />
+
       <Tabs defaultValue="files">
         <TabsList>
           <TabsTrigger value="files">
@@ -106,6 +111,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-semibold">{t.files.createNewTitle}</h2>
                 </div>
+                {/* Spec 004: tạo phụ đề từ audio/video bằng Soniox, kết quả vào danh sách kịch bản */}
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setSttOpen(true)}>
+                  <AudioLines className="size-4" />
+                  {t.stt.open}
+                </Button>
               </div>
               {/* Khung màu xanh lá cây: Upload file kịch bản */}
               <UploadDropzone projectId={p.id} onUploaded={(id) => setPreviewId(id)} />
@@ -244,6 +254,15 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         }}
       />
       <FilePreviewDialog fileId={previewId} onClose={() => setPreviewId(null)} />
+      <SttDialog
+        projectId={p.id}
+        open={sttOpen}
+        onOpenChange={setSttOpen}
+        onOpenResult={(id) => {
+          setSttOpen(false);
+          setPreviewId(id);
+        }}
+      />
       <StartJobDialog projectId={p.id} providerType={p.providerType} files={p.files} openFileId={startFileId} onClose={() => setStartFileId(null)} />
       <ConfirmDialog
         open={!!deleteFile}

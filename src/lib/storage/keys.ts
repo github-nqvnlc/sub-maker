@@ -9,6 +9,8 @@ export const storageKeys = {
   audioCache: (userId: string, hash: string) => `users/${userId}/cache/${hash}.wav`,
   voice: (userId: string, voiceId: string) => `users/${userId}/voices/${voiceId}.mp3`,
   avatar: (userId: string) => `users/${userId}/avatar`,
+  /** File media tạm của STT job (spec 004): nằm dưới tiền tố User để xóa User cũng xóa file này */
+  sttTemp: (userId: string, jobId: string, ext: string) => `users/${userId}/stt-tmp/${jobId}/source.${ext}`,
 } as const;
 
 /** Chặn khóa thoát khỏi vùng của User (phòng thủ chiều sâu). */

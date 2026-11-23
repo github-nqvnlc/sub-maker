@@ -26,6 +26,8 @@ export const estimateBodySchema = z
     model: z.string().trim().max(100).nullable().optional(),
     voice: z.string().trim().max(100).nullable().optional(),
     speed: z.number().finite().nullable().optional(),
+    /** Custom Provider sẽ dùng (spec 004) */
+    customProviderId: z.string().uuid().nullable().optional(),
     timing: z
       .object({ mode: z.enum(['timed', 'continuous']), mergeCues: z.boolean().optional() })
       .strict()
@@ -157,7 +159,7 @@ export async function estimateFile(user: AuthUser, fileId: string, body: Estimat
   const project = await getOwnedProject(user.id, file.projectId);
   if (body.timing?.mode === 'timed' && !file.hasTimecodes) throw conflict('NO_TIMECODES');
 
-  const resolved = await resolveConfigForJob(user, project.providerType);
+  const resolved = await resolveConfigForJob(user, project.providerType, { customProviderId: body.customProviderId });
   const parsed = resolveSettings(project.providerType, {
     model: body.model,
     voice: body.voice,

@@ -19,6 +19,7 @@ import { HttpError } from '../../lib/api/errors';
 import { vi } from '../../lib/i18n/vi';
 import { decryptSecret } from '../../lib/security/crypto';
 import { buildCallContext, resolveConfigForJob } from '../../lib/providers/config-service';
+import { CustomProviderUnavailable } from '../../lib/providers/custom-provider-service';
 import { getProvider } from '../../lib/providers';
 import { isAbort, PROVIDER_ERROR_MESSAGE, type ProviderErrorKind } from '../../lib/providers/errors';
 import type { PollingOptions } from '../../lib/providers/types';
@@ -152,21 +153,32 @@ export async function runGenerateVoice(jobId: string, opts: RunOptions = {}): Pr
 
   try {
     // ---- 2) Chọn cấu hình AI LÚC BẮT ĐẦU (riêng nếu đủ điều kiện, ngược lại chung) -----------------
-    const [owner] = await db.select({ id: users.id, canUseCustomAi: users.canUseCustomAi, status: users.status }).from(users).where(eq(users.id, job.ownerId));
+    const [owner] = await db
+      .select({ id: users.id, canUseCustomAi: users.canUseCustomAi, status: users.status, role: users.role })
+      .from(users)
+      .where(eq(users.id, job.ownerId));
     if (!owner) return; // User đã bị xóa
 
     let resolved;
     try {
-      resolved = await resolveConfigForJob({ id: owner.id, canUseCustomAi: owner.canUseCustomAi }, job.providerType);
+      // Custom Provider (spec 004, FR-022): kiểm tra lại quyền + trạng thái bật mỗi lần worker nhận job (kể cả chạy lại)
+      if (job.settings.customProviderId && !job.customProviderId) throw new CustomProviderUnavailable('CUSTOM_PROVIDER_UNAVAILABLE');
+      resolved = await resolveConfigForJob({ id: owner.id, canUseCustomAi: owner.canUseCustomAi, role: owner.role }, job.providerType, {
+        customProviderId: job.settings.customProviderId,
+      });
     } catch (e) {
+      const code = e instanceof CustomProviderUnavailable ? e.reason : 'PROVIDER_NOT_CONFIGURED';
       const msg = e instanceof HttpError ? e.message : vi.errors.PROVIDER_NOT_CONFIGURED;
       await log('error', 'JOB_FAILED', msg);
-      await finish(jobId, 'failed', { errorCode: 'PROVIDER_NOT_CONFIGURED', errorMessage: msg });
+      await finish(jobId, 'failed', { errorCode: code, errorMessage: msg });
       return;
     }
     const apiKey = decryptSecret(resolved.row.apiKeyEnc);
     secrets.push(apiKey);
-    await db.update(voiceJobs).set({ configId: resolved.row.id, configScope: resolved.scope }).where(eq(voiceJobs.id, jobId));
+    await db
+      .update(voiceJobs)
+      .set(resolved.customProviderId ? { configId: null, customProviderId: resolved.customProviderId, configScope: 'global' } : { configId: resolved.row.id, configScope: resolved.scope })
+      .where(eq(voiceJobs.id, jobId));
     const provider = getProvider(job.providerType);
     await log(
       'info',

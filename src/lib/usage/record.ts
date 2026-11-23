@@ -44,3 +44,41 @@ export async function recordUsage(input: UsageInput, db: Db = getDb()): Promise<
     ok: input.ok,
   });
 }
+
+/**
+ * Bản ghi sử dụng của STT (spec 004, FR-018): MỘT bản ghi tính phí khi phiên âm hoàn tất, một bản ghi `ok = false`
+ * (chi phí 0) cho mỗi lần gọi Soniox thất bại. Upload và các lần poll không ghi.
+ * `audioSeconds` lấy từ `audio_duration_ms` Soniox trả về; khi Soniox không trả, ghi số ký tự transcript thay vì bịa số giây.
+ */
+export type SttUsageInput = {
+  userId: string;
+  projectId: string;
+  sttJobId: string;
+  model: string | null;
+  audioSeconds: number | null;
+  transcriptChars?: number | null;
+  pricePerAudioHourUsd: number | null;
+  ok: boolean;
+};
+
+export function estimateSttCostUsd(seconds: number | null, pricePerAudioHourUsd: number | null): number | null {
+  if (seconds == null || pricePerAudioHourUsd == null || !Number.isFinite(pricePerAudioHourUsd)) return null;
+  return (seconds / 3600) * pricePerAudioHourUsd;
+}
+
+export async function recordSttUsage(input: SttUsageInput, db: Db = getDb()): Promise<void> {
+  const seconds = input.ok ? input.audioSeconds : 0;
+  await db.insert(usageRecords).values({
+    userId: input.userId,
+    projectId: input.projectId,
+    sttJobId: input.sttJobId,
+    providerType: 'soniox',
+    configScope: 'global',
+    model: input.model,
+    voice: null,
+    unitsAudioSeconds: seconds,
+    unitsChars: seconds == null ? Math.max(0, input.transcriptChars ?? 0) : null,
+    costEstimateUsd: input.ok ? estimateSttCostUsd(seconds, input.pricePerAudioHourUsd) : 0,
+    ok: input.ok,
+  });
+}
