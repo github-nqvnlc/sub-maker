@@ -1,6 +1,7 @@
-import { boolean, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, bigserial, uniqueIndex, uuid, numeric } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { boolean, check, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, bigserial, uniqueIndex, uuid, numeric } from 'drizzle-orm/pg-core';
 import { users } from './auth';
-import { aiProviderConfigs, configScope, providerType } from './ai-config';
+import { aiProviderConfigs, configScope, customAiProviders, providerType, type TtsProviderType } from './ai-config';
 import { projects, subtitleFiles } from './projects';
 
 export const jobStatus = pgEnum('job_status', ['queued', 'running', 'completed', 'failed', 'stopped', 'interrupted']);
@@ -15,6 +16,8 @@ export type JobSettings = {
   pauseMs?: { sentence: number; comma: number };
   /** Chế độ khớp mốc thời gian phụ đề (spec 003). Vắng mặt ⇒ "Đọc liên tục" như spec 001. */
   timing?: TimingSettings;
+  /** Custom Provider đã chọn lúc tạo job (spec 004); giữ ở đây để biết job PHẢI dùng provider này kể cả khi FK đã bị đặt NULL. */
+  customProviderId?: string;
 };
 
 /** Tham số được chốt từ cài đặt hệ thống lúc tạo job để kết quả tái lập được. */
@@ -50,7 +53,7 @@ export const audioCache = pgTable(
     durationMs: integer('duration_ms').notNull(),
     sizeBytes: integer('size_bytes').notNull(),
     chars: integer('chars').notNull(),
-    providerType: providerType('provider_type').notNull(),
+    providerType: providerType('provider_type').$type<TtsProviderType>().notNull(),
     model: text('model'),
     voice: text('voice').notNull(),
     speed: numeric('speed', { mode: 'number' }),
@@ -74,9 +77,11 @@ export const voiceJobs = pgTable(
       .notNull()
       .references(() => subtitleFiles.id, { onDelete: 'cascade' }),
     status: jobStatus('status').notNull().default('queued'),
-    providerType: providerType('provider_type').notNull(),
+    providerType: providerType('provider_type').$type<TtsProviderType>().notNull(),
     /** Cấu hình đã dùng lúc bắt đầu (NULL nếu cấu hình bị xóa sau đó) */
     configId: uuid('config_id').references(() => aiProviderConfigs.id, { onDelete: 'set null' }),
+    /** Custom Provider do Administrator tạo (spec 004, FR-022). Chỉ một trong config_id/custom_provider_id có giá trị. */
+    customProviderId: uuid('custom_provider_id').references(() => customAiProviders.id, { onDelete: 'set null' }),
     /** Nguồn cấu hình: chung (chi phí hệ thống) hoặc riêng (chi phí của User) */
     configScope: configScope('config_scope').notNull(),
     settings: jsonb('settings').$type<JobSettings>().notNull(),
@@ -96,6 +101,8 @@ export const voiceJobs = pgTable(
     index('voice_jobs_project_idx').on(t.projectId, t.createdAt),
     index('voice_jobs_owner_status_idx').on(t.ownerId, t.status),
     index('voice_jobs_status_heartbeat_idx').on(t.status, t.heartbeatAt),
+    index('voice_jobs_custom_provider_idx').on(t.customProviderId),
+    check('voice_jobs_one_config', sql`${t.configId} is null or ${t.customProviderId} is null`),
   ],
 );
 

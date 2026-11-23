@@ -5,11 +5,13 @@ export const QUEUES = {
   generateVoice: 'generate-voice',
   deleteUser: 'delete-user',
   reconcileStorage: 'reconcile-storage',
+  transcribeMedia: 'transcribe-media',
 } as const;
 
 export type GenerateVoicePayload = { jobId: string };
 export type DeleteUserPayload = { userId: string };
 export type ReconcileStoragePayload = Record<string, never>;
+export type TranscribeMediaPayload = { jobId: string };
 
 type Role = 'web' | 'worker';
 
@@ -75,6 +77,12 @@ export async function ensureQueues(boss: PgBoss): Promise<void> {
     expireInSeconds: 3600,
     deleteAfterSeconds: 3 * 24 * 3600,
   });
+  // STT (spec 004): như tạo voice, không dùng retry tự động; thử lại/tiếp tục do worker + sweeper điều khiển.
+  await boss.createQueue(QUEUES.transcribeMedia, {
+    retryLimit: 0,
+    expireInSeconds: 6 * 3600,
+    deleteAfterSeconds: 3 * 24 * 3600,
+  });
   await boss.createQueue(QUEUES.reconcileStorage, {
     retryLimit: 1,
     expireInSeconds: 3600,
@@ -91,4 +99,9 @@ export async function enqueueDeleteUser(userId: string): Promise<string | null> 
   const boss = await getBoss('web');
   // singletonKey: tránh tạo nhiều việc xóa trùng cho cùng một User
   return boss.send(QUEUES.deleteUser, { userId } satisfies DeleteUserPayload, { singletonKey: `delete-user:${userId}` });
+}
+
+export async function enqueueTranscribeMedia(jobId: string): Promise<string | null> {
+  const boss = await getBoss('web');
+  return boss.send(QUEUES.transcribeMedia, { jobId } satisfies TranscribeMediaPayload);
 }

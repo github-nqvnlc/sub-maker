@@ -13,6 +13,7 @@ const patchSchema = z
     userQuotaBytes: z.number().int().min(MB).max(1024 * 1024 * MB),
     maxConcurrentJobs: z.number().int().min(1).max(50),
     maxJobsPerUser: z.number().int().min(1).max(50),
+    maxSttJobsPerUser: z.number().int().min(1).max(20),
     segmentConcurrency: z.number().int().min(1).max(16),
     timingMaxSlipMs: z.number().int().min(100).max(2000),
     timingMaxCompressPct: z.number().int().min(100).max(150),

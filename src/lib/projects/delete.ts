@@ -5,6 +5,7 @@ import { projects, subtitleFiles, voiceJobs, voices } from '../db/schema';
 import { requestStop } from '../jobs/control';
 import { waitUntilNotRunning } from '../jobs/delete';
 import { cacheIdsReferencedByJobs, purgeObjects, purgeOrphanCache } from '../storage/cleanup';
+import { collectSttCleanup, runSttCleanup } from '../stt/cleanup';
 
 /**
  * Xóa Project và TOÀN BỘ dữ liệu liên quan (FR-004): dừng tiến trình đang chạy trước, rồi xóa file gốc, voice,
@@ -38,6 +39,8 @@ export async function deleteProjects(ownerId: string, ids: string[], opts: { wai
     const files = await db.select({ key: subtitleFiles.storageKey, size: subtitleFiles.sizeBytes }).from(subtitleFiles).where(eq(subtitleFiles.projectId, projectId));
     const vs = await db.select({ key: voices.storageKey, size: voices.sizeBytes }).from(voices).where(eq(voices.projectId, projectId));
     const candidates = await cacheIdsReferencedByJobs(jobIds);
+    // STT job (spec 004, FR-021): file media tạm + dữ liệu trên Soniox; worker đang chạy tự dừng khi thấy job đã mất
+    const sttItems = await collectSttCleanup({ projectId });
 
     // 3) Xóa bản ghi (cascade: file, đoạn, tiến trình, log, voice)
     await db.delete(projects).where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)));
@@ -45,6 +48,7 @@ export async function deleteProjects(ownerId: string, ids: string[], opts: { wai
     // 4) Dọn đối tượng lưu trữ và trả dung lượng
     await purgeObjects(ownerId, [...files, ...vs]);
     await purgeOrphanCache(ownerId, candidates);
+    await runSttCleanup(sttItems);
     result.deleted.push(projectId);
   }
   return result;

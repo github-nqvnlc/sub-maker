@@ -24,6 +24,8 @@ export const createJobSchema = z
     model: z.string().trim().max(100).nullable().optional(),
     voice: z.string().trim().max(100).nullable().optional(),
     speed: z.number().finite().nullable().optional(),
+    /** Custom Provider do Administrator tạo (spec 004, FR-022); chỉ với Project dùng openai_compatible */
+    customProviderId: z.string().uuid().nullable().optional(),
     /** Chế độ khớp mốc thời gian phụ đề (spec 003). Vắng mặt hoặc mode=continuous ⇒ "Đọc liên tục" như spec 001. */
     timing: z
       .object({ mode: z.enum(['timed', 'continuous']), mergeCues: z.boolean().optional() })
@@ -42,7 +44,7 @@ export async function createJob(user: AuthUser, projectId: string, input: Create
   if (file.projectId !== project.id) throw notFound();
 
   // 409 PROVIDER_NOT_CONFIGURED nếu không có cấu hình riêng/chung khả dụng
-  const resolved = await resolveConfigForJob(user, project.providerType);
+  const resolved = await resolveConfigForJob(user, project.providerType, { customProviderId: input.customProviderId });
   const parsed = resolveSettings(project.providerType, {
     model: input.model,
     voice: input.voice,
@@ -87,9 +89,16 @@ export async function createJob(user: AuthUser, projectId: string, input: Create
         subtitleFileId: file.id,
         status: 'queued',
         providerType: project.providerType,
-        configId: resolved.row.id,
+        configId: resolved.customProviderId ? null : resolved.row.id,
+        customProviderId: resolved.customProviderId ?? null,
         configScope: resolved.scope,
-        settings: { model: parsed.value.model, voice: parsed.value.voice, speed: parsed.value.speed, ...(timing ? { timing } : {}) },
+        settings: {
+          model: parsed.value.model,
+          voice: parsed.value.voice,
+          speed: parsed.value.speed,
+          ...(timing ? { timing } : {}),
+          ...(resolved.customProviderId ? { customProviderId: resolved.customProviderId } : {}),
+        },
         progressTotal: units,
       })
       .returning();

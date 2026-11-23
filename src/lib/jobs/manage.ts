@@ -64,7 +64,7 @@ export async function updateJobSettings(user: AuthUser, jobId: string, patch: Se
   }
   if (Object.keys(patch).length === 0) throw validation({ _: 'Không có thay đổi nào' });
 
-  const resolved = await resolveConfigForJob(user, job.providerType);
+  const resolved = await resolveConfigForJob(user, job.providerType, { customProviderId: job.settings.customProviderId });
   const parsed = resolveSettings(job.providerType, {
     model: patch.model !== undefined ? patch.model : job.settings.model,
     voice: patch.voice !== undefined ? patch.voice : job.settings.voice,

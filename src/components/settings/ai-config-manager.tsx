@@ -14,6 +14,8 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ErrorState, LoadingList } from '@/components/shared/states';
+import { CustomProviderTable, useCustomProviders } from '@/components/settings/custom-provider-table';
+import { SonioxConfigPanel, useSttConfig } from '@/components/settings/soniox-config-form';
 import { ApiError, api, apiDelete, apiPost, apiPut } from '@/lib/api-client';
 import { useFormat, useT } from '@/lib/i18n/client';
 
@@ -60,22 +62,26 @@ export function AiConfigManager({ scope }: { scope: 'admin' | 'user' }) {
 
   if (catalog.isPending || configs.isPending) return <LoadingList rows={3} />;
   if (catalog.isError || configs.isError) {
-    return <ErrorState message={(catalog.error ?? configs.error)?.message} onRetry={() => void Promise.all([catalog.refetch(), configs.refetch()])} />;
+    return (
+      <ErrorState
+        message={(catalog.error ?? configs.error)?.message}
+        onRetry={() => void Promise.all([catalog.refetch(), configs.refetch()])}
+      />
+    );
   }
   const byType = new Map(configs.data.map((c) => [c.type, c]));
   const anyEnabled = configs.data.some((c) => c.enabled);
 
+  // Spec 004: Administrator cấu hình theo nhà cung cấp — FPT.AI, SONIOX, ShopAIKey (1 token mỗi nhà cung cấp) và Custom Provider
+  if (scope === 'admin')
+    return <AdminProviderTabs base={base} catalog={catalog.data} byType={byType} anyEnabled={anyEnabled} />;
+
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">{scope === 'admin' ? t.aiConfig.adminTitle : t.aiConfig.userTitle}</h1>
-        <p className="text-sm text-muted-foreground">{scope === 'admin' ? t.aiConfig.adminDescription : t.aiConfig.userDescription}</p>
+        <h1 className="text-2xl font-semibold">{t.aiConfig.userTitle}</h1>
+        <p className="text-sm text-muted-foreground">{t.aiConfig.userDescription}</p>
       </div>
-      {scope === 'admin' && !anyEnabled ? (
-        <Alert variant="destructive">
-          <AlertDescription>{t.aiConfig.noGlobalWarning}</AlertDescription>
-        </Alert>
-      ) : null}
       <Tabs defaultValue={catalog.data[0]?.type} aria-label={t.aiConfig.tabs}>
         <TabsList className="flex h-auto flex-wrap">
           {catalog.data.map((c) => {
@@ -83,8 +89,15 @@ export function AiConfigManager({ scope }: { scope: 'admin' | 'user' }) {
             return (
               <TabsTrigger key={c.type} value={c.type} className="gap-2">
                 {c.label}
-                <Badge variant={cfg ? (cfg.enabled ? 'default' : 'secondary') : 'outline'} className="text-[10px]">
-                  {cfg ? (cfg.enabled ? t.aiConfig.configured : t.aiConfig.disabled) : t.aiConfig.notConfigured}
+                <Badge
+                  variant={cfg ? (cfg.enabled ? 'default' : 'secondary') : 'outline'}
+                  className="text-[10px]"
+                >
+                  {cfg
+                    ? cfg.enabled
+                      ? t.aiConfig.configured
+                      : t.aiConfig.disabled
+                    : t.aiConfig.notConfigured}
                 </Badge>
               </TabsTrigger>
             );
@@ -107,40 +120,183 @@ export function AiConfigManager({ scope }: { scope: 'admin' | 'user' }) {
   );
 }
 
-function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' | 'user'; base: string; catalog: CatalogItem; config: AiConfig | null }) {
+const configKey = (c: CatalogItem, cfg: AiConfig | undefined) =>
+  `${c.type}:${cfg?.baseUrl ?? ''}:${cfg?.apiKeyHint ?? ''}:${cfg?.enabled ?? ''}`;
+
+const statusBadge = (t: ReturnType<typeof useT>, configured: boolean, enabled: boolean) => (
+  <Badge variant={configured ? (enabled ? 'default' : 'secondary') : 'outline'} className="text-[10px]">
+    {configured ? (enabled ? t.aiConfig.configured : t.aiConfig.disabled) : t.aiConfig.notConfigured}
+  </Badge>
+);
+
+/** Các tab của Administrator (spec 004, US4/US5). */
+function AdminProviderTabs({
+  base,
+  catalog,
+  byType,
+  anyEnabled,
+}: {
+  base: string;
+  catalog: CatalogItem[];
+  byType: Map<string, AiConfig>;
+  anyEnabled: boolean;
+}) {
+  const t = useT();
+  const stt = useSttConfig();
+  const custom = useCustomProviders();
+  const cat = (type: string) => catalog.find((c) => c.type === type);
+  const fpt = cat('fpt_marketplace');
+  const shopOpenai = cat('shopaikey_openai');
+  const shopMinimax = cat('shopaikey_minimax');
+  const shopCfg = byType.get('shopaikey_openai');
+  const customCount = custom.data?.filter((p) => p.enabled).length ?? 0;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-semibold">{t.aiConfig.adminTitle}</h1>
+        <p className="text-sm text-muted-foreground">{t.aiConfig.adminDescription}</p>
+      </div>
+      {!anyEnabled && customCount === 0 ? (
+        <Alert variant="destructive">
+          <AlertDescription>{t.aiConfig.noGlobalWarning}</AlertDescription>
+        </Alert>
+      ) : null}
+      <Tabs defaultValue="fpt" aria-label={t.aiConfig.tabs}>
+        <TabsList className="flex h-auto flex-wrap">
+          <TabsTrigger value="fpt" className="gap-2">
+            {t.providersAdmin.fptTab}
+            {statusBadge(t, byType.has('fpt_marketplace'), !!byType.get('fpt_marketplace')?.enabled)}
+          </TabsTrigger>
+          <TabsTrigger value="soniox" className="gap-2">
+            {t.providersAdmin.sonioxTab}
+            {statusBadge(t, !!stt.data, !!stt.data?.enabled)}
+          </TabsTrigger>
+          <TabsTrigger value="shopaikey" className="gap-2">
+            {t.providersAdmin.shopaikeyTab}
+            {statusBadge(t, !!shopCfg, !!shopCfg?.enabled)}
+          </TabsTrigger>
+          <TabsTrigger value="custom" className="gap-2">
+            {t.providersAdmin.customTab}
+            <Badge variant={customCount > 0 ? 'default' : 'outline'} className="text-[10px]">
+              {customCount}
+            </Badge>
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="fpt">
+          {fpt ? (
+            <ProviderConfigForm
+              key={configKey(fpt, byType.get(fpt.type))}
+              scope="admin"
+              base={base}
+              catalog={fpt}
+              config={byType.get(fpt.type) ?? null}
+              title={t.providersAdmin.fptTab}
+              description={t.providersAdmin.fptDescription}
+            />
+          ) : null}
+        </TabsContent>
+        <TabsContent value="soniox">
+          <SonioxConfigPanel />
+        </TabsContent>
+        <TabsContent value="shopaikey" className="space-y-4">
+          {shopOpenai ? (
+            <ProviderConfigForm
+              key={configKey(shopOpenai, shopCfg)}
+              scope="admin"
+              base={base}
+              catalog={shopOpenai}
+              config={shopCfg ?? null}
+              title={t.providersAdmin.shopaikeyTab}
+              description={t.providersAdmin.shopaikeyDescription}
+            />
+          ) : null}
+          {shopMinimax ? (
+            byType.get(shopMinimax.type) ? (
+              <ProviderConfigForm
+                key={configKey(shopMinimax, byType.get(shopMinimax.type))}
+                scope="admin"
+                base={base}
+                catalog={shopMinimax}
+                config={byType.get(shopMinimax.type) ?? null}
+                title={t.providersAdmin.minimaxDefaults}
+                description={t.providersAdmin.sharedTokenNote}
+                sharedCredentials
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">{t.providersAdmin.sharedTokenNote}</p>
+            )
+          ) : null}
+        </TabsContent>
+        <TabsContent value="custom">
+          <CustomProviderTable />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function ProviderConfigForm({
+  scope,
+  base,
+  catalog,
+  config,
+  title,
+  description,
+  sharedCredentials = false,
+}: {
+  scope: 'admin' | 'user';
+  base: string;
+  catalog: CatalogItem;
+  config: AiConfig | null;
+  title?: string;
+  description?: string;
+  /** ShopAIKey MiniMax: dùng chung token/địa chỉ gốc của ShopAIKey nên ẩn các trường đó (spec 004, FR-011) */
+  sharedCredentials?: boolean;
+}) {
   const t = useT();
   const fx = useFormat();
   const qc = useQueryClient();
   const [baseUrl, setBaseUrl] = useState(config?.baseUrl ?? DEFAULT_BASE_URL[catalog.type] ?? '');
   const [apiKey, setApiKey] = useState('');
 
-  const isCustomModelInitially = !!config?.defaultModel && !catalog.models.some((m) => m.id === config.defaultModel);
-  const [modelChoice, setModelChoice] = useState(isCustomModelInitially ? '__custom__' : (config?.defaultModel ?? NONE));
+  const isCustomModelInitially =
+    !!config?.defaultModel && !catalog.models.some((m) => m.id === config.defaultModel);
+  const [modelChoice, setModelChoice] = useState(
+    isCustomModelInitially ? '__custom__' : (config?.defaultModel ?? NONE),
+  );
   const [customModel, setCustomModel] = useState(isCustomModelInitially ? (config?.defaultModel ?? '') : '');
 
   const knownVoices = catalog.models.flatMap((m) => m.voices);
-  const isCustomVoiceInitially = !!config?.defaultVoice && !knownVoices.some((v) => v.id === config.defaultVoice);
-  const [voiceChoice, setVoiceChoice] = useState(isCustomVoiceInitially ? '__custom__' : (config?.defaultVoice ?? NONE));
+  const isCustomVoiceInitially =
+    !!config?.defaultVoice && !knownVoices.some((v) => v.id === config.defaultVoice);
+  const [voiceChoice, setVoiceChoice] = useState(
+    isCustomVoiceInitially ? '__custom__' : (config?.defaultVoice ?? NONE),
+  );
   const [customVoice, setCustomVoice] = useState(isCustomVoiceInitially ? (config?.defaultVoice ?? '') : '');
 
   const [speed, setSpeed] = useState(config?.defaultSpeed != null ? String(config.defaultSpeed) : '');
   const [maxChars, setMaxChars] = useState(String(config?.maxCharsPerRequest ?? catalog.maxCharsPerRequest));
-  const [price, setPrice] = useState(config?.pricePerMillionChars != null ? String(config.pricePerMillionChars) : '');
+  const [price, setPrice] = useState(
+    config?.pricePerMillionChars != null ? String(config.pricePerMillionChars) : '',
+  );
   const [enabled, setEnabled] = useState(config?.enabled ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const selectedModelId = modelChoice === '__custom__' ? customModel.trim() : modelChoice;
-  const voices = (catalog.models.find((m) => m.id === selectedModelId)?.voices ?? catalog.models.flatMap((m) => m.voices)).filter(
-    (v, i, arr) => arr.findIndex((x) => x.id === v.id) === i,
-  );
+  const voices = (
+    catalog.models.find((m) => m.id === selectedModelId)?.voices ?? catalog.models.flatMap((m) => m.voices)
+  ).filter((v, i, arr) => arr.findIndex((x) => x.id === v.id) === i);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['ai-configs', scope] });
   const num = (s: string) => (s.trim() === '' ? null : Number(s));
 
-  const effModel = modelChoice === '__custom__' ? customModel.trim() || null : (modelChoice === NONE ? null : modelChoice);
-  const effVoice = voiceChoice === '__custom__' ? customVoice.trim() || null : (voiceChoice === NONE ? null : voiceChoice);
+  const effModel =
+    modelChoice === '__custom__' ? customModel.trim() || null : modelChoice === NONE ? null : modelChoice;
+  const effVoice =
+    voiceChoice === '__custom__' ? customVoice.trim() || null : voiceChoice === NONE ? null : voiceChoice;
 
   const save = useMutation({
     mutationFn: () =>
@@ -176,12 +332,14 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
     onError: (e) => toast.error(e instanceof Error ? e.message : t.common.genericError),
   });
 
-  const field = (name: string) => (errors[name] ? <p className="text-sm text-destructive">{errors[name]}</p> : null);
+  const field = (name: string) =>
+    errors[name] ? <p className="text-sm text-destructive">{errors[name]}</p> : null;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{catalog.label}</CardTitle>
+        <CardTitle>{title ?? catalog.label}</CardTitle>
+        {description ? <CardDescription>{description}</CardDescription> : null}
         {config?.disabledReason === 'owner_removed_from_list' ? (
           <CardDescription className="text-destructive">{t.aiConfig.ownerRemoved}</CardDescription>
         ) : null}
@@ -194,30 +352,38 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
             save.mutate();
           }}
         >
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor={`${catalog.type}-baseUrl`}>{t.aiConfig.baseUrl}</Label>
-            <Input id={`${catalog.type}-baseUrl`} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-            <p className="text-xs text-muted-foreground">{t.aiConfig.baseUrlHint}</p>
-            {field('baseUrl')}
-          </div>
+          {sharedCredentials ? null : (
+            <>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor={`${catalog.type}-baseUrl`}>{t.aiConfig.baseUrl}</Label>
+                <Input
+                  id={`${catalog.type}-baseUrl`}
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">{t.aiConfig.baseUrlHint}</p>
+                {field('baseUrl')}
+              </div>
 
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor={`${catalog.type}-apiKey`}>{t.aiConfig.apiKey}</Label>
-            <Input
-              id={`${catalog.type}-apiKey`}
-              type="password"
-              autoComplete="off"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={config ? t.aiConfig.apiKeyKeep : ''}
-            />
-            {config ? (
-              <p className="text-xs text-muted-foreground">
-                {t.aiConfig.apiKeyHintLabel}: <code>{config.apiKeyHint}</code>
-              </p>
-            ) : null}
-            {field('apiKey')}
-          </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor={`${catalog.type}-apiKey`}>{t.aiConfig.apiKey}</Label>
+                <Input
+                  id={`${catalog.type}-apiKey`}
+                  type="password"
+                  autoComplete="off"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={config ? t.aiConfig.apiKeyKeep : ''}
+                />
+                {config ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t.aiConfig.apiKeyHintLabel}: <code>{config.apiKeyHint}</code>
+                  </p>
+                ) : null}
+                {field('apiKey')}
+              </div>
+            </>
+          )}
 
           <div className="space-y-2">
             <Label>{t.aiConfig.defaultModel}</Label>
@@ -290,27 +456,44 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
             <Label htmlFor={`${catalog.type}-speed`}>
               {t.aiConfig.defaultSpeed} ({catalog.speed.min} – {catalog.speed.max})
             </Label>
-            <Input id={`${catalog.type}-speed`} inputMode="decimal" value={speed} onChange={(e) => setSpeed(e.target.value)} />
+            <Input
+              id={`${catalog.type}-speed`}
+              inputMode="decimal"
+              value={speed}
+              onChange={(e) => setSpeed(e.target.value)}
+            />
             {field('defaultSpeed')}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor={`${catalog.type}-maxChars`}>{t.aiConfig.maxChars}</Label>
-            <Input id={`${catalog.type}-maxChars`} inputMode="numeric" value={maxChars} onChange={(e) => setMaxChars(e.target.value)} />
+            <Input
+              id={`${catalog.type}-maxChars`}
+              inputMode="numeric"
+              value={maxChars}
+              onChange={(e) => setMaxChars(e.target.value)}
+            />
             {field('maxCharsPerRequest')}
           </div>
 
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor={`${catalog.type}-price`}>{t.aiConfig.price}</Label>
-            <Input id={`${catalog.type}-price`} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
+            <Input
+              id={`${catalog.type}-price`}
+              inputMode="decimal"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+            />
             <p className="text-xs text-muted-foreground">{t.aiConfig.priceHint}</p>
             {field('pricePerMillionChars')}
           </div>
 
-          <div className="flex items-center gap-2 md:col-span-2">
-            <Switch id={`${catalog.type}-enabled`} checked={enabled} onCheckedChange={setEnabled} />
-            <Label htmlFor={`${catalog.type}-enabled`}>{t.aiConfig.enabled}</Label>
-          </div>
+          {sharedCredentials ? null : (
+            <div className="flex items-center gap-2 md:col-span-2">
+              <Switch id={`${catalog.type}-enabled`} checked={enabled} onCheckedChange={setEnabled} />
+              <Label htmlFor={`${catalog.type}-enabled`}>{t.aiConfig.enabled}</Label>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2 md:col-span-2">
             <Button type="submit" disabled={save.isPending}>
@@ -318,12 +501,19 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
             </Button>
             {config ? (
               <>
-                <Button type="button" variant="outline" disabled={test.isPending} onClick={() => test.mutate()}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={test.isPending}
+                  onClick={() => test.mutate()}
+                >
                   {test.isPending ? t.aiConfig.testing : t.aiConfig.test}
                 </Button>
-                <Button type="button" variant="destructive" onClick={() => setConfirmDelete(true)}>
-                  {t.aiConfig.delete}
-                </Button>
+                {sharedCredentials ? null : (
+                  <Button type="button" variant="destructive" onClick={() => setConfirmDelete(true)}>
+                    {t.aiConfig.delete}
+                  </Button>
+                )}
               </>
             ) : null}
           </div>
@@ -331,12 +521,14 @@ function ProviderConfigForm({ scope, base, catalog, config }: { scope: 'admin' |
           {testResult ? (
             <Alert className="md:col-span-2" variant={testResult.ok ? 'default' : 'destructive'}>
               <AlertDescription>
-                <strong>{testResult.ok ? t.aiConfig.testOk : t.aiConfig.testFail}</strong> — {testResult.message} ({testResult.latencyMs} ms)
+                <strong>{testResult.ok ? t.aiConfig.testOk : t.aiConfig.testFail}</strong> —{' '}
+                {testResult.message} ({testResult.latencyMs} ms)
               </AlertDescription>
             </Alert>
           ) : config?.lastTestAt ? (
             <p className="text-xs text-muted-foreground md:col-span-2">
-              {t.aiConfig.lastTest}: {fx.dateTime(config.lastTestAt)} — {config.lastTestOk ? t.aiConfig.testOk : t.aiConfig.testFail}
+              {t.aiConfig.lastTest}: {fx.dateTime(config.lastTestAt)} —{' '}
+              {config.lastTestOk ? t.aiConfig.testOk : t.aiConfig.testFail}
             </p>
           ) : null}
         </form>

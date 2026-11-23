@@ -128,3 +128,86 @@ export function wavToPcm(wav: Buffer): Buffer {
 }
 
 export const pcmDurationMs = (pcm: Buffer): number => Math.round((pcm.length / BYTES_PER_SAMPLE / SAMPLE_RATE) * 1000);
+
+// ---- STT (spec 004): đo media và tách âm thanh -----------------------------------------------
+
+const FFPROBE = () => process.env.FFPROBE_PATH || 'ffprobe';
+
+export type MediaProbe = { durationMs: number | null; hasAudio: boolean; hasVideo: boolean };
+
+/** Đo thời lượng và các luồng của tệp media bằng ffprobe (không đọc toàn bộ tệp vào bộ nhớ). */
+export function probeMedia(inputPath: string, timeoutMs = 60_000): Promise<MediaProbe> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(FFPROBE(), ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', inputPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+    child.stdout.on('data', (c: Buffer) => out.push(c));
+    child.stderr.on('data', (c: Buffer) => err.push(c));
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      reject(new Error(`Không chạy được ffprobe: ${(e as NodeJS.ErrnoException).code ?? e.message}`));
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new MediaUnreadableError(Buffer.concat(err).toString('utf8').slice(0, 300)));
+      try {
+        const j = JSON.parse(Buffer.concat(out).toString('utf8')) as { format?: { duration?: string }; streams?: Array<{ codec_type?: string }> };
+        const d = Number(j.format?.duration);
+        const streams = j.streams ?? [];
+        resolve({
+          durationMs: Number.isFinite(d) && d > 0 ? Math.round(d * 1000) : null,
+          hasAudio: streams.some((s) => s.codec_type === 'audio'),
+          hasVideo: streams.some((s) => s.codec_type === 'video'),
+        });
+      } catch {
+        reject(new MediaUnreadableError('ffprobe trả kết quả không đọc được'));
+      }
+    });
+  });
+}
+
+/** Tệp media hỏng hoặc không đọc được (lỗi vĩnh viễn của STT job). */
+export class MediaUnreadableError extends Error {
+  constructor(detail: string) {
+    super(`Không đọc được tệp media: ${detail}`);
+    this.name = 'MediaUnreadableError';
+  }
+}
+
+/** Tệp không có luồng âm thanh (FR-002, edge case "video không có tiếng"). */
+export class NoAudioStreamError extends Error {
+  constructor() {
+    super('NO_AUDIO_STREAM');
+    this.name = 'NoAudioStreamError';
+  }
+}
+
+/**
+ * Tách luồng âm thanh thành MP3 mono 16 kHz (FR-002, research R2) từ tệp trên đĩa sang tệp trên đĩa.
+ * Không có luồng âm thanh → NoAudioStreamError.
+ */
+export async function extractAudioToMp3File(inputPath: string, outPath: string, timeoutMs = 15 * 60_000): Promise<void> {
+  const probe = await probeMedia(inputPath);
+  if (!probe.hasAudio) throw new NoAudioStreamError();
+  await runFfmpeg(['-i', inputPath, '-vn', '-map', '0:a:0', '-acodec', 'libmp3lame', '-q:a', '4', '-ac', '1', '-ar', '16000', '-y', outPath], null, timeoutMs);
+}
+
+/** Bản dùng bộ nhớ (kiểm thử, tệp nhỏ): media → MP3 mono 16 kHz. */
+export async function extractAudioFromMedia(inputBuffer: Buffer | Uint8Array, ext: string): Promise<Buffer> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'submaker-stt-'));
+  const safeExt = ext.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'bin';
+  const inFile = path.join(dir, `in.${safeExt}`);
+  const outFile = path.join(dir, 'out.mp3');
+  try {
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(inFile, Buffer.from(inputBuffer));
+    await extractAudioToMp3File(inFile, outFile);
+    return await readFile(outFile);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}

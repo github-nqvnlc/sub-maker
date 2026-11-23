@@ -33,6 +33,7 @@ describe('/api/admin/settings', () => {
       userQuotaBytes: 524_288_000,
       maxConcurrentJobs: 3,
       maxJobsPerUser: 2,
+      maxSttJobsPerUser: 2,
       segmentConcurrency: 3,
       timingMaxSlipMs: 500,
       timingMaxCompressPct: 125,

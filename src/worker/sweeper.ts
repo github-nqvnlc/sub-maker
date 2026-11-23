@@ -1,8 +1,8 @@
-import { and, eq, lt, or, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt, or, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../lib/db';
-import { voiceJobs } from '../lib/db/schema';
+import { STT_RUNNING_STATUSES, sttJobLogs, sttJobs, voiceJobs } from '../lib/db/schema';
 import { appendLog } from './job-log';
-import { enqueueGenerateVoice } from './queues';
+import { enqueueGenerateVoice, enqueueTranscribeMedia } from './queues';
 
 /**
  * Phục hồi sau sự cố (Nguyên tắc III): tiến trình `running` mà worker đã chết (heartbeat quá hạn) được đánh dấu
@@ -63,12 +63,35 @@ export async function sweepStaleJobs(opts: { staleMs?: number; requeue?: (jobId:
   return { interrupted, stopped };
 }
 
+/**
+ * STT job (spec 004, FR-019): job đang chạy mà heartbeat quá hạn (worker chết/khởi động lại) → `interrupted` rồi xếp hàng lại.
+ * Worker tiếp tục từ `soniox_transcription_id` / `soniox_file_id` đã lưu nên không upload lại.
+ */
+export async function sweepStaleSttJobs(opts: { staleMs?: number; requeue?: (jobId: string) => Promise<unknown> } = {}): Promise<{ interrupted: string[] }> {
+  const db = getDb();
+  const staleMs = opts.staleMs ?? HEARTBEAT_STALE_MS;
+  const requeue = opts.requeue ?? enqueueTranscribeMedia;
+  const stale = sql`(${sttJobs.heartbeatAt} is null or ${sttJobs.heartbeatAt} < now() - (${staleMs} * interval '1 millisecond'))`;
+  // Chỉ chuyển khi VẪN đang chạy và vẫn quá hạn (tránh đè lên worker vừa sống lại)
+  const marked = await db
+    .update(sttJobs)
+    .set({ status: 'interrupted', stageMessage: 'interrupted', updatedAt: new Date() })
+    .where(and(inArray(sttJobs.status, [...STT_RUNNING_STATUSES]), stale))
+    .returning({ id: sttJobs.id });
+  for (const j of marked) {
+    await db.insert(sttJobLogs).values({ sttJobId: j.id, level: 'warn', messageKey: 'interrupted' }).catch(() => undefined);
+    await requeue(j.id);
+  }
+  return { interrupted: marked.map((j) => j.id) };
+}
+
 /** Quét ngay khi khởi động rồi định kỳ. Trả hàm dừng. */
 export function startSweeper(): () => void {
   const run = () =>
-    sweepStaleJobs()
-      .then((r) => {
+    Promise.all([sweepStaleJobs(), sweepStaleSttJobs()])
+      .then(([r, s]) => {
         if (r.interrupted.length || r.stopped.length) console.log(`[sweeper] gián đoạn: ${r.interrupted.length}, dừng: ${r.stopped.length}`);
+        if (s.interrupted.length) console.log(`[sweeper] STT gián đoạn: ${s.interrupted.length}`);
       })
       .catch((e) => console.error('[sweeper] lỗi:', e instanceof Error ? e.message : e));
   void run();

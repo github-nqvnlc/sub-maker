@@ -1,7 +1,7 @@
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { getDb } from '../../lib/db';
-import { users, voiceJobs } from '../../lib/db/schema';
+import { STT_ACTIVE_STATUSES, sttJobs, users, voiceJobs } from '../../lib/db/schema';
 import { sizeByPrefix } from '../../lib/storage/client';
 import { storageKeys } from '../../lib/storage/keys';
 import { QUEUES, type ReconcileStoragePayload } from '../queues';
@@ -28,7 +28,11 @@ export async function reconcileStorage(): Promise<ReconcileResult> {
         .from(voiceJobs)
         .where(and(inArray(voiceJobs.status, ['queued', 'running']), inArray(voiceJobs.ownerId, all.map((u) => u.id))))
     : [];
-  const busy = new Set(busyRows.map((r) => r.id));
+  // STT job đang chờ/chạy cũng đang ghi đối tượng (file media tạm) → bỏ qua User đó
+  const sttBusy = all.length
+    ? await db.selectDistinct({ id: sttJobs.ownerId }).from(sttJobs).where(and(inArray(sttJobs.status, [...STT_ACTIVE_STATUSES]), inArray(sttJobs.ownerId, all.map((u) => u.id))))
+    : [];
+  const busy = new Set([...busyRows, ...sttBusy].map((r) => r.id));
 
   const result: ReconcileResult = { checked: 0, skippedBusy: 0, corrected: [] };
   for (const u of all) {
@@ -37,7 +41,8 @@ export async function reconcileStorage(): Promise<ReconcileResult> {
       continue;
     }
     result.checked++;
-    const actual = await sizeByPrefix(storageKeys.userPrefix(u.id));
+    // File media tạm của STT không tính vào hạn mức (spec 004, FR-001)
+    const actual = (await sizeByPrefix(storageKeys.userPrefix(u.id))) - (await sizeByPrefix(`${storageKeys.userPrefix(u.id)}stt-tmp/`));
     if (actual === u.used) continue;
     const updated = await db
       .update(users)
