@@ -15,7 +15,7 @@ export const GET = route(async (request: Request) => {
       label: c.label,
       available: availability[c.type].available,
       usingOwnConfig: availability[c.type].usingOwnConfig,
-      models: c.models.map((m) => ({ id: m.id, voices: m.voices })),
+      models: c.models.map((m) => ({ id: m.id, label: m.label, voices: m.voices })),
       speed: c.speed,
       maxCharsPerRequest: c.maxCharsPerRequest,
     })),

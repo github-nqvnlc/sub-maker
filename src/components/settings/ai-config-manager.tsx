@@ -21,7 +21,7 @@ type Voice = { id: string; label: string };
 type CatalogItem = {
   type: string;
   label: string;
-  models: { id: string; voices: Voice[] }[];
+  models: { id: string; label: string; voices: Voice[] }[];
   speed: { min: number; max: number; default: number; step: number };
   maxCharsPerRequest: number;
 };

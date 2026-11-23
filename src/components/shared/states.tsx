@@ -18,7 +18,7 @@ export function EmptyState({
   icon?: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-10 text-center">
+    <div className="sm:h-[70dvh] p-10 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed  text-center">
       <Icon className="size-10 text-muted-foreground" />
       <p className="text-base font-medium">{title}</p>
       {description ? <p className="max-w-md text-sm text-muted-foreground">{description}</p> : null}

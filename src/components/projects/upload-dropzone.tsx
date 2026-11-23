@@ -2,8 +2,10 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
-import { Upload } from 'lucide-react';
+import { AlertCircle, FileUp, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { ApiError, api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/client';
 import { cn } from '@/lib/utils';
@@ -12,8 +14,16 @@ const ACCEPT = '.txt,.md,.srt';
 
 type Uploaded = { id: string };
 
-/** Kéo thả hoặc chọn tệp .txt/.md/.srt; kiểm tra sơ bộ phía client, máy chủ vẫn là nơi quyết định cuối cùng. */
-export function UploadDropzone({ projectId, onUploaded }: { projectId: string; onUploaded?: (fileId: string) => void }) {
+/** Kéo thả hoặc bấm nút chọn tệp .txt/.md/.srt (Khung thông tin và upload kịch bản) */
+export function UploadDropzone({
+  projectId,
+  onUploaded,
+  className,
+}: {
+  projectId: string;
+  onUploaded?: (fileId: string) => void;
+  className?: string;
+}) {
   const t = useT();
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
@@ -49,8 +59,8 @@ export function UploadDropzone({ projectId, onUploaded }: { projectId: string; o
   }
 
   return (
-    <div className="space-y-2">
-      <div
+    <div className={cn('space-y-2', className)}>
+      <Card
         role="button"
         tabIndex={0}
         aria-label={t.files.dropHere}
@@ -67,28 +77,63 @@ export function UploadDropzone({ projectId, onUploaded }: { projectId: string; o
           pick(e.dataTransfer.files[0]);
         }}
         className={cn(
-          'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 text-center transition-colors hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring',
-          drag && 'border-primary bg-accent/50',
+          'cursor-pointer border-2 border-dashed transition-all hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring',
+          drag && 'border-primary bg-accent/60 shadow-inner',
           upload.isPending && 'pointer-events-none opacity-60',
         )}
       >
-        <Upload className="size-8 text-muted-foreground" />
-        <p className="font-medium">{upload.isPending ? t.files.uploading : t.files.dropHere}</p>
-        <p className="max-w-md text-xs text-muted-foreground">{t.files.acceptHint}</p>
-        <input
-          ref={input}
-          type="file"
-          accept={ACCEPT}
-          className="hidden"
-          aria-label={t.files.uploadTitle}
-          onChange={(e) => {
-            pick(e.target.files?.[0]);
-            e.target.value = '';
-          }}
-        />
-      </div>
+        <CardContent className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 sm:p-5">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              {upload.isPending ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : (
+                <FileUp className="size-5" />
+              )}
+            </div>
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-sm font-medium">
+                {upload.isPending ? t.files.uploading : t.files.dropHere}
+              </p>
+              <p className="text-xs text-muted-foreground line-clamp-2">{t.files.acceptHint}</p>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            disabled={upload.isPending}
+            onClick={(e) => {
+              e.stopPropagation();
+              input.current?.click();
+            }}
+            className="shrink-0 gap-1.5 font-medium"
+          >
+            {upload.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Upload className="size-4" />
+            )}
+            {t.files.selectFile}
+          </Button>
+
+          <input
+            ref={input}
+            type="file"
+            accept={ACCEPT}
+            className="hidden"
+            aria-label={t.files.uploadTitle}
+            onChange={(e) => {
+              pick(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+        </CardContent>
+      </Card>
+
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="flex items-center gap-1.5 text-xs text-destructive px-1">
+          <AlertCircle className="size-3.5 shrink-0" />
           {error}
         </p>
       ) : null}

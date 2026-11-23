@@ -9,7 +9,7 @@ export type ProviderInfo = {
   label: string;
   available: boolean;
   usingOwnConfig: boolean;
-  models: { id: string; voices: ProviderVoice[] }[];
+  models: { id: string; label: string; voices: ProviderVoice[] }[];
   speed: { min: number; max: number; default: number; step: number };
   maxCharsPerRequest: number;
 };

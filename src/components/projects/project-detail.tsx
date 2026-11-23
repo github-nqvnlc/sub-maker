@@ -15,6 +15,7 @@ import { StartJobDialog } from '@/components/jobs/start-job-dialog';
 import { EditProjectDialog } from '@/components/projects/edit-project-dialog';
 import { FilePreviewDialog } from '@/components/projects/file-preview-dialog';
 import { JobTable, type JobRowDto } from '@/components/projects/job-table';
+import { ScriptEditor } from '@/components/projects/script-editor';
 import { UploadDropzone } from '@/components/projects/upload-dropzone';
 import { ApiError, api, apiDelete } from '@/lib/api-client';
 import { fmtBytes, fmtDuration } from '@/lib/format';
@@ -98,53 +99,83 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </TabsList>
 
         <TabsContent value="files" className="space-y-4">
-          <UploadDropzone projectId={p.id} onUploaded={(id) => setPreviewId(id)} />
-          {p.files.length === 0 ? (
-            <EmptyState title={t.files.empty} />
-          ) : (
-            <ul className="space-y-2">
-              {p.files.map((f) => (
-                <li key={f.id}>
-                  <Card>
-                    <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setPreviewId(f.id)}
-                            className="cursor-pointer truncate text-left font-medium transition-colors hover:text-primary hover:underline"
-                          >
-                            {f.originalName}
-                          </button>
-                          <Badge variant="outline">.{f.ext}</Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {f.segmentCount} {t.files.segments} · {f.charCount} {t.files.chars} · {fmtBytes(f.sizeBytes)} · {fx.dateTime(f.createdAt)}
-                          {f.hasTimecodes ? ` · ${t.files.hasTimecodes}` : ''}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setPreviewId(f.id)}>
-                          {t.files.preview}
-                        </Button>
-                        <Button asChild size="sm" variant="outline">
-                          <a href={`/api/files/${f.id}/raw`} download>
-                            {t.files.download}
-                          </a>
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => setDeleteFile(f)}>
-                          {t.files.delete}
-                        </Button>
-                        <Button size="sm" onClick={() => setStartFileId(f.id)}>
-                          {t.files.createVoice}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Cột trái: Upload kịch bản (Xanh lá) & Editor kịch bản (Vàng) */}
+            <div className="space-y-4 lg:col-span-7 xl:col-span-7">
+              <div className="flex items-center justify-between ">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold">{t.files.createNewTitle}</h2>
+                </div>
+              </div>
+              {/* Khung màu xanh lá cây: Upload file kịch bản */}
+              <UploadDropzone projectId={p.id} onUploaded={(id) => setPreviewId(id)} />
+
+              {/* Khung màu vàng: Editor kịch bản chuẩn .srt / .txt / .md */}
+              <ScriptEditor projectId={p.id} onCreated={(id) => setPreviewId(id)} />
+            </div>
+
+            {/* Cột phải: Danh sách file kịch bản (Khung màu đỏ theo mô tả) */}
+            <div className="space-y-3 lg:col-span-5 xl:col-span-5">
+              <div className="flex items-center justify-between pb-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold">{t.files.scriptListTitle}</h2>
+                  <Badge variant="secondary">{p.files.length}</Badge>
+                </div>
+              </div>
+
+              {p.files.length === 0 ? (
+                <EmptyState title={t.files.empty} />
+              ) : (
+                <ul className="space-y-2.5 max-h-[820px] overflow-y-auto pr-1">
+                  {p.files.map((f) => (
+                    <li key={f.id} className='p-1'>
+                      <Card className="transition-colors hover:border-muted-foreground/40">
+                        <CardContent className="flex flex-col gap-3 p-4">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setPreviewId(f.id)}
+                                className="cursor-pointer truncate text-left font-medium transition-colors hover:text-primary hover:underline"
+                                title={f.originalName}
+                              >
+                                {f.originalName}
+                              </button>
+                              <Badge variant="outline">.{f.ext}</Badge>
+                              {f.hasTimecodes ? (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                                  {t.files.hasTimecodes}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {f.segmentCount} {t.files.segments} · {f.charCount} {t.files.chars} · {fmtBytes(f.sizeBytes)} · {fx.dateTime(f.createdAt)}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/50">
+                            <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setPreviewId(f.id)}>
+                              {t.files.preview}
+                            </Button>
+                            <Button asChild size="sm" variant="outline" className="h-7 text-xs px-2.5">
+                              <a href={`/api/files/${f.id}/raw`} download>
+                                {t.files.download}
+                              </a>
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setDeleteFile(f)}>
+                              {t.files.delete}
+                            </Button>
+                            <Button size="sm" className="h-7 text-xs px-2.5 ml-auto" onClick={() => setStartFileId(f.id)}>
+                              {t.files.createVoice}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="jobs">
