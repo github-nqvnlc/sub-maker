@@ -31,6 +31,8 @@ export function s3(): S3Client {
       region: e.S3_REGION,
       forcePathStyle: true,
       credentials: { accessKeyId: e.S3_ACCESS_KEY, secretAccessKey: e.S3_SECRET_KEY },
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
     holder.key = k;
     holder.ready = undefined;
@@ -150,8 +152,23 @@ export async function putObjectStream(
   contentLength: number,
   contentType = 'application/octet-stream',
 ): Promise<void> {
-  const { Readable } = await import('node:stream');
-  const stream = 'getReader' in body ? Readable.fromWeb(body as import('node:stream/web').ReadableStream<Uint8Array>) : body;
+  const { Readable, Transform } = await import('node:stream');
+  const baseStream = 'getReader' in body ? Readable.fromWeb(body as import('node:stream/web').ReadableStream<Uint8Array>) : body;
+  // Giới hạn chunk <= 8 MiB để tương thích MinIO SigV4 streaming (MinIO từ chối chunk > 16 MiB)
+  const maxChunk = 8 * 1024 * 1024;
+  const chunkLimiter = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      if (chunk.length <= maxChunk) {
+        this.push(chunk);
+      } else {
+        for (let i = 0; i < chunk.length; i += maxChunk) {
+          this.push(chunk.subarray(i, Math.min(i + maxChunk, chunk.length)));
+        }
+      }
+      callback();
+    },
+  });
+  const stream = (baseStream as NodeJS.ReadableStream).pipe(chunkLimiter);
   await s3().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: stream as never, ContentLength: contentLength, ContentType: contentType }));
 }
 
