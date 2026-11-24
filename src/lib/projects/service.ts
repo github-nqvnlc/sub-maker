@@ -78,14 +78,14 @@ export async function listProjects(ownerId: string, opts: ListProjectsOpts) {
   };
 }
 
-export async function createProject(ownerId: string, input: { name: string; description?: string | null; providerType: ProviderType }) {
+export async function createProject(ownerId: string, input: { name: string; description?: string | null; providerType?: ProviderType }) {
   const [row] = await getDb()
     .insert(projects)
     .values({
       ownerId,
       name: input.name.trim(),
       description: input.description?.trim() ? input.description.trim() : null,
-      providerType: input.providerType,
+      providerType: input.providerType ?? 'fpt_marketplace',
     })
     .returning();
   return projectDto(row!);

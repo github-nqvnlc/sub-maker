@@ -21,21 +21,32 @@ export type StartableFile = { id: string; originalName: string; segmentCount: nu
 
 type Props = {
   projectId: string;
-  providerType: string;
+  providerType?: string;
   files: StartableFile[];
   /** Tệp được chọn sẵn; đặt giá trị để mở hộp thoại, null để đóng */
   openFileId: string | null;
   onClose: () => void;
 };
 
-/** Chọn tệp kịch bản + model + giọng + tốc độ rồi bắt đầu tạo voice (FR-012). */
+/** Chọn nhà cung cấp AI + tệp kịch bản + model + giọng + tốc độ rồi bắt đầu tạo voice (FR-012, is-04). */
 export function StartJobDialog({ projectId, providerType, files, openFileId, onClose }: Props) {
   const t = useT();
   const router = useRouter();
   const qc = useQueryClient();
   const providers = useProviders();
-  const effProviderType = providerType === 'shopaikey_openai' ? 'shopaikey_minimax' : providerType;
-  const provider = providers.data?.find((p) => p.type === effProviderType);
+
+  // Chỉ lấy các nhà cung cấp hỗ trợ TTS (loại trừ Soniox vốn là STT)
+  const ttsProviders = (providers.data ?? []).filter((p) => p.type !== 'soniox');
+  const initialProvider =
+    providerType && providerType !== 'soniox'
+      ? providerType === 'shopaikey_openai'
+        ? 'shopaikey_minimax'
+        : providerType
+      : (ttsProviders.find((p) => p.available)?.type ?? ttsProviders[0]?.type ?? 'fpt_marketplace');
+
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const effProviderType = selectedProvider ?? initialProvider;
+  const provider = ttsProviders.find((p) => p.type === effProviderType) ?? providers.data?.find((p) => p.type === effProviderType);
 
   const [fileId, setFileId] = useState<string | null>(null);
   const [customId, setCustomId] = useState<string | null>(null);
@@ -47,7 +58,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
   const [error, setError] = useState<string | null>(null);
 
   // Spec 004: Project chuẩn OpenAI không có cấu hình riêng → chọn một Custom Provider do Administrator cấp quyền
-  const customs = providerType === 'openai_compatible' && !provider?.usingOwnConfig ? (provider?.customProviders ?? []) : [];
+  const customs = effProviderType === 'openai_compatible' && !provider?.usingOwnConfig ? (provider?.customProviders ?? []) : [];
   const custom = customs.find((c) => c.id === customId) ?? customs[0];
   const modelOptions = custom && custom.models.length > 0 ? custom.models.map((id) => ({ id, label: id })) : (provider?.models ?? []);
 
@@ -67,13 +78,22 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
   const customBody = custom ? { customProviderId: custom.id } : {};
   const estimate = useEstimate(
     effFile,
-    { model: effModel || null, voice: effVoice, speed: effSpeed, ...customBody, ...(timing ? { timing } : {}) },
+    { providerType: effProviderType, model: effModel || null, voice: effVoice, speed: effSpeed, ...customBody, ...(timing ? { timing } : {}) },
     !!openFileId && !!provider?.available,
   );
   const quotaBlocked = estimate.data?.quotaOk === false;
 
   const start = useMutation({
-    mutationFn: () => apiPost<{ id: string }>(`/api/projects/${projectId}/jobs`, { fileId: effFile, model: effModel, voice: effVoice, speed: effSpeed, ...customBody, ...(timing ? { timing } : {}) }),
+    mutationFn: () =>
+      apiPost<{ id: string }>(`/api/projects/${projectId}/jobs`, {
+        fileId: effFile,
+        providerType: effProviderType,
+        model: effModel,
+        voice: effVoice,
+        speed: effSpeed,
+        ...customBody,
+        ...(timing ? { timing } : {}),
+      }),
     onSuccess: (job) => {
       toast.success(t.jobs.started);
       void qc.invalidateQueries({ queryKey: ['project', projectId] });
@@ -95,11 +115,12 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
           setFileId(null);
           setCustomId(null);
           setTimedPick(null);
+          setSelectedProvider(null);
           onClose();
         }
       }}
     >
-      <DialogContent>
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t.jobs.startTitle}</DialogTitle>
           <DialogDescription>{t.jobs.startDesc}</DialogDescription>
@@ -107,12 +128,33 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
 
         {!provider ? (
           <p className="text-sm text-muted-foreground">{t.common.loading}</p>
-        ) : providerType === 'soniox' ? (
-          <Alert variant="destructive">
-            <AlertDescription>{t.jobs.sonioxTtsNotice}</AlertDescription>
-          </Alert>
         ) : (
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{t.projects.provider}</Label>
+              <Select
+                value={effProviderType}
+                onValueChange={(v) => {
+                  setSelectedProvider(v);
+                  setModel(null);
+                  setVoice(null);
+                  setCustomId(null);
+                }}
+              >
+                <SelectTrigger aria-label={t.projects.provider}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ttsProviders.map((p) => (
+                    <SelectItem key={p.type} value={p.type}>
+                      {p.label}
+                      {!p.available ? ` (${t.projects.providerUnavailable})` : p.usingOwnConfig ? ` (${t.projects.providerOwn})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {!provider.available ? (
               <Alert variant="destructive">
                 <AlertDescription>{t.projects.noProviderTip}</AlertDescription>
@@ -205,7 +247,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
                     </SelectContent>
                   </Select>
                 </div>
-                <VoicePreviewButton providerType={providerType} voiceId={effVoice} />
+                <VoicePreviewButton providerType={effProviderType} voiceId={effVoice} />
               </div>
             </div>
 
@@ -249,7 +291,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
           <Button variant="outline" onClick={onClose}>
             {t.common.cancel}
           </Button>
-          <Button disabled={start.isPending || !provider?.available || !effFile || !effVoice || quotaBlocked || providerType === 'soniox'} onClick={() => start.mutate()}>
+          <Button disabled={start.isPending || !provider?.available || !effFile || !effVoice || quotaBlocked} onClick={() => start.mutate()}>
             {start.isPending ? t.common.loading : t.jobs.start}
           </Button>
         </DialogFooter>

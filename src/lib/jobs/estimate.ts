@@ -12,7 +12,7 @@ import { getOwnedFile, getOwnedProject } from '../projects/access';
 import { getSettings, type Settings } from '../settings';
 import { requestsPerMinute } from '../providers/rate-limit';
 import { contentHash } from '../audio/cache-key';
-import type { TtsProviderType } from '../schemas/common';
+import { ttsProviderTypeSchema, type TtsProviderType } from '../schemas/common';
 import { buildTimingSettings, loadFileCues, TIMED_MAX_CHARS, unitsForTiming, type TimingChoice } from './timed';
 
 /**
@@ -24,6 +24,7 @@ import { buildTimingSettings, loadFileCues, TIMED_MAX_CHARS, unitsForTiming, typ
 
 export const estimateBodySchema = z
   .object({
+    providerType: ttsProviderTypeSchema.optional(),
     model: z.string().trim().max(100).nullable().optional(),
     voice: z.string().trim().max(100).nullable().optional(),
     speed: z.number().finite().nullable().optional(),
@@ -158,13 +159,14 @@ export async function computeEstimate(c: EstimateContext): Promise<Estimate> {
 export async function estimateFile(user: AuthUser, fileId: string, body: EstimateBody): Promise<Estimate> {
   const file = await getOwnedFile(user.id, fileId);
   const project = await getOwnedProject(user.id, file.projectId);
-  if (project.providerType === 'soniox') {
+  const effProviderType = (body.providerType ?? (project.providerType !== 'soniox' ? (project.providerType as TtsProviderType) : 'fpt_marketplace')) as TtsProviderType;
+  if ((effProviderType as string) === 'soniox') {
     throw conflict('TTS_NOT_SUPPORTED_FOR_SONIOX');
   }
   if (body.timing?.mode === 'timed' && !file.hasTimecodes) throw conflict('NO_TIMECODES');
 
-  const resolved = await resolveConfigForJob(user, project.providerType as TtsProviderType, { customProviderId: body.customProviderId });
-  const parsed = resolveSettings(project.providerType, {
+  const resolved = await resolveConfigForJob(user, effProviderType, { customProviderId: body.customProviderId });
+  const parsed = resolveSettings(effProviderType, {
     model: body.model,
     voice: body.voice,
     speed: body.speed,
@@ -175,7 +177,7 @@ export async function estimateFile(user: AuthUser, fileId: string, body: Estimat
   return computeEstimate({
     user,
     file,
-    project,
+    project: { providerType: effProviderType },
     settings: { model: parsed.value.model, voice: parsed.value.voice, speed: parsed.value.speed },
     pricePerMillionChars: resolved.row.pricePerMillionChars,
     timing: body.timing,

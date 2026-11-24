@@ -8,29 +8,21 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError, apiPost } from '@/lib/api-client';
-import { useProviders } from '@/lib/hooks/use-providers';
 import { useT } from '@/lib/i18n/client';
 
 export function CreateProjectDialog({ trigger }: { trigger?: React.ReactNode }) {
   const t = useT();
   const router = useRouter();
   const qc = useQueryClient();
-  const providers = useProviders();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [providerType, setProviderType] = useState<string>('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Mặc định chọn nhà cung cấp khả dụng đầu tiên (không dùng effect: suy ra khi render)
-  const list = providers.data ?? [];
-  const effectiveType = providerType || (list.find((p) => p.available) ?? list[0])?.type || '';
-
   const create = useMutation({
-    mutationFn: () => apiPost<{ id: string }>('/api/projects', { name, description: description.trim() ? description : null, providerType: effectiveType }),
+    mutationFn: () => apiPost<{ id: string }>('/api/projects', { name, description: description.trim() ? description : null, providerType: 'fpt_marketplace' }),
     onSuccess: (p) => {
       toast.success(t.projects.created);
       void qc.invalidateQueries({ queryKey: ['projects'] });
@@ -52,7 +44,6 @@ export function CreateProjectDialog({ trigger }: { trigger?: React.ReactNode }) 
           setErrors({});
           setName('');
           setDescription('');
-          setProviderType('');
         }
       }}
     >
@@ -80,31 +71,11 @@ export function CreateProjectDialog({ trigger }: { trigger?: React.ReactNode }) 
             <Textarea id="project-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={2000} placeholder={t.projects.descriptionPlaceholder} />
             {errors.description ? <p className="text-sm text-destructive">{errors.description}</p> : null}
           </div>
-          <div className="space-y-2">
-            <Label>{t.projects.provider}</Label>
-            <Select value={effectiveType} onValueChange={setProviderType}>
-              <SelectTrigger aria-label={t.projects.provider}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {list.map((p) => (
-                  <SelectItem key={p.type} value={p.type}>
-                    {p.label}
-                    {!p.available ? ` (${t.projects.providerUnavailable})` : p.usingOwnConfig ? ` (${t.projects.providerOwn})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.providerType ? <p className="text-sm text-destructive">{errors.providerType}</p> : null}
-            {list.length > 0 && list.find((p) => p.type === effectiveType)?.available === false ? (
-              <p className="text-xs text-muted-foreground">{t.projects.noProviderTip}</p>
-            ) : null}
-          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               {t.common.cancel}
             </Button>
-            <Button type="submit" disabled={create.isPending || !name.trim() || !effectiveType}>
+            <Button type="submit" disabled={create.isPending || !name.trim()}>
               {create.isPending ? t.common.loading : t.projects.create}
             </Button>
           </DialogFooter>

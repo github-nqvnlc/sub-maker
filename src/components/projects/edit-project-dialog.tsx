@@ -7,15 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError, apiPatch } from '@/lib/api-client';
-import { useProviders } from '@/lib/hooks/use-providers';
 import { useT } from '@/lib/i18n/client';
 
-type Editable = { id: string; name: string; description: string | null; providerType: string };
+type Editable = { id: string; name: string; description: string | null };
 
-/** Sửa tên, mô tả và nhà cung cấp mặc định của Project (FR-003). Đóng/mở lại thì nạp lại giá trị hiện tại (qua `key`). */
+/** Sửa tên và mô tả của Project (FR-003). Đóng/mở lại thì nạp lại giá trị hiện tại (qua `key`). */
 export function EditProjectDialog({ project, onClose }: { project: Editable | null; onClose: () => void }) {
   return project ? <EditForm key={project.id} project={project} onClose={onClose} /> : null;
 }
@@ -23,15 +21,12 @@ export function EditProjectDialog({ project, onClose }: { project: Editable | nu
 function EditForm({ project, onClose }: { project: Editable; onClose: () => void }) {
   const t = useT();
   const qc = useQueryClient();
-  const providers = useProviders();
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? '');
-  const initialType = project.providerType === 'shopaikey_openai' ? 'shopaikey_minimax' : project.providerType;
-  const [providerType, setProviderType] = useState(initialType);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const save = useMutation({
-    mutationFn: () => apiPatch(`/api/projects/${project.id}`, { name, description: description.trim() ? description : null, providerType }),
+    mutationFn: () => apiPatch(`/api/projects/${project.id}`, { name, description: description.trim() ? description : null }),
     onSuccess: () => {
       toast.success(t.projects.saved);
       void qc.invalidateQueries({ queryKey: ['projects'] });
@@ -68,22 +63,6 @@ function EditForm({ project, onClose }: { project: Editable; onClose: () => void
             <Label htmlFor="edit-desc">{t.projects.description}</Label>
             <Textarea id="edit-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={2000} />
             {errors.description ? <p className="text-sm text-destructive">{errors.description}</p> : null}
-          </div>
-          <div className="space-y-2">
-            <Label>{t.projects.provider}</Label>
-            <Select value={providerType} onValueChange={setProviderType}>
-              <SelectTrigger aria-label={t.projects.provider}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(providers.data ?? []).map((p) => (
-                  <SelectItem key={p.type} value={p.type}>
-                    {p.label}
-                    {!p.available ? ` (${t.projects.providerUnavailable})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

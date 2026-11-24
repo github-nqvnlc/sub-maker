@@ -16,11 +16,12 @@ import { planParts } from '../audio/placement';
 import { buildTimingSettings, loadFileCues, TIMED_MAX_CHARS, unitsForTiming } from './timed';
 import { getCatalog } from '../providers/catalog';
 import { enqueueGenerateVoice } from '../../worker/queues';
-import { jobStatusSchema, type TtsProviderType } from '../schemas/common';
+import { jobStatusSchema, ttsProviderTypeSchema, type TtsProviderType } from '../schemas/common';
 
 export const createJobSchema = z
   .object({
     fileId: z.string().uuid(),
+    providerType: ttsProviderTypeSchema.optional(),
     model: z.string().trim().max(100).nullable().optional(),
     voice: z.string().trim().max(100).nullable().optional(),
     speed: z.number().finite().nullable().optional(),
@@ -40,15 +41,16 @@ const SEGMENT_CHUNK = 1000;
 /** Bắt đầu tạo voice (FR-012, FR-015): kiểm tra cấu hình khả dụng, thiết lập hợp lệ, hạn mức; rồi xếp hàng. */
 export async function createJob(user: AuthUser, projectId: string, input: CreateJobInput) {
   const project = await getOwnedProject(user.id, projectId);
-  if (project.providerType === 'soniox') {
+  const selectedProvider: TtsProviderType = input.providerType ?? (project.providerType !== 'soniox' ? (project.providerType as TtsProviderType) : 'fpt_marketplace');
+  if ((selectedProvider as string) === 'soniox') {
     throw new HttpError(400, 'BAD_REQUEST', 'Dự án sử dụng nhà cung cấp SONIOX (STT), không hỗ trợ tạo voice.');
   }
   const file = await getOwnedFile(user.id, input.fileId);
   if (file.projectId !== project.id) throw notFound();
 
   // 409 PROVIDER_NOT_CONFIGURED nếu không có cấu hình riêng/chung khả dụng
-  const resolved = await resolveConfigForJob(user, project.providerType, { customProviderId: input.customProviderId });
-  const parsed = resolveSettings(project.providerType, {
+  const resolved = await resolveConfigForJob(user, selectedProvider, { customProviderId: input.customProviderId });
+  const parsed = resolveSettings(selectedProvider, {
     model: input.model,
     voice: input.voice,
     speed: input.speed,
@@ -64,14 +66,14 @@ export async function createJob(user: AuthUser, projectId: string, input: Create
   // Hạn mức chặt lúc tạo job mới (job đang chạy được phép hoàn tất). Chế độ khớp mốc: kiểm tra theo ước tính dung lượng
   let units = file.segmentCount;
   if (timed) {
-    const cat = getCatalog(project.providerType);
+    const cat = getCatalog(selectedProvider);
     const cues = await loadFileCues(file.id);
     units = unitsForTiming(cues, timing!, Math.min(cat.maxCharsPerRequest, TIMED_MAX_CHARS)).length;
     if (units === 0) throw validation({ file: 'Tệp không có cue nào đọc được.' });
     const est = await computeEstimate({
       user,
       file,
-      project,
+      project: { providerType: selectedProvider },
       settings: { model: parsed.value.model, voice: parsed.value.voice, speed: parsed.value.speed },
       pricePerMillionChars: resolved.row.pricePerMillionChars,
       timing: input.timing,
@@ -91,7 +93,7 @@ export async function createJob(user: AuthUser, projectId: string, input: Create
         ownerId: user.id,
         subtitleFileId: file.id,
         status: 'queued',
-        providerType: project.providerType as TtsProviderType,
+        providerType: selectedProvider,
         configId: resolved.customProviderId ? null : resolved.row.id,
         customProviderId: resolved.customProviderId ?? null,
         configScope: resolved.scope,

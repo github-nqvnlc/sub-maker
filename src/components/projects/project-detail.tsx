@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { AudioLines } from 'lucide-react';
+import { Import } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,12 +15,14 @@ import { EmptyState, ErrorState, LoadingList } from '@/components/shared/states'
 import { StartJobDialog } from '@/components/jobs/start-job-dialog';
 import { EditProjectDialog } from '@/components/projects/edit-project-dialog';
 import { FilePreviewDialog } from '@/components/projects/file-preview-dialog';
+import { ImportMediaDialog } from '@/components/projects/import-media-dialog';
 import { JobTable, type JobRowDto } from '@/components/projects/job-table';
+import { MediaTab } from '@/components/projects/media-tab';
 import { ScriptEditor } from '@/components/projects/script-editor';
-import { SttActiveBanner, SttDialog } from '@/components/projects/stt-dialog';
+import { SttActiveBanner, SttJobList } from '@/components/projects/stt-dialog';
 import { UploadDropzone } from '@/components/projects/upload-dropzone';
 import { ApiError, api, apiDelete } from '@/lib/api-client';
-import { useProviders } from '@/lib/hooks/use-providers';
+import { STT_ACTIVE, useSttJobs } from '@/lib/hooks/use-stt-jobs';
 import { fmtBytes, fmtDuration } from '@/lib/format';
 import { useFormat, useT } from '@/lib/i18n/client';
 
@@ -45,19 +47,24 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const fx = useFormat();
   const qc = useQueryClient();
   const router = useRouter();
-  const providers = useProviders();
+  const [tab, setTab] = useState('files');
   const [editOpen, setEditOpen] = useState(false);
   const [deleteProject, setDeleteProject] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [startFileId, setStartFileId] = useState<string | null>(null);
   const [deleteFile, setDeleteFile] = useState<FileDto | null>(null);
-  const [sttOpen, setSttOpen] = useState(false);
+  const [importMediaOpen, setImportMediaOpen] = useState(false);
+
+  const sttJobs = useSttJobs(projectId);
+  const completedSttCount = (sttJobs.data ?? []).filter((j) => j.status === 'completed' && j.resultSubtitleFileId).length;
+  const activeSttJobs = (sttJobs.data ?? []).filter((j) => STT_ACTIVE.has(j.status)).length;
 
   const q = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => api<ProjectDetailDto>(`/api/projects/${projectId}`),
     // Cập nhật định kỳ khi còn tiến trình đang chạy (FR-002)
-    refetchInterval: (query) => (query.state.data?.jobs.some((j) => ACTIVE.has(j.status)) ? 3000 : false),
+    refetchInterval: (query) =>
+      query.state.data?.jobs.some((j) => ACTIVE.has(j.status)) || activeSttJobs > 0 ? 3000 : false,
   });
 
   if (q.isPending) return <LoadingList rows={4} />;
@@ -67,26 +74,14 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const p = q.data;
   const fileNames = new Map(p.files.map((f) => [f.id, f.originalName]));
   const activeJobs = p.jobs.filter((j) => ACTIVE.has(j.status)).length;
-  const mappedType = p.providerType === 'shopaikey_openai' ? 'shopaikey_minimax' : p.providerType;
-  const providerLabel =
-    providers.data?.find((x) => x.type === mappedType)?.label ??
-    (p.providerType === 'fpt_marketplace'
-      ? 'FPT.AI'
-      : p.providerType === 'soniox'
-        ? 'SONIOX'
-        : p.providerType.startsWith('shopaikey')
-          ? 'ShopAIKey'
-          : p.providerType === 'openai_compatible'
-            ? t.providersAdmin.customTab
-            : p.providerType);
+  const totalActive = activeJobs + activeSttJobs;
 
   return (
     <div className="space-y-5">
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold">{p.name}</h1>
-          <Badge variant="secondary">{providerLabel}</Badge>
-          {activeJobs > 0 ? <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">{t.projects.running}</Badge> : null}
+          {totalActive > 0 ? <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">{t.projects.running}</Badge> : null}
           <div className="ml-auto flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
               {t.projects.edit}
@@ -102,15 +97,18 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </p>
       </div>
 
-      <SttActiveBanner projectId={p.id} onOpen={() => setSttOpen(true)} />
+      <SttActiveBanner projectId={p.id} onOpen={() => setTab('jobs')} />
 
-      <Tabs defaultValue="files">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="files">
             {t.projects.tabFiles} ({p.files.length})
           </TabsTrigger>
+          <TabsTrigger value="media">
+            {t.projects.tabMedia} ({completedSttCount})
+          </TabsTrigger>
           <TabsTrigger value="jobs">
-            {t.projects.tabJobs} ({p.jobs.length})
+            {t.projects.tabJobs} ({p.jobs.length + (sttJobs.data?.length ?? 0)})
           </TabsTrigger>
           <TabsTrigger value="voices">
             {t.projects.tabVoices} ({p.voices.length})
@@ -119,16 +117,15 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
 
         <TabsContent value="files" className="space-y-4">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            {/* Cột trái: Upload kịch bản (Xanh lá) & Editor kịch bản (Vàng) */}
+            {/* Cột trái: Upload kịch bản & Editor kịch bản */}
             <div className="space-y-4 lg:col-span-7 xl:col-span-7">
               <div className="flex items-center justify-between ">
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-semibold">{t.files.createNewTitle}</h2>
                 </div>
-                {/* Spec 004: tạo phụ đề từ audio/video bằng Soniox, kết quả vào danh sách kịch bản */}
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setSttOpen(true)}>
-                  <AudioLines className="size-4" />
-                  {t.stt.open}
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImportMediaOpen(true)}>
+                  <Import className="size-4" />
+                  {t.projects.importFromMedia}
                 </Button>
               </div>
               {/* Khung màu xanh lá cây: Upload file kịch bản */}
@@ -202,14 +199,46 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           </div>
         </TabsContent>
 
-        <TabsContent value="jobs">
-          <JobTable
+        <TabsContent value="media" className="space-y-4">
+          <MediaTab
             projectId={p.id}
-            providerType={p.providerType}
-            jobs={p.jobs}
-            fileNames={fileNames}
-            onPreviewFile={(id) => setPreviewId(id)}
+            onGoToJobs={() => setTab('jobs')}
+            onPreviewSubtitle={(id) => setPreviewId(id)}
+            onImportToScript={(id) => {
+              setTab('files');
+              setPreviewId(id);
+            }}
           />
+        </TabsContent>
+
+        <TabsContent value="jobs" className="space-y-6">
+          {/* Tiến trình phiên âm Video/Audio (STT) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold">{t.projects.sttJobsTitle}</h2>
+              <Badge variant="secondary">{sttJobs.data?.length ?? 0}</Badge>
+            </div>
+            <Card>
+              <CardContent className="p-4">
+                <SttJobList projectId={p.id} onOpenResult={(id) => setPreviewId(id)} />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Tiến trình tạo Voice (TTS) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold">{t.projects.ttsJobsTitle}</h2>
+              <Badge variant="secondary">{p.jobs.length}</Badge>
+            </div>
+            <JobTable
+              projectId={p.id}
+              providerType={p.providerType}
+              jobs={p.jobs}
+              fileNames={fileNames}
+              onPreviewFile={(id) => setPreviewId(id)}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="voices">
@@ -268,12 +297,12 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         }}
       />
       <FilePreviewDialog fileId={previewId} onClose={() => setPreviewId(null)} />
-      <SttDialog
+      <ImportMediaDialog
         projectId={p.id}
-        open={sttOpen}
-        onOpenChange={setSttOpen}
-        onOpenResult={(id) => {
-          setSttOpen(false);
+        open={importMediaOpen}
+        onClose={() => setImportMediaOpen(false)}
+        onSelectFile={(id) => {
+          setTab('files');
           setPreviewId(id);
         }}
       />

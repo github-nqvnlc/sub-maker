@@ -27,6 +27,7 @@ export type Estimate = {
 };
 
 export type EstimateBody = {
+  providerType?: string;
   model: string | null;
   voice: string;
   speed: number | null;

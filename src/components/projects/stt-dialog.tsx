@@ -100,8 +100,8 @@ function SttLog({ jobId }: { jobId: string }) {
 function SttJobItem({ job, onOpenResult }: { job: SttJobDto; onOpenResult?: (fileId: string) => void }) {
   const t = useT();
   const fx = useFormat();
-  const [showLog, setShowLog] = useState(false);
   const active = STT_ACTIVE.has(job.status);
+  const [showLog, setShowLog] = useState(active);
   const error = job.errorCode ? ((t.stt.errors as Record<string, string>)[job.errorCode] ?? job.errorMessage) : null;
   return (
     <li className="space-y-2 p-3">
