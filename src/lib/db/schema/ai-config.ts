@@ -8,7 +8,7 @@ import { users } from './auth';
  */
 export const providerType = pgEnum('provider_type', ['fpt_marketplace', 'shopaikey_openai', 'shopaikey_minimax', 'openai_compatible', 'soniox']);
 /** Nhà cung cấp TTS (các cột cấu hình/Project/job chỉ chứa các giá trị này). */
-export type TtsProviderType = 'fpt_marketplace' | 'shopaikey_openai' | 'shopaikey_minimax' | 'openai_compatible';
+export type TtsProviderType = 'fpt_marketplace' | 'shopaikey_openai' | 'shopaikey_minimax' | 'openai_compatible' | 'soniox';
 export const configScope = pgEnum('config_scope', ['global', 'user']);
 export const disabledReason = pgEnum('config_disabled_reason', ['owner_removed_from_list', 'admin_disabled']);
 

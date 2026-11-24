@@ -25,6 +25,7 @@ export const createJobSchema = z
     model: z.string().trim().max(100).nullable().optional(),
     voice: z.string().trim().max(100).nullable().optional(),
     speed: z.number().finite().nullable().optional(),
+    language: z.string().trim().max(10).optional(),
     /** Custom Provider do Administrator tạo (spec 004, FR-022); chỉ với Project dùng openai_compatible */
     customProviderId: z.string().uuid().nullable().optional(),
     /** Chế độ khớp mốc thời gian phụ đề (spec 003). Vắng mặt hoặc mode=continuous ⇒ "Đọc liên tục" như spec 001. */
@@ -41,10 +42,7 @@ const SEGMENT_CHUNK = 1000;
 /** Bắt đầu tạo voice (FR-012, FR-015): kiểm tra cấu hình khả dụng, thiết lập hợp lệ, hạn mức; rồi xếp hàng. */
 export async function createJob(user: AuthUser, projectId: string, input: CreateJobInput) {
   const project = await getOwnedProject(user.id, projectId);
-  const selectedProvider: TtsProviderType = input.providerType ?? (project.providerType !== 'soniox' ? (project.providerType as TtsProviderType) : 'fpt_marketplace');
-  if ((selectedProvider as string) === 'soniox') {
-    throw new HttpError(400, 'BAD_REQUEST', 'Dự án sử dụng nhà cung cấp SONIOX (STT), không hỗ trợ tạo voice.');
-  }
+  const selectedProvider: TtsProviderType = input.providerType ?? (project.providerType as TtsProviderType) ?? 'fpt_marketplace';
   const file = await getOwnedFile(user.id, input.fileId);
   if (file.projectId !== project.id) throw notFound();
 
@@ -101,6 +99,7 @@ export async function createJob(user: AuthUser, projectId: string, input: Create
           model: parsed.value.model,
           voice: parsed.value.voice,
           speed: parsed.value.speed,
+          ...(input.language ? { language: input.language } : {}),
           ...(timing ? { timing } : {}),
           ...(resolved.customProviderId ? { customProviderId: resolved.customProviderId } : {}),
         },

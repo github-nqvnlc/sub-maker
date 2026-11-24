@@ -9,6 +9,8 @@ export type SynthesizeRequest = {
   voice: string;
   /** Thang tốc độ theo từng nhà cung cấp (xem catalog.speed). */
   speed?: number | null;
+  /** Ngôn ngữ tùy chọn (vd: Soniox hỗ trợ 'vi', 'en') */
+  language?: string | null;
 };
 
 export type PollingOptions = {

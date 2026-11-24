@@ -1,5 +1,5 @@
 import type { ModelInfo, ProviderCatalog, ProviderType, VoiceInfo } from './types';
-import { SONIOX_DEFAULT_BASE_URL, SONIOX_MODELS } from './adapters/soniox-types';
+import { SONIOX_MODELS } from './adapters/soniox-types';
 
 /**
  * Danh mục model/giọng/tốc độ theo từng nhà cung cấp (nguồn: docs/fpt-ai-voice-guide.md, docs/shopaikey-guide.md).
@@ -152,14 +152,30 @@ const OPENAI_COMPATIBLE: ProviderCatalog = {
   minChars: 1,
 };
 
+export const SONIOX_TTS_VOICES: VoiceInfo[] = [
+  { id: 'Daniel', label: 'Daniel (Nam, tự nhiên/đàm thoại)', gender: 'male', region: '' },
+  { id: 'Adrian', label: 'Adrian (Nam, chuyên nghiệp/trầm)', gender: 'male', region: '' },
+  { id: 'Emily', label: 'Emily (Nữ, ấm áp/thân thiện)', gender: 'female', region: '' },
+  { id: 'Emma', label: 'Emma (Nữ, tự nhiên/rõ ràng)', gender: 'female', region: '' },
+  { id: 'Nina', label: 'Nina (Nữ, biểu cảm)', gender: 'female', region: '' },
+  { id: 'Sophia', label: 'Sophia (Nữ, năng động)', gender: 'female', region: '' },
+  { id: 'Oliver', label: 'Oliver (Nam, điềm đạm)', gender: 'male', region: '' },
+  { id: 'Lucas', label: 'Lucas (Nam, trẻ trung)', gender: 'male', region: '' },
+  { id: 'Mia', label: 'Mia (Nữ, nhẹ nhàng)', gender: 'female', region: '' },
+  { id: 'Arjun', label: 'Arjun (Nam, mạch lạc)', gender: 'male', region: '' },
+];
+
 const SONIOX: ProviderCatalog = {
   type: 'soniox',
-  label: 'SONIOX',
-  defaultBaseUrl: SONIOX_DEFAULT_BASE_URL,
-  models: SONIOX_MODELS.map((m) => ({ id: m.id, label: m.id, voices: [] })),
-  speed: { min: 1, max: 1, default: 1, step: 0 },
-  maxCharsPerRequest: 0,
-  minChars: 0,
+  label: 'Soniox',
+  defaultBaseUrl: 'https://tts-rt.soniox.com',
+  models: [
+    { id: 'tts-rt-v2', label: 'tts-rt-v2 (Text-to-Speech v2)', voices: SONIOX_TTS_VOICES },
+    ...SONIOX_MODELS.map((m) => ({ id: m.id, label: `${m.id} (STT)`, voices: [] })),
+  ],
+  speed: { min: 0.7, max: 1.3, default: 1, step: 0.05 },
+  maxCharsPerRequest: 5000,
+  minChars: 1,
 };
 
 const CATALOGS: Record<ProviderType, ProviderCatalog> = {
@@ -199,7 +215,10 @@ export function resolveSettings(
   input: SettingsInput,
 ): { ok: true; value: ResolvedSettings } | { ok: false; fields: Record<string, string> } {
   if (type === 'soniox') {
-    return { ok: true, value: { model: input.model ?? 'stt-async-v6', voice: '', speed: 1 } };
+    const model = input.model ?? input.defaults?.model ?? 'tts-rt-v2';
+    const voice = input.voice ?? input.defaults?.voice ?? 'Daniel';
+    const speed = input.speed ?? input.defaults?.speed ?? 1.0;
+    return { ok: true, value: { model, voice, speed } };
   }
   const cat = getCatalog(type);
   const fields: Record<string, string> = {};

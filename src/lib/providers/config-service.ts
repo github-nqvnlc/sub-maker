@@ -296,6 +296,35 @@ export async function resolveConfigForJob(
   }
   const global = await getConfigRow('global', null, type);
   if (global && global.enabled) return { row: global, scope: 'global' };
+  if (type === 'soniox') {
+    const { getSttConfigRow } = await import('../stt/config');
+    const stt = await getSttConfigRow();
+    if (stt && stt.enabled) {
+      const row: Row = {
+        id: stt.id,
+        scope: 'global',
+        ownerUserId: null,
+        type: 'soniox',
+        name: 'Soniox',
+        baseUrl: 'https://tts-rt.soniox.com',
+        apiKeyEnc: stt.apiKeyEnc,
+        apiKeyHint: stt.apiKeyHint,
+        defaultModel: 'tts-rt-v2',
+        defaultVoice: 'Daniel',
+        defaultSpeed: 1,
+        maxCharsPerRequest: 5000,
+        pricePerMillionChars: null,
+        enabled: stt.enabled,
+        disabledReason: null,
+        lastTestAt: stt.lastTestAt,
+        lastTestOk: stt.lastTestOk,
+        lastTestMessage: stt.lastTestMessage,
+        createdAt: stt.createdAt,
+        updatedAt: stt.updatedAt,
+      };
+      return { row, scope: 'global' };
+    }
+  }
   throw new HttpError(409, 'PROVIDER_NOT_CONFIGURED');
 }
 

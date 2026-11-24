@@ -43,7 +43,7 @@ export type SynthContext = {
   provider: TtsProvider;
   /** Dựng ngữ cảnh gọi (giải mã khóa, safeFetch) cho một lần gọi. */
   callContext: (signal: AbortSignal) => CallContext;
-  settings: { model: string | null; voice: string; speed: number | null };
+  settings: { model: string | null; voice: string; speed: number | null; language?: string | null };
   pricePerMillionChars: number | null;
   signal: AbortSignal;
   /** Giới hạn yêu cầu/phút của cấu hình AI (spec 003); chờ lượt trước mỗi lần gọi nhà cung cấp, không chờ khi trúng cache. */
@@ -105,7 +105,7 @@ export async function synthesizeSegment(c: SynthContext, idx: number, text: stri
 
     try {
       const res = await c.provider.synthesize(
-        { text, model: c.settings.model, voice: c.settings.voice, speed: c.settings.speed },
+        { text, model: c.settings.model, voice: c.settings.voice, speed: c.settings.speed, language: c.settings.language },
         c.callContext(c.signal),
       );
       // Giải mã về PCM chuẩn; audio hỏng được coi là lỗi tạm thời của nhà cung cấp

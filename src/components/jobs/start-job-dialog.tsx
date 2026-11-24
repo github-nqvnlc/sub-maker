@@ -1,16 +1,17 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { ApiError, apiPost } from '@/lib/api-client';
+import { ApiError, api, apiPost } from '@/lib/api-client';
 import { useProviders } from '@/lib/hooks/use-providers';
 import { useT } from '@/lib/i18n/client';
 import { EstimatePanel, useEstimate } from '@/components/jobs/estimate-panel';
@@ -35,10 +36,9 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
   const qc = useQueryClient();
   const providers = useProviders();
 
-  // Chỉ lấy các nhà cung cấp hỗ trợ TTS (loại trừ Soniox vốn là STT)
-  const ttsProviders = (providers.data ?? []).filter((p) => p.type !== 'soniox');
+  const ttsProviders = providers.data ?? [];
   const initialProvider =
-    providerType && providerType !== 'soniox'
+    providerType
       ? providerType === 'shopaikey_openai'
         ? 'shopaikey_minimax'
         : providerType
@@ -53,9 +53,19 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
   const [model, setModel] = useState<string | null>(null);
   const [voice, setVoice] = useState<string | null>(null);
   const [speed, setSpeed] = useState<number | null>(null);
+  const [language, setLanguage] = useState<'auto' | 'vi' | 'en'>('auto');
+  const [manualVoice, setManualVoice] = useState(false);
+  const [customVoiceId, setCustomVoiceId] = useState('');
   const [timedPick, setTimedPick] = useState<boolean | null>(null);
   const [mergeCues, setMergeCues] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Dynamic voices cho Soniox (bao gồm cả voice tạo trên Console)
+  const sonioxVoicesQuery = useQuery({
+    queryKey: ['soniox-voices'],
+    queryFn: () => api<Array<{ id: string; label: string; isCustom?: boolean }>>('/api/providers/soniox/voices'),
+    enabled: effProviderType === 'soniox',
+  });
 
   // Spec 004: Project chuẩn OpenAI không có cấu hình riêng → chọn một Custom Provider do Administrator cấp quyền
   const customs = effProviderType === 'openai_compatible' && !provider?.usingOwnConfig ? (provider?.customProviders ?? []) : [];
@@ -68,7 +78,19 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
   // Giọng chuẩn OpenAI giống nhau ở mọi model; model ngoài danh mục dùng danh sách giọng của model đầu
   const modelInfo = provider?.models.find((m) => m.id === effModel) ?? (custom ? provider?.models[0] : undefined);
   const customVoice = custom?.defaultVoice && modelInfo?.voices.some((v) => v.id === custom.defaultVoice) ? custom.defaultVoice : null;
-  const effVoice = voice && modelInfo?.voices.some((v) => v.id === voice) ? voice : (customVoice ?? modelInfo?.voices[0]?.id ?? '');
+
+  const sonioxVoices = sonioxVoicesQuery.data ?? [];
+  const voiceChoices =
+    effProviderType === 'soniox' && sonioxVoices.length > 0
+      ? sonioxVoices.map((v) => ({ id: v.id, label: v.label }))
+      : (modelInfo?.voices ?? []);
+
+  const effVoice = manualVoice && customVoiceId.trim()
+    ? customVoiceId.trim()
+    : voice && voiceChoices.some((v) => v.id === voice)
+      ? voice
+      : (customVoice ?? voiceChoices[0]?.id ?? '');
+
   const effSpeed = speed ?? provider?.speed.default ?? 1;
   // Chế độ khớp mốc: bật sẵn khi tệp có mốc thời gian hợp lệ (spec 003, FR-003)
   const fileInfo = files.find((f) => f.id === effFile);
@@ -76,9 +98,11 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
   const effTimed = timingAvailable && (timedPick ?? true);
   const timing = effTimed ? ({ mode: 'timed', mergeCues } as const) : undefined;
   const customBody = custom ? { customProviderId: custom.id } : {};
+  const langParam = language !== 'auto' ? { language } : {};
+
   const estimate = useEstimate(
     effFile,
-    { providerType: effProviderType, model: effModel || null, voice: effVoice, speed: effSpeed, ...customBody, ...(timing ? { timing } : {}) },
+    { providerType: effProviderType, model: effModel || null, voice: effVoice, speed: effSpeed, ...langParam, ...customBody, ...(timing ? { timing } : {}) },
     !!openFileId && !!provider?.available,
   );
   const quotaBlocked = estimate.data?.quotaOk === false;
@@ -91,6 +115,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
         model: effModel,
         voice: effVoice,
         speed: effSpeed,
+        ...langParam,
         ...customBody,
         ...(timing ? { timing } : {}),
       }),
@@ -116,6 +141,9 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
           setCustomId(null);
           setTimedPick(null);
           setSelectedProvider(null);
+          setManualVoice(false);
+          setCustomVoiceId('');
+          setLanguage('auto');
           onClose();
         }
       }}
@@ -139,6 +167,8 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
                   setModel(null);
                   setVoice(null);
                   setCustomId(null);
+                  setManualVoice(false);
+                  setCustomVoiceId('');
                 }}
               >
                 <SelectTrigger aria-label={t.projects.provider}>
@@ -230,25 +260,66 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
               </div>
             ) : null}
 
-            <div className="space-y-2">
-              <Label>{t.jobs.voice}</Label>
-              <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <Select value={effVoice} onValueChange={setVoice}>
-                    <SelectTrigger aria-label={t.jobs.voice}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(modelInfo?.voices ?? []).map((v) => (
-                        <SelectItem key={v.id} value={v.id}>
-                          {v.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <VoicePreviewButton providerType={effProviderType} voiceId={effVoice} />
+            {/* Ngôn ngữ đọc (đặc thù Soniox hoặc đa ngôn ngữ) */}
+            {effProviderType === 'soniox' ? (
+              <div className="space-y-2">
+                <Label>{t.jobs.language}</Label>
+                <Select value={language} onValueChange={(v: 'auto' | 'vi' | 'en') => setLanguage(v)}>
+                  <SelectTrigger aria-label={t.jobs.language}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">{t.jobs.languageAuto}</SelectItem>
+                    <SelectItem value="vi">{t.jobs.languageVi}</SelectItem>
+                    <SelectItem value="en">{t.jobs.languageEn}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+            ) : null}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>{t.jobs.voice}</Label>
+                {effProviderType === 'soniox' ? (
+                  <button
+                    type="button"
+                    onClick={() => setManualVoice(!manualVoice)}
+                    className="text-xs text-primary hover:underline cursor-pointer"
+                  >
+                    {manualVoice ? t.jobs.toggleListVoice : t.jobs.toggleCustomVoice}
+                  </button>
+                ) : null}
+              </div>
+
+              {manualVoice ? (
+                <div className="space-y-1">
+                  <Input
+                    value={customVoiceId}
+                    onChange={(e) => setCustomVoiceId(e.target.value)}
+                    placeholder={t.jobs.customVoicePlaceholder}
+                    aria-label={t.jobs.customVoiceInput}
+                  />
+                  <p className="text-xs text-muted-foreground">{t.jobs.customVoiceInput}</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Select value={effVoice} onValueChange={setVoice}>
+                      <SelectTrigger aria-label={t.jobs.voice}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {voiceChoices.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <VoicePreviewButton providerType={effProviderType} voiceId={effVoice} />
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -299,3 +370,4 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
     </Dialog>
   );
 }
+

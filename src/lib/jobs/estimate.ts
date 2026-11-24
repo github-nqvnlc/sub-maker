@@ -28,6 +28,7 @@ export const estimateBodySchema = z
     model: z.string().trim().max(100).nullable().optional(),
     voice: z.string().trim().max(100).nullable().optional(),
     speed: z.number().finite().nullable().optional(),
+    language: z.string().trim().max(10).optional(),
     /** Custom Provider sẽ dùng (spec 004) */
     customProviderId: z.string().uuid().nullable().optional(),
     timing: z
@@ -159,10 +160,7 @@ export async function computeEstimate(c: EstimateContext): Promise<Estimate> {
 export async function estimateFile(user: AuthUser, fileId: string, body: EstimateBody): Promise<Estimate> {
   const file = await getOwnedFile(user.id, fileId);
   const project = await getOwnedProject(user.id, file.projectId);
-  const effProviderType = (body.providerType ?? (project.providerType !== 'soniox' ? (project.providerType as TtsProviderType) : 'fpt_marketplace')) as TtsProviderType;
-  if ((effProviderType as string) === 'soniox') {
-    throw conflict('TTS_NOT_SUPPORTED_FOR_SONIOX');
-  }
+  const effProviderType = (body.providerType ?? (project.providerType as TtsProviderType) ?? 'fpt_marketplace') as TtsProviderType;
   if (body.timing?.mode === 'timed' && !file.hasTimecodes) throw conflict('NO_TIMECODES');
 
   const resolved = await resolveConfigForJob(user, effProviderType, { customProviderId: body.customProviderId });
