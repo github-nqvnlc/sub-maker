@@ -177,7 +177,13 @@ export async function runGenerateVoice(jobId: string, opts: RunOptions = {}): Pr
     secrets.push(apiKey);
     await db
       .update(voiceJobs)
-      .set(resolved.customProviderId ? { configId: null, customProviderId: resolved.customProviderId, configScope: 'global' } : { configId: resolved.row.id, configScope: resolved.scope })
+      .set(
+        resolved.customProviderId
+          ? { configId: null, customProviderId: resolved.customProviderId, configScope: 'global' }
+          : resolved.isSttFallback
+            ? { configId: null, configScope: resolved.scope }
+            : { configId: resolved.row.id, configScope: resolved.scope },
+      )
       .where(eq(voiceJobs.id, jobId));
     const provider = getProvider(job.providerType);
     await log(

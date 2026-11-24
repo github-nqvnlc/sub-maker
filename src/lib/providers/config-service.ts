@@ -246,7 +246,7 @@ export async function testConfig(scope: ConfigScope, ownerUserId: string | null,
 // ---- Chọn cấu hình lúc bắt đầu job -------------------------------------------------------------
 
 /** `customProviderId` có giá trị khi job dùng Custom Provider do Administrator tạo (spec 004, FR-022). */
-export type ResolvedConfig = { row: Row; scope: ConfigScope; customProviderId?: string };
+export type ResolvedConfig = { row: Row; scope: ConfigScope; customProviderId?: string; isSttFallback?: boolean };
 
 /**
  * Chọn cấu hình cho job (data-model.md):
@@ -322,7 +322,7 @@ export async function resolveConfigForJob(
         createdAt: stt.createdAt,
         updatedAt: stt.updatedAt,
       };
-      return { row, scope: 'global' };
+      return { row, scope: 'global', isSttFallback: true };
     }
   }
   throw new HttpError(409, 'PROVIDER_NOT_CONFIGURED');

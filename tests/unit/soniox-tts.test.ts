@@ -4,6 +4,15 @@ import { getCatalog, resolveSettings } from '../../src/lib/providers/catalog';
 import { fetchSonioxVoices } from '../../src/lib/providers/soniox-voices';
 import type { CallContext } from '../../src/lib/providers/types';
 
+type SonioxPayload = {
+  model?: string;
+  text?: string;
+  voice?: string;
+  language?: string;
+  speed?: number;
+  audio_format?: string;
+};
+
 describe('Soniox TTS', () => {
   const provider = new SonioxTtsProvider();
 
@@ -34,13 +43,13 @@ describe('Soniox TTS', () => {
 
   it('gửi payload JSON chuẩn đến endpoint tts-rt-v2 với Bearer token và nhận audio mp3', async () => {
     let capturedUrl = '';
-    let capturedBody: Record<string, unknown> | null = null;
+    let capturedBody: SonioxPayload | null = null;
     let capturedHeaders: Record<string, string> = {};
 
     const mockFetch = vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
       capturedUrl = url;
       capturedHeaders = init.headers as Record<string, string>;
-      capturedBody = JSON.parse(init.body as string);
+      capturedBody = JSON.parse(init.body as string) as SonioxPayload;
       return new Response(mockMp3Bytes, {
         status: 200,
         headers: { 'content-type': 'audio/mpeg' },
@@ -80,9 +89,9 @@ describe('Soniox TTS', () => {
   });
 
   it('nhận diện ngôn ngữ en cho văn bản tiếng Anh hoặc tôn trọng ngôn ngữ truyền vào', async () => {
-    let capturedBody: Record<string, unknown> | null = null;
+    const captured: { body?: SonioxPayload } = {};
     const mockFetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
-      capturedBody = JSON.parse(init.body as string);
+      captured.body = JSON.parse(init.body as string) as SonioxPayload;
       return new Response(mockMp3Bytes, {
         status: 200,
         headers: { 'content-type': 'audio/mpeg' },
@@ -96,11 +105,11 @@ describe('Soniox TTS', () => {
 
     // English text -> language: 'en'
     await provider.synthesize({ text: 'Hello world, welcome to Sub Maker.', voice: 'Daniel' }, ctx);
-    expect(capturedBody.language).toBe('en');
+    expect(captured.body?.language).toBe('en');
 
     // Explicit language override -> 'vi'
     await provider.synthesize({ text: 'Hello world', voice: 'Daniel', language: 'vi' }, ctx);
-    expect(capturedBody.language).toBe('vi');
+    expect(captured.body?.language).toBe('vi');
   });
 
   it('fetchSonioxVoices kết hợp voice console và shared-voices thành công', async () => {

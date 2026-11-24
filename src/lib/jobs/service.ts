@@ -92,7 +92,7 @@ export async function createJob(user: AuthUser, projectId: string, input: Create
         subtitleFileId: file.id,
         status: 'queued',
         providerType: selectedProvider,
-        configId: resolved.customProviderId ? null : resolved.row.id,
+        configId: resolved.customProviderId || resolved.isSttFallback ? null : resolved.row.id,
         customProviderId: resolved.customProviderId ?? null,
         configScope: resolved.scope,
         settings: {
