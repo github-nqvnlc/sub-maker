@@ -173,7 +173,7 @@ export function MediaTab({
                 <div className="space-y-2">
                   <Label>{t.stt.format}</Label>
                   <Select value={format} onValueChange={(v: 'srt' | 'txt' | 'md') => setFormat(v)}>
-                    <SelectTrigger aria-label={t.stt.format}>
+                    <SelectTrigger className='w-full' aria-label={t.stt.format}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -187,7 +187,7 @@ export function MediaTab({
                 <div className="space-y-2">
                   <Label>{t.stt.language}</Label>
                   <Select value={language} onValueChange={setLanguage}>
-                    <SelectTrigger aria-label={t.stt.language}>
+                    <SelectTrigger className='w-full' aria-label={t.stt.language}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

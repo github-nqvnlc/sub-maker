@@ -1,3 +1,19 @@
+<!--
+Sync Impact Report (tạm thời, xóa trước khi commit)
+- Thay đổi phiên bản: 1.1.0 → 1.2.0 → 1.3.0 (hai lần sửa trong ngày 2026-11-25, đều chưa commit)
+- 1.3.0 (MINOR: thêm một mục quy trình, không bỏ hay định nghĩa lại nguyên tắc nào)
+  - Lý do: người dùng yêu cầu tự commit và push lên main khi implement xong mọi task
+  - Nội dung thêm: "Hoàn tất triển khai trên main" trong Quy trình phát triển và chất lượng
+  - Tác động: spec 005 đã đồng bộ (spec.md, plan.md, tasks.md ghi nhánh main, có T100 commit, push
+    và thông báo; plan.md kiểm tra theo 1.3.0); spec 003, 004 đã xong và spec 001 còn T153, không đổi
+- 1.2.0 (MINOR: mở rộng phạm vi và thêm một ràng buộc)
+  - Lý do: spec 005 (video overlay phụ đề) cần tạo video và hiển thị theo từng từ
+  - Nội dung thêm: ràng buộc "Mốc từng từ trong video overlay"
+  - Nội dung sửa: "Lưu trữ file", "Văn bản và âm thanh", "Phạm vi giai đoạn này"
+- Nguyên tắc sửa: không (I–VI giữ nguyên). Mục bị xóa: không
+- TODO hoãn lại: không
+-->
+
 # Sub Maker Constitution
 
 ## Core Principles
@@ -99,8 +115,8 @@ mà không được làm giảm trải nghiệm tiếng Việt.
   https://tweakcn.com/themes/cmmdxhg6d000804l5f6xlcbh3.
 - **Backend và cơ sở dữ liệu**: chọn ở bước `/speckit-plan`, kèm lý do; lựa chọn MUST hỗ trợ tiến
   trình nền bền vững, truyền log thời gian thực và truy vấn tìm kiếm/lọc/sắp xếp cho 200+ Project.
-- **Lưu trữ file**: S3 MinIO cho file subtitle, audio và avatar. File MUST NOT truy cập công khai
-  không xác thực; tải về MUST đi qua kiểm tra quyền (ví dụ liên kết ký có thời hạn).
+- **Lưu trữ file**: S3 MinIO cho file subtitle, audio, video overlay và avatar. File MUST NOT truy cập
+  công khai không xác thực; tải về MUST đi qua kiểm tra quyền (ví dụ liên kết ký có thời hạn).
 - **Triển khai**: Docker, công bố qua Cloudflare Tunnel và gắn tên miền. Các dịch vụ nội bộ (cơ sở
   dữ liệu, MinIO, tiến trình nền) MUST NOT mở cổng trực tiếp ra Internet.
 - **Bền dữ liệu**: dữ liệu MUST nằm trên volume bền, không mất khi khởi động lại hoặc triển khai
@@ -110,7 +126,12 @@ mà không được làm giảm trải nghiệm tiếng Việt.
   người dùng. Đặc điểm từng nhà cung cấp lấy từ `docs/fpt-ai-voice-guide.md` và
   `docs/shopaikey-guide.md`; điểm chưa kiểm chứng trong đó MUST được thử thật trước khi dựa vào.
 - **Văn bản và âm thanh**: văn bản MUST chuẩn hóa Unicode NFC và UTF-8; chia câu/đoạn theo giới
-  hạn từng nhà cung cấp; mốc thời gian theo câu/đoạn (không theo từng từ).
+  hạn từng nhà cung cấp; mốc thời gian chuẩn của voice và phụ đề theo câu/đoạn (không theo
+  từng từ).
+- **Mốc từng từ trong video overlay**: MAY dùng mốc từng từ ước lượng, chỉ để hiển thị chữ trong
+  video overlay phụ đề. Mốc này MUST được suy ra từ mốc câu/đoạn và nằm trong khoảng của câu/đoạn
+  đó, MUST NOT thay thế mốc câu/đoạn làm chuẩn cho voice, và giao diện MUST ghi rõ là ước lượng.
+  Lý do: hiển thị theo từ chỉ cần nhịp gần đúng; voice vẫn cần mốc kiểm chứng được.
 - **Định dạng phụ đề**: dùng chuẩn SubRip `.srt` (số thứ tự, dòng mốc `hh:mm:ss,mmm --> hh:mm:ss,mmm`,
   chữ); không dùng định dạng riêng `.skt`. Kịch bản `.txt` và `.md` vẫn được hỗ trợ.
 
@@ -120,14 +141,29 @@ mà không được làm giảm trải nghiệm tiếng Việt.
   `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`. Thay đổi hành vi MUST cập nhật spec
   trước.
 - Phạm vi giai đoạn này: CRUDS Project, tạo voice, xem/nghe đồng bộ, tài khoản, thống kê, cấu hình
-  AI. Tính phí theo usage, hạn mức theo User, chia sẻ Project, highlight theo từng từ, xuất phụ
-  đề, chỉnh văn bản trong ứng dụng thuộc giai đoạn sau và MUST NOT làm sớm khi chưa có spec.
+  AI, tạo video overlay phụ đề (gồm hiển thị theo từng từ trong video overlay). Tính phí theo usage,
+  hạn mức theo User, chia sẻ Project, highlight theo từng từ trong trình phát voice, xuất phụ đề,
+  chỉnh văn bản trong ứng dụng thuộc giai đoạn sau và MUST NOT làm sớm khi chưa có spec.
 - Mỗi thay đổi MUST được rà soát đối chiếu Core Principles; vi phạm MUST được ghi lại cùng lý do
   trong mục theo dõi độ phức tạp của plan.
 - Tài liệu dự án (spec, plan, README, hướng dẫn vận hành) dùng tiếng Việt; thông báo giao diện
   theo ngôn ngữ người dùng đã chọn (mặc định tiếng Việt); tên mã (biến, hàm, bảng) dùng tiếng Anh.
 - Nội dung do AI sinh ra có thể cần gắn nhãn theo nền tảng và luật nơi phát hành; quyền thương mại
   với audio phụ thuộc điều khoản nhà cung cấp và MUST được xác minh trước khi User dùng thương mại.
+- **Hoàn tất triển khai trên `main`**: `/speckit-implement` MUST làm việc trên nhánh `main` và
+  MUST NOT tạo, chuyển hay push nhánh khác. Khi mọi task của tính năng đã hoàn thành và các kiểm
+  thử bắt buộc đều đạt, người triển khai MUST commit, push lên `origin/main`, rồi thông báo cho
+  người dùng, trước khi kết thúc công việc; không cần hỏi lại. Các điều kiện:
+  - Task chưa xong, bị hoãn hoặc chờ người dùng MUST NOT tính là hoàn thành: dừng, nêu rõ từng
+    task và hỏi người dùng trước khi commit. Kiểm thử không đạt MUST NOT được push.
+  - Commit MUST chỉ gồm thay đổi của tính năng; thay đổi có sẵn của người dùng hoặc phiên khác
+    MUST NOT bị gộp, ghi đè hay bỏ đi. Không tách được thì hỏi. MUST NOT commit bí mật.
+  - MUST NOT force push, bỏ qua hook hay sửa lịch sử đã push. Nếu `origin/main` đã có commit mới
+    thì lấy về và chạy lại kiểm thử trước khi push; có xung đột hoặc push bị từ chối thì dừng và
+    báo. Nếu không ở nhánh `main` khi bắt đầu thì dừng và hỏi.
+  - Thông báo MUST nêu mã commit, kết quả push, kết quả kiểm thử và việc còn lại.
+  - Lý do: người dùng muốn mã xong là có ngay trên GitHub ở một nhánh duy nhất; các điều kiện giữ
+    cho `main` luôn chạy được và không mất công của người khác.
 
 ## Governance
 
@@ -140,4 +176,4 @@ mà không được làm giảm trải nghiệm tiếng Việt.
 - **Rà soát tuân thủ**: mọi plan MUST có bước kiểm tra constitution trước khi thiết kế và sau khi
   thiết kế; mọi lần review MUST đối chiếu Nguyên tắc I, II và IV (bảo mật và chi phí) trước tiên.
 
-**Version**: 1.1.0 | **Ratified**: 2026-11-19 | **Last Amended**: 2026-11-20
+**Version**: 1.3.0 | **Ratified**: 2026-11-19 | **Last Amended**: 2026-11-25

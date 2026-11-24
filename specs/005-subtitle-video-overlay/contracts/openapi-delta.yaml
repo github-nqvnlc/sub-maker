@@ -1,0 +1,320 @@
+openapi: 3.1.0
+info:
+  title: Sub Maker Video Overlay API Delta
+  version: 0.1.0
+  description: |
+    Mọi thao tác yêu cầu đăng nhập (401) và chỉ truy cập dữ liệu của chính mình; tài nguyên của người khác, id sai
+    hoặc không tồn tại đều trả 404. Thao tác ghi kiểm tra Origin như các route hiện có. Lỗi theo dạng
+    { error: { code, message, fields? } }.
+paths:
+  /api/projects/{projectId}/overlay:
+    parameters: [{ $ref: '#/components/parameters/projectId' }]
+    get:
+      summary: Cấu hình gần nhất, nguồn đã chọn và giới hạn đang áp dụng
+      responses:
+        '200':
+          description: Chưa lưu lần nào thì trả cấu hình mặc định
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [config, source, limits]
+                properties:
+                  config: { $ref: '#/components/schemas/OverlayConfig' }
+                  source: { $ref: '#/components/schemas/Source' }
+                  limits:
+                    type: object
+                    properties:
+                      maxMinutes: { type: integer }
+                      maxMinutesTransparent: { type: integer }
+                      maxJobsPerUser: { type: integer }
+                      quotaBytes: { type: integer, format: int64 }
+                      usedBytes: { type: integer, format: int64 }
+                      pendingBytes: { type: integer, format: int64, description: Tổng ước tính của tiến trình đang hoạt động }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      summary: Lưu cấu hình gần nhất (tự lưu)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [config, source]
+              properties:
+                config: { $ref: '#/components/schemas/OverlayConfig' }
+                source: { $ref: '#/components/schemas/Source' }
+      responses:
+        '204': { description: Đã lưu }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /api/projects/{projectId}/overlay/timeline:
+    parameters: [{ $ref: '#/components/parameters/projectId' }]
+    get:
+      summary: Mốc áp dụng của các cue cho cặp voice và phụ đề (dùng cho xem trước)
+      parameters:
+        - { name: voiceId, in: query, schema: { type: string, format: uuid } }
+        - { name: audioId, in: query, schema: { type: string, format: uuid } }
+        - { name: fileId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Cần đúng một trong voiceId, audioId
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [durationMs, cues, warnings]
+                properties:
+                  durationMs: { type: integer }
+                  cues: { type: array, items: { $ref: '#/components/schemas/AppliedCue' } }
+                  warnings: { type: array, items: { $ref: '#/components/schemas/Warning' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: NO_TIMECODES hoặc AUDIO_NOT_READY }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /api/projects/{projectId}/overlay/audios:
+    parameters: [{ $ref: '#/components/parameters/projectId' }]
+    get:
+      summary: Tệp âm thanh đã tải lên của Project
+      responses:
+        '200':
+          description: Danh sách mới nhất trước
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/OverlayAudio' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      summary: Tải lên tệp âm thanh (.mp3, .wav, .m4a, tối đa 100 MB)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '202':
+          description: Đang xử lý nền
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OverlayAudio' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Quota' }
+        '413': { description: OVERLAY_AUDIO_TOO_LARGE }
+        '422': { description: OVERLAY_AUDIO_UNSUPPORTED }
+        '429': { description: OVERLAY_TOO_MANY_UPLOADS (3 tệp đang xử lý) }
+
+  /api/overlay/audios/{audioId}/stream:
+    get:
+      summary: Phát tệp âm thanh, hỗ trợ Range
+      parameters: [{ name: audioId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: audio/mpeg }
+        '206': { description: Một phần }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/overlay/audios/bulk-delete:
+    post:
+      summary: Xóa một hoặc nhiều tệp âm thanh, trả lại hạn mức
+      requestBody: { $ref: '#/components/requestBodies/Ids' }
+      responses:
+        '200': { $ref: '#/components/responses/BulkDelete' }
+
+  /api/projects/{projectId}/overlay/jobs:
+    parameters: [{ $ref: '#/components/parameters/projectId' }]
+    get:
+      summary: Các lần xuất của Project (tối đa 50, mới nhất trước; không kèm cues)
+      responses:
+        '200':
+          description: Danh sách
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/OverlayJob' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      summary: Tạo tiến trình xuất
+      description: |
+        Thứ tự kiểm tra: quyền Project, nguồn và cấu hình (404/422) → nguồn sẵn sàng (409) → thời lượng (422 OVERLAY_TOO_LONG)
+        → giới hạn tiến trình (429) → hạn mức (409 QUOTA_EXCEEDED kèm needBytes). Gửi lại cùng clientRequestId trả dòng cũ (200).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [clientRequestId, fileId, config]
+              properties:
+                clientRequestId: { type: string, format: uuid }
+                voiceId: { type: string, format: uuid }
+                audioId: { type: string, format: uuid }
+                fileId: { type: string, format: uuid }
+                config: { $ref: '#/components/schemas/OverlayConfig' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OverlayJob' }
+        '200': { description: Đã tạo từ yêu cầu trước với cùng clientRequestId }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Quota' }
+        '422': { $ref: '#/components/responses/Validation' }
+        '429': { description: OVERLAY_TOO_MANY_JOBS }
+
+  /api/overlay/jobs/{jobId}:
+    parameters: [{ $ref: '#/components/parameters/jobId' }]
+    get:
+      summary: Chi tiết tiến trình, cấu hình đã chốt và 50 dòng nhật ký gần nhất
+      responses:
+        '200':
+          description: Chi tiết
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/OverlayJob' }
+                  - type: object
+                    properties:
+                      logs: { type: array, items: { $ref: '#/components/schemas/Log' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/overlay/jobs/{jobId}/stop:
+    parameters: [{ $ref: '#/components/parameters/jobId' }]
+    post:
+      summary: Dừng tiến trình đang chờ, đang chạy hoặc bị gián đoạn
+      responses:
+        '200': { description: Đã dừng hoặc đã nhận yêu cầu dừng }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: CONFLICT khi tiến trình đã kết thúc }
+
+  /api/overlay/jobs/{jobId}/rerun:
+    parameters: [{ $ref: '#/components/parameters/jobId' }]
+    post:
+      summary: Chạy lại tiến trình lỗi hoặc đã dừng với nội dung đã chốt
+      responses:
+        '200': { description: Đã xếp hàng lại }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: CONFLICT (trạng thái), SOURCE_DELETED hoặc QUOTA_EXCEEDED }
+        '429': { description: OVERLAY_TOO_MANY_JOBS }
+
+  /api/overlay/jobs/{jobId}/video:
+    parameters: [{ $ref: '#/components/parameters/jobId' }]
+    get:
+      summary: Tải video thành phẩm (Content-Disposition attachment, hỗ trợ Range)
+      responses:
+        '200': { description: video/mp4, video/quicktime hoặc video/webm }
+        '206': { description: Một phần }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/overlay/jobs/bulk-delete:
+    post:
+      summary: Xóa một hoặc nhiều lần xuất; tiến trình đang chạy được dừng trước
+      requestBody: { $ref: '#/components/requestBodies/Ids' }
+      responses:
+        '200': { $ref: '#/components/responses/BulkDelete' }
+
+  /api/admin/settings:
+    put:
+      summary: Thêm maxOverlayJobsPerUser, maxConcurrentOverlayJobs, overlayMaxMinutes, overlayMaxMinutesTransparent
+      responses:
+        '200': { description: Cài đặt sau khi cập nhật }
+        '422': { $ref: '#/components/responses/Validation' }
+
+components:
+  parameters:
+    projectId: { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    jobId: { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+  requestBodies:
+    Ids:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [ids]
+            properties:
+              ids: { type: array, minItems: 1, maxItems: 100, items: { type: string, format: uuid } }
+  responses:
+    NotFound: { description: Không tồn tại hoặc không có quyền }
+    Validation: { description: VALIDATION kèm fields }
+    Quota: { description: QUOTA_EXCEEDED kèm fields.needBytes }
+    BulkDelete:
+      description: Kết quả theo từng id
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              deleted: { type: array, items: { type: string } }
+              busy: { type: array, items: { type: string } }
+              notFound: { type: array, items: { type: string } }
+  schemas:
+    OverlayConfig:
+      type: object
+      description: Xem contracts/overlay-engine.md §1
+    Source:
+      type: object
+      properties:
+        voiceId: { type: [string, 'null'], format: uuid }
+        audioId: { type: [string, 'null'], format: uuid }
+        fileId: { type: [string, 'null'], format: uuid }
+    AppliedCue:
+      type: object
+      required: [i, startMs, endMs, readEndMs, text, origin]
+      properties:
+        i: { type: integer }
+        startMs: { type: integer }
+        endMs: { type: integer }
+        readEndMs: { type: integer }
+        text: { type: string }
+        origin: { enum: [voice, file] }
+    Warning:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+        params: { type: object }
+    OverlayAudio:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        originalName: { type: string }
+        status: { enum: [processing, ready, failed] }
+        sizeBytes: { type: integer, format: int64 }
+        durationMs: { type: [integer, 'null'] }
+        errorCode: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    OverlayJob:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        sourceNames: { type: object, properties: { voice: { type: string }, subtitle: { type: string } } }
+        config: { $ref: '#/components/schemas/OverlayConfig' }
+        format: { enum: [mp4, mov, webm] }
+        width: { type: integer }
+        height: { type: integer }
+        durationMs: { type: integer }
+        estimatedBytes: { type: integer, format: int64 }
+        sizeBytes: { type: [integer, 'null'], format: int64 }
+        warnings: { type: array, description: Cảnh báo về mốc và màu do máy chủ tính, items: { $ref: '#/components/schemas/Warning' } }
+        status: { enum: [queued, running, completed, failed, stopped, interrupted] }
+        progressPercent: { type: integer, minimum: 0, maximum: 100 }
+        errorCode: { type: [string, 'null'] }
+        canRerun: { type: boolean, description: false khi nguồn đã bị xóa }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+    Log:
+      type: object
+      properties:
+        id: { type: integer }
+        ts: { type: string, format: date-time }
+        level: { enum: [info, warn, error] }
+        messageKey: { type: string }
+        params: { type: [object, 'null'] }

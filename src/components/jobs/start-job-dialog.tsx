@@ -171,7 +171,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
                   setCustomVoiceId('');
                 }}
               >
-                <SelectTrigger aria-label={t.projects.provider}>
+                <SelectTrigger className='w-full' aria-label={t.projects.provider}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -197,7 +197,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
               <div className="space-y-2">
                 <Label>{t.jobs.file}</Label>
                 <Select value={effFile} onValueChange={setFileId}>
-                  <SelectTrigger aria-label={t.jobs.file}>
+                  <SelectTrigger className='w-full' aria-label={t.jobs.file}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -222,7 +222,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
                     setVoice(null);
                   }}
                 >
-                  <SelectTrigger aria-label={t.providersAdmin.customProviderLabel}>
+                  <SelectTrigger className='w-full' aria-label={t.providersAdmin.customProviderLabel}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -246,7 +246,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
                     setVoice(null);
                   }}
                 >
-                  <SelectTrigger aria-label={t.jobs.model}>
+                  <SelectTrigger className='w-full' aria-label={t.jobs.model}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -265,7 +265,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
               <div className="space-y-2">
                 <Label>{t.jobs.language}</Label>
                 <Select value={language} onValueChange={(v: 'auto' | 'vi' | 'en') => setLanguage(v)}>
-                  <SelectTrigger aria-label={t.jobs.language}>
+                  <SelectTrigger className='w-full' aria-label={t.jobs.language}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -305,7 +305,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <Select value={effVoice} onValueChange={setVoice}>
-                      <SelectTrigger aria-label={t.jobs.voice}>
+                      <SelectTrigger className='w-full' aria-label={t.jobs.voice}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
