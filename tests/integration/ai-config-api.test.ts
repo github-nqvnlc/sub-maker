@@ -149,13 +149,13 @@ describe('danh mục nhà cung cấp /api/providers', () => {
   it('liệt kê 3 loại kèm model/giọng/tốc độ; khả dụng chỉ khi có cấu hình chung đang bật', async () => {
     const u = await createUser();
     const before = (await (await u.client.get('/api/providers')).json()) as Array<{ type: string; available: boolean; usingOwnConfig: boolean; models: unknown[] }>;
-    expect(before.map((p) => p.type).sort()).toEqual(['fpt_marketplace', 'openai_compatible', 'shopaikey_minimax', 'shopaikey_openai']);
-    expect(before.every((p) => !p.available && !p.usingOwnConfig && p.models.length > 0)).toBe(true);
+    expect(before.map((p) => p.type).sort()).toEqual(['fpt_marketplace', 'openai_compatible', 'shopaikey_minimax', 'soniox']);
+    expect(before.every((p) => !p.available && !p.usingOwnConfig && (p.type === 'soniox' || p.models.length > 0))).toBe(true);
 
     await admin.client.put('/api/admin/ai-configs', { json: input() });
     const after = (await (await u.client.get('/api/providers')).json()) as typeof before;
     expect(after.find((p) => p.type === 'fpt_marketplace')).toMatchObject({ available: true, usingOwnConfig: false });
-    expect(after.find((p) => p.type === 'shopaikey_openai')).toMatchObject({ available: false });
+    expect(after.find((p) => p.type === 'shopaikey_minimax')).toMatchObject({ available: false });
   });
 });
 

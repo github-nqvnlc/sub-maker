@@ -26,7 +26,8 @@ function EditForm({ project, onClose }: { project: Editable; onClose: () => void
   const providers = useProviders();
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? '');
-  const [providerType, setProviderType] = useState(project.providerType);
+  const initialType = project.providerType === 'shopaikey_openai' ? 'shopaikey_minimax' : project.providerType;
+  const [providerType, setProviderType] = useState(initialType);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const save = useMutation({

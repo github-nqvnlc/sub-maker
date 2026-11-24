@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ProviderType } from '../schemas/common';
+import type { TtsProviderType } from '../schemas/common';
 
 /**
  * Khóa cache audio TỪNG ĐOẠN, THEO USER và theo nội dung (research R7, FR-017, Nguyên tắc IV):
@@ -8,7 +8,7 @@ import type { ProviderType } from '../schemas/common';
  */
 export type CacheKeyInput = {
   userId: string;
-  providerType: ProviderType;
+  providerType: TtsProviderType;
   model: string | null;
   voice: string;
   speed: number | null;

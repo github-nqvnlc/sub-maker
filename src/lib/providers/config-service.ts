@@ -6,7 +6,7 @@ import { HttpError } from '../api/errors';
 import { env } from '../env';
 import { decryptSecret, encryptSecret, secretHint } from '../security/crypto';
 import { createSafeFetch, resolveSafeTarget, SsrfError } from '../security/safe-fetch';
-import { providerTypeSchema } from '../schemas/common';
+import { ttsProviderTypeSchema, type TtsProviderType } from '../schemas/common';
 import { PROVIDER_TYPES, getCatalog } from './catalog';
 import { getProvider } from './index';
 import type { CallContext, PollingOptions, ProviderType, TestResult } from './types';
@@ -23,7 +23,7 @@ export type ConfigScope = 'global' | 'user';
 
 export type AiConfigDto = {
   scope: ConfigScope;
-  type: ProviderType;
+  type: TtsProviderType;
   name: string;
   baseUrl: string;
   apiKeyHint: string;
@@ -59,7 +59,7 @@ export function toDto(row: Row): AiConfigDto {
 
 export const aiConfigInputSchema = z
   .object({
-    type: providerTypeSchema,
+    type: ttsProviderTypeSchema,
     name: z.string().trim().min(1).max(100).optional(),
     baseUrl: z.string().trim().min(1).max(500),
     /** Để trống khi sửa = giữ khóa cũ. Bắt buộc khi tạo mới. */
@@ -88,7 +88,7 @@ export async function assertSafeBaseUrl(baseUrl: string): Promise<void> {
   }
 }
 
-function validateDefaults(type: ProviderType, input: AiConfigInput): void {
+function validateDefaults(type: TtsProviderType, input: AiConfigInput): void {
   const cat = getCatalog(type);
   const fields: Record<string, string> = {};
   const model = input.defaultModel ? cat.models.find((m) => m.id === input.defaultModel) : undefined;
@@ -106,7 +106,7 @@ function validateDefaults(type: ProviderType, input: AiConfigInput): void {
   if (Object.keys(fields).length) throw new HttpError(422, 'VALIDATION', undefined, fields);
 }
 
-function whereScope(scope: ConfigScope, ownerUserId: string | null, type?: ProviderType) {
+function whereScope(scope: ConfigScope, ownerUserId: string | null, type?: TtsProviderType) {
   const base = scope === 'global' ? and(eq(aiProviderConfigs.scope, 'global'), isNull(aiProviderConfigs.ownerUserId)) : and(eq(aiProviderConfigs.scope, 'user'), eq(aiProviderConfigs.ownerUserId, ownerUserId!));
   return type ? and(base, eq(aiProviderConfigs.type, type)) : base;
 }
@@ -116,13 +116,13 @@ export async function listConfigs(scope: ConfigScope, ownerUserId: string | null
   return rows.map(toDto);
 }
 
-export async function getConfigRow(scope: ConfigScope, ownerUserId: string | null, type: ProviderType): Promise<Row | null> {
+export async function getConfigRow(scope: ConfigScope, ownerUserId: string | null, type: TtsProviderType): Promise<Row | null> {
   const [row] = await getDb().select().from(aiProviderConfigs).where(whereScope(scope, ownerUserId, type)).limit(1);
   return row ?? null;
 }
 
 /** ShopAIKey: một token dùng cho mọi model đã đăng ký (spec 004, FR-011) — hai adapter chia sẻ khóa và địa chỉ gốc. */
-export const SHOPAIKEY_TYPES: readonly ProviderType[] = ['shopaikey_openai', 'shopaikey_minimax'];
+export const SHOPAIKEY_TYPES: readonly TtsProviderType[] = ['shopaikey_openai', 'shopaikey_minimax'];
 
 /** Tạo/sửa cấu hình theo (scope, owner, type). `apiKey` trống khi sửa = giữ khóa cũ. */
 export async function upsertConfig(scope: ConfigScope, ownerUserId: string | null, input: AiConfigInput): Promise<AiConfigDto> {
@@ -200,7 +200,7 @@ async function upsertOne(scope: ConfigScope, ownerUserId: string | null, input: 
   return toDto(row!);
 }
 
-export async function deleteConfig(scope: ConfigScope, ownerUserId: string | null, type: ProviderType): Promise<boolean> {
+export async function deleteConfig(scope: ConfigScope, ownerUserId: string | null, type: TtsProviderType): Promise<boolean> {
   // ShopAIKey dùng chung một token (spec 004): xóa cấu hình chung là xóa cho cả hai adapter
   const types = scope === 'global' && SHOPAIKEY_TYPES.includes(type) ? SHOPAIKEY_TYPES : [type];
   let n = 0;
@@ -232,7 +232,7 @@ export function buildCallContext(row: Row, opts: { signal?: AbortSignal; polling
   };
 }
 
-export async function testConfig(scope: ConfigScope, ownerUserId: string | null, type: ProviderType, opts: { polling?: PollingOptions } = {}): Promise<TestResult> {
+export async function testConfig(scope: ConfigScope, ownerUserId: string | null, type: TtsProviderType, opts: { polling?: PollingOptions } = {}): Promise<TestResult> {
   const row = await getConfigRow(scope, ownerUserId, type);
   if (!row) throw new HttpError(404, 'NOT_FOUND');
   const result = await getProvider(type).testConnection(buildCallContext(row, { polling: opts.polling }));
@@ -256,7 +256,7 @@ export type ResolvedConfig = { row: Row; scope: ConfigScope; customProviderId?: 
  */
 export async function resolveConfigForJob(
   user: { id: string; canUseCustomAi: boolean; role?: 'admin' | 'user' },
-  type: ProviderType,
+  type: TtsProviderType,
   opts: { customProviderId?: string | null } = {},
 ): Promise<ResolvedConfig> {
   // Custom Provider (spec 004): kiểm tra quyền + trạng thái bật NGAY LÚC GỌI (tạo job, worker nhận job), không rơi về cấu hình khác

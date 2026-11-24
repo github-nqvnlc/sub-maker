@@ -7,10 +7,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getProvider } from '../src/lib/providers';
 import { toProviderError } from '../src/lib/providers/errors';
-import type { ProviderType } from '../src/lib/providers/types';
+import type { TtsProviderType } from '../src/lib/schemas/common';
 import { createSafeFetch } from '../src/lib/security/safe-fetch';
 
-type Target = { type: ProviderType; keyEnv: string; model?: string; voice: string };
+type Target = { type: TtsProviderType; keyEnv: string; model?: string; voice: string };
 
 const TARGETS: Target[] = [
   { type: 'fpt_marketplace', keyEnv: 'SPIKE_FPT_MARKETPLACE_KEY', model: 'FPT.AI-VITs', voice: 'banmai' },

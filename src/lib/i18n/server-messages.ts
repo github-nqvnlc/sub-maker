@@ -18,6 +18,7 @@ const EN_RULES: Rule[] = [
   ['Không có thay đổi nào', 'There are no changes'],
   ['Thiếu xác nhận', 'Confirmation is missing'],
   // ---- jobs ----
+  ['Dự án sử dụng nhà cung cấp SONIOX (STT), không hỗ trợ tạo voice.', 'The project uses SONIOX (STT) provider, voice generation is not supported.'],
   ['Chỉ tiếp tục được tiến trình đã dừng, bị lỗi hoặc bị gián đoạn.', 'Only a job that is stopped, failed or interrupted can be resumed.'],
   ['Trạng thái tiến trình vừa thay đổi, hãy tải lại trang.', 'The job state has just changed. Please reload the page.'],
   [

@@ -130,7 +130,22 @@ export function ProjectsList() {
     {
       key: 'provider',
       header: t.projects.colProvider,
-      cell: (p) => <Badge variant="secondary">{providers.data?.find((x) => x.type === p.providerType)?.label ?? p.providerType}</Badge>,
+      cell: (p) => {
+        const mapped = p.providerType === 'shopaikey_openai' ? 'shopaikey_minimax' : p.providerType;
+        const found = providers.data?.find((x) => x.type === mapped);
+        const label =
+          found?.label ??
+          (p.providerType === 'fpt_marketplace'
+            ? 'FPT.AI'
+            : p.providerType === 'soniox'
+              ? 'SONIOX'
+              : p.providerType.startsWith('shopaikey')
+                ? 'ShopAIKey'
+                : p.providerType === 'openai_compatible'
+                  ? t.providersAdmin.customTab
+                  : p.providerType);
+        return <Badge variant="secondary">{label}</Badge>;
+      },
       className: 'hidden md:table-cell',
     },
     { key: 'voices', header: t.projects.colVoices, cell: (p) => <span className="tabular-nums">{p.voiceCount}</span> },

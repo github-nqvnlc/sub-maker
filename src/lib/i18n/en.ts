@@ -326,6 +326,7 @@ export const en: Dict = {
   jobs: {
     startTitle: 'Create voice',
     startDesc: 'Choose a script file and the voice settings.',
+    sonioxTtsNotice: 'SONIOX provider is used for generating subtitles from Audio/Video (STT), voice generation (TTS) is not supported.',
     file: 'Script file',
     model: 'Model',
     voice: 'Voice',

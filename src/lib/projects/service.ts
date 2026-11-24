@@ -37,7 +37,13 @@ export async function listProjects(ownerId: string, opts: ListProjectsOpts) {
   const db = getDb();
   const conds: SQL[] = [eq(projects.ownerId, ownerId)];
   if (opts.q?.trim()) conds.push(sql`${sql.raw('projects.search_text')} like ${likePattern(opts.q)} escape '\\'`);
-  if (opts.provider) conds.push(eq(projects.providerType, opts.provider));
+  if (opts.provider) {
+    if (opts.provider === 'shopaikey_minimax' || opts.provider === 'shopaikey_openai') {
+      conds.push(inArray(projects.providerType, ['shopaikey_minimax', 'shopaikey_openai']));
+    } else {
+      conds.push(eq(projects.providerType, opts.provider));
+    }
+  }
   if (opts.jobState === 'running') conds.push(sql`${runningJobsSql} > 0`);
   else if (opts.jobState === 'failed') conds.push(sql`${failedJobsSql} > 0`);
   else if (opts.jobState === 'none') conds.push(sql`not ${anyJobSql}`);

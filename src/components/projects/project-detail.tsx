@@ -20,6 +20,7 @@ import { ScriptEditor } from '@/components/projects/script-editor';
 import { SttActiveBanner, SttDialog } from '@/components/projects/stt-dialog';
 import { UploadDropzone } from '@/components/projects/upload-dropzone';
 import { ApiError, api, apiDelete } from '@/lib/api-client';
+import { useProviders } from '@/lib/hooks/use-providers';
 import { fmtBytes, fmtDuration } from '@/lib/format';
 import { useFormat, useT } from '@/lib/i18n/client';
 
@@ -44,6 +45,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const fx = useFormat();
   const qc = useQueryClient();
   const router = useRouter();
+  const providers = useProviders();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteProject, setDeleteProject] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -65,13 +67,25 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const p = q.data;
   const fileNames = new Map(p.files.map((f) => [f.id, f.originalName]));
   const activeJobs = p.jobs.filter((j) => ACTIVE.has(j.status)).length;
+  const mappedType = p.providerType === 'shopaikey_openai' ? 'shopaikey_minimax' : p.providerType;
+  const providerLabel =
+    providers.data?.find((x) => x.type === mappedType)?.label ??
+    (p.providerType === 'fpt_marketplace'
+      ? 'FPT.AI'
+      : p.providerType === 'soniox'
+        ? 'SONIOX'
+        : p.providerType.startsWith('shopaikey')
+          ? 'ShopAIKey'
+          : p.providerType === 'openai_compatible'
+            ? t.providersAdmin.customTab
+            : p.providerType);
 
   return (
     <div className="space-y-5">
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold">{p.name}</h1>
-          <Badge variant="secondary">{p.providerType}</Badge>
+          <Badge variant="secondary">{providerLabel}</Badge>
           {activeJobs > 0 ? <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">{t.projects.running}</Badge> : null}
           <div className="ml-auto flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>

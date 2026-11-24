@@ -12,6 +12,7 @@ import { getOwnedFile, getOwnedProject } from '../projects/access';
 import { getSettings, type Settings } from '../settings';
 import { requestsPerMinute } from '../providers/rate-limit';
 import { contentHash } from '../audio/cache-key';
+import type { TtsProviderType } from '../schemas/common';
 import { buildTimingSettings, loadFileCues, TIMED_MAX_CHARS, unitsForTiming, type TimingChoice } from './timed';
 
 /**
@@ -104,7 +105,7 @@ export async function computeEstimate(c: EstimateContext): Promise<Estimate> {
   }
 
   const hashOf = (text: string) =>
-    contentHash({ userId: c.user.id, providerType: c.project.providerType, model: c.settings.model, voice: c.settings.voice, speed: c.settings.speed, text });
+    contentHash({ userId: c.user.id, providerType: c.project.providerType as TtsProviderType, model: c.settings.model, voice: c.settings.voice, speed: c.settings.speed, text });
   const unique = new Map<string, number>(); // hash → số ký tự
   let chars = 0;
   for (const t of texts) {
@@ -157,9 +158,12 @@ export async function computeEstimate(c: EstimateContext): Promise<Estimate> {
 export async function estimateFile(user: AuthUser, fileId: string, body: EstimateBody): Promise<Estimate> {
   const file = await getOwnedFile(user.id, fileId);
   const project = await getOwnedProject(user.id, file.projectId);
+  if (project.providerType === 'soniox') {
+    throw conflict('TTS_NOT_SUPPORTED_FOR_SONIOX');
+  }
   if (body.timing?.mode === 'timed' && !file.hasTimecodes) throw conflict('NO_TIMECODES');
 
-  const resolved = await resolveConfigForJob(user, project.providerType, { customProviderId: body.customProviderId });
+  const resolved = await resolveConfigForJob(user, project.providerType as TtsProviderType, { customProviderId: body.customProviderId });
   const parsed = resolveSettings(project.providerType, {
     model: body.model,
     voice: body.voice,

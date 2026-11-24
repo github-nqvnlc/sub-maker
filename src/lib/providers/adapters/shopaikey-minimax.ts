@@ -18,6 +18,11 @@ export class ShopAIKeyMiniMaxProvider implements TtsProvider {
   }
 
   async synthesize(req: SynthesizeRequest, ctx: CallContext): Promise<SynthesizeResult> {
+    if (req.model === 'tts-1' || req.model === 'tts-1-hd') {
+      const { ShopAIKeyOpenAiProvider } = await import('./shopaikey-openai');
+      return new ShopAIKeyOpenAiProvider().synthesize(req, ctx);
+    }
+
     const cat = this.catalog();
     const text = req.text.normalize('NFC').trim();
     const chars = charCount(text);

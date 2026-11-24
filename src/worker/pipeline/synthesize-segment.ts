@@ -12,7 +12,7 @@ import {
   type ProviderErrorKind,
 } from '../../lib/providers/errors';
 import type { CallContext, TtsProvider } from '../../lib/providers/types';
-import type { ProviderType } from '../../lib/schemas/common';
+import type { TtsProviderType } from '../../lib/schemas/common';
 import { recordUsage } from '../../lib/usage/record';
 import type { LogLevel } from '../job-log';
 import { contentHash, loadCached, storeCached } from './cache';
@@ -38,7 +38,7 @@ export type SynthContext = {
   jobId: string;
   ownerId: string;
   projectId: string;
-  providerType: ProviderType;
+  providerType: TtsProviderType;
   configScope: 'global' | 'user';
   provider: TtsProvider;
   /** Dựng ngữ cảnh gọi (giải mã khóa, safeFetch) cho một lần gọi. */

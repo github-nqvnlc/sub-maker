@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { boolean, check, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { users } from './auth';
-import { providerType, type TtsProviderType } from './ai-config';
+import { providerType } from './ai-config';
+import type { ProviderType } from '../../schemas/common';
 
 export const subtitleExt = pgEnum('subtitle_ext', ['txt', 'md', 'srt']);
 
@@ -16,7 +17,7 @@ export const projects = pgTable(
     name: text('name').notNull(),
     /** tối đa 2000 ký tự */
     description: text('description'),
-    providerType: providerType('provider_type').$type<TtsProviderType>().notNull(),
+    providerType: providerType('provider_type').$type<ProviderType>().notNull(),
     /** Số voice (đếm sẵn, cập nhật cùng giao dịch khi tạo/xóa voice) */
     voiceCount: integer('voice_count').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

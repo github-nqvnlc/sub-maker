@@ -34,7 +34,8 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
   const router = useRouter();
   const qc = useQueryClient();
   const providers = useProviders();
-  const provider = providers.data?.find((p) => p.type === providerType);
+  const effProviderType = providerType === 'shopaikey_openai' ? 'shopaikey_minimax' : providerType;
+  const provider = providers.data?.find((p) => p.type === effProviderType);
 
   const [fileId, setFileId] = useState<string | null>(null);
   const [customId, setCustomId] = useState<string | null>(null);
@@ -106,6 +107,10 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
 
         {!provider ? (
           <p className="text-sm text-muted-foreground">{t.common.loading}</p>
+        ) : providerType === 'soniox' ? (
+          <Alert variant="destructive">
+            <AlertDescription>{t.jobs.sonioxTtsNotice}</AlertDescription>
+          </Alert>
         ) : (
           <div className="space-y-4">
             {!provider.available ? (
@@ -244,7 +249,7 @@ export function StartJobDialog({ projectId, providerType, files, openFileId, onC
           <Button variant="outline" onClick={onClose}>
             {t.common.cancel}
           </Button>
-          <Button disabled={start.isPending || !provider?.available || !effFile || !effVoice || quotaBlocked} onClick={() => start.mutate()}>
+          <Button disabled={start.isPending || !provider?.available || !effFile || !effVoice || quotaBlocked || providerType === 'soniox'} onClick={() => start.mutate()}>
             {start.isPending ? t.common.loading : t.jobs.start}
           </Button>
         </DialogFooter>

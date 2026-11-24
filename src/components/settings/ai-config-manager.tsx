@@ -76,15 +76,17 @@ export function AiConfigManager({ scope }: { scope: 'admin' | 'user' }) {
   if (scope === 'admin')
     return <AdminProviderTabs base={base} catalog={catalog.data} byType={byType} anyEnabled={anyEnabled} />;
 
+  const userCatalog = catalog.data.filter((c) => c.type !== 'soniox');
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">{t.aiConfig.userTitle}</h1>
         <p className="text-sm text-muted-foreground">{t.aiConfig.userDescription}</p>
       </div>
-      <Tabs defaultValue={catalog.data[0]?.type} aria-label={t.aiConfig.tabs}>
+      <Tabs defaultValue={userCatalog[0]?.type} aria-label={t.aiConfig.tabs}>
         <TabsList className="flex h-auto flex-wrap">
-          {catalog.data.map((c) => {
+          {userCatalog.map((c) => {
             const cfg = byType.get(c.type);
             return (
               <TabsTrigger key={c.type} value={c.type} className="gap-2">
@@ -103,7 +105,7 @@ export function AiConfigManager({ scope }: { scope: 'admin' | 'user' }) {
             );
           })}
         </TabsList>
-        {catalog.data.map((c) => (
+        {userCatalog.map((c) => (
           <TabsContent key={c.type} value={c.type}>
             {/* key theo dấu vân tay dữ liệu để biểu mẫu nạp lại giá trị khi cấu hình thay đổi */}
             <ProviderConfigForm
@@ -146,9 +148,8 @@ function AdminProviderTabs({
   const custom = useCustomProviders();
   const cat = (type: string) => catalog.find((c) => c.type === type);
   const fpt = cat('fpt_marketplace');
-  const shopOpenai = cat('shopaikey_openai');
-  const shopMinimax = cat('shopaikey_minimax');
-  const shopCfg = byType.get('shopaikey_openai');
+  const shop = cat('shopaikey_minimax') ?? cat('shopaikey_openai');
+  const shopCfg = byType.get('shopaikey_minimax') ?? byType.get('shopaikey_openai');
   const customCount = custom.data?.filter((p) => p.enabled).length ?? 0;
 
   return (
@@ -200,32 +201,16 @@ function AdminProviderTabs({
           <SonioxConfigPanel />
         </TabsContent>
         <TabsContent value="shopaikey" className="space-y-4">
-          {shopOpenai ? (
+          {shop ? (
             <ProviderConfigForm
-              key={configKey(shopOpenai, shopCfg)}
+              key={configKey(shop, shopCfg)}
               scope="admin"
               base={base}
-              catalog={shopOpenai}
+              catalog={shop}
               config={shopCfg ?? null}
               title={t.providersAdmin.shopaikeyTab}
               description={t.providersAdmin.shopaikeyDescription}
             />
-          ) : null}
-          {shopMinimax ? (
-            byType.get(shopMinimax.type) ? (
-              <ProviderConfigForm
-                key={configKey(shopMinimax, byType.get(shopMinimax.type))}
-                scope="admin"
-                base={base}
-                catalog={shopMinimax}
-                config={byType.get(shopMinimax.type) ?? null}
-                title={t.providersAdmin.minimaxDefaults}
-                description={t.providersAdmin.sharedTokenNote}
-                sharedCredentials
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground">{t.providersAdmin.sharedTokenNote}</p>
-            )
           ) : null}
         </TabsContent>
         <TabsContent value="custom">

@@ -16,7 +16,7 @@ import { planParts } from '../audio/placement';
 import { buildTimingSettings, loadFileCues, TIMED_MAX_CHARS, unitsForTiming } from './timed';
 import { getCatalog } from '../providers/catalog';
 import { enqueueGenerateVoice } from '../../worker/queues';
-import { jobStatusSchema } from '../schemas/common';
+import { jobStatusSchema, type TtsProviderType } from '../schemas/common';
 
 export const createJobSchema = z
   .object({
@@ -40,6 +40,9 @@ const SEGMENT_CHUNK = 1000;
 /** Bắt đầu tạo voice (FR-012, FR-015): kiểm tra cấu hình khả dụng, thiết lập hợp lệ, hạn mức; rồi xếp hàng. */
 export async function createJob(user: AuthUser, projectId: string, input: CreateJobInput) {
   const project = await getOwnedProject(user.id, projectId);
+  if (project.providerType === 'soniox') {
+    throw new HttpError(400, 'BAD_REQUEST', 'Dự án sử dụng nhà cung cấp SONIOX (STT), không hỗ trợ tạo voice.');
+  }
   const file = await getOwnedFile(user.id, input.fileId);
   if (file.projectId !== project.id) throw notFound();
 
@@ -88,7 +91,7 @@ export async function createJob(user: AuthUser, projectId: string, input: Create
         ownerId: user.id,
         subtitleFileId: file.id,
         status: 'queued',
-        providerType: project.providerType,
+        providerType: project.providerType as TtsProviderType,
         configId: resolved.customProviderId ? null : resolved.row.id,
         customProviderId: resolved.customProviderId ?? null,
         configScope: resolved.scope,

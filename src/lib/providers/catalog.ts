@@ -1,4 +1,5 @@
 import type { ModelInfo, ProviderCatalog, ProviderType, VoiceInfo } from './types';
+import { SONIOX_DEFAULT_BASE_URL, SONIOX_MODELS } from './adapters/soniox-types';
 
 /**
  * Danh mục model/giọng/tốc độ theo từng nhà cung cấp (nguồn: docs/fpt-ai-voice-guide.md, docs/shopaikey-guide.md).
@@ -45,7 +46,7 @@ const FPT_MARKETPLACE_VOICES: Record<string, VoiceInfo[]> = {
 
 const FPT_MARKETPLACE: ProviderCatalog = {
   type: 'fpt_marketplace',
-  label: 'FPT AI Marketplace',
+  label: 'FPT.AI',
   defaultBaseUrl: 'https://mkp-api.fptcloud.com/v1',
   models: Object.entries(FPT_MARKETPLACE_VOICES).map(
     ([id, voices]): ModelInfo => ({
@@ -105,11 +106,15 @@ const MINIMAX_MODELS = ['speech-02-hd', 'speech-02-turbo', 'speech-2.6-hd', 'spe
 
 const SHOPAIKEY_MINIMAX: ProviderCatalog = {
   type: 'shopaikey_minimax',
-  label: 'ShopAIKey (MiniMax TTS)',
+  label: 'ShopAIKey',
   defaultBaseUrl: 'https://api.shopaikey.com',
-  models: MINIMAX_MODELS.map((id): ModelInfo => ({ id, label: id, voices: MINIMAX_VOICES })),
-  // MiniMax nhận speed 0,5–2; ngoài khoảng này ShopAIKey không báo lỗi nhưng cũng không áp dụng (đã kiểm chứng speed=3).
-  speed: { min: 0.5, max: 2, default: 1, step: 0.05 },
+  models: [
+    { id: 'tts-1', label: 'tts-1 (OpenAI TTS)', voices: OPENAI_VOICES },
+    { id: 'tts-1-hd', label: 'tts-1-hd (OpenAI TTS chất lượng cao)', voices: OPENAI_VOICES },
+    ...MINIMAX_MODELS.map((id): ModelInfo => ({ id, label: id, voices: MINIMAX_VOICES })),
+  ],
+  // Nhận speed 0.25–4 cho OpenAI và 0.5–2 cho MiniMax; 0.25–4 là thang hợp lệ chung
+  speed: { min: 0.25, max: 4, default: 1, step: 0.05 },
   // Tài liệu MiniMax: tối đa 10.000 ký tự; dùng 5.000 làm giới hạn an toàn (đoạn thực tế ≤ 400).
   maxCharsPerRequest: 5000,
   minChars: 1,
@@ -139,7 +144,7 @@ const OPENAI_COMPATIBLE_MODELS: ModelInfo[] = [
 
 const OPENAI_COMPATIBLE: ProviderCatalog = {
   type: 'openai_compatible',
-  label: 'OpenAI Compatible (Chuẩn OpenAI SDK)',
+  label: 'Nhà cung cấp OpenAI tùy chỉnh',
   defaultBaseUrl: 'https://api.openai.com/v1',
   models: OPENAI_COMPATIBLE_MODELS,
   speed: { min: 0.25, max: 4, default: 1, step: 0.05 },
@@ -147,10 +152,21 @@ const OPENAI_COMPATIBLE: ProviderCatalog = {
   minChars: 1,
 };
 
+const SONIOX: ProviderCatalog = {
+  type: 'soniox',
+  label: 'SONIOX',
+  defaultBaseUrl: SONIOX_DEFAULT_BASE_URL,
+  models: SONIOX_MODELS.map((m) => ({ id: m.id, label: m.id, voices: [] })),
+  speed: { min: 1, max: 1, default: 1, step: 0 },
+  maxCharsPerRequest: 0,
+  minChars: 0,
+};
+
 const CATALOGS: Record<ProviderType, ProviderCatalog> = {
   fpt_marketplace: FPT_MARKETPLACE,
-  shopaikey_openai: SHOPAIKEY_OPENAI,
+  soniox: SONIOX,
   shopaikey_minimax: SHOPAIKEY_MINIMAX,
+  shopaikey_openai: SHOPAIKEY_OPENAI,
   openai_compatible: OPENAI_COMPATIBLE,
 };
 
@@ -161,7 +177,7 @@ export function getCatalog(type: ProviderType): ProviderCatalog {
 }
 
 export function allCatalogs(): ProviderCatalog[] {
-  return PROVIDER_TYPES.map((t) => CATALOGS[t]);
+  return [FPT_MARKETPLACE, SONIOX, SHOPAIKEY_MINIMAX, OPENAI_COMPATIBLE];
 }
 
 export type ResolvedSettings = { model: string | null; voice: string; speed: number | null };
@@ -182,6 +198,9 @@ export function resolveSettings(
   type: ProviderType,
   input: SettingsInput,
 ): { ok: true; value: ResolvedSettings } | { ok: false; fields: Record<string, string> } {
+  if (type === 'soniox') {
+    return { ok: true, value: { model: input.model ?? 'stt-async-v6', voice: '', speed: 1 } };
+  }
   const cat = getCatalog(type);
   const fields: Record<string, string> = {};
 

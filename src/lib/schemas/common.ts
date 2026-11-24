@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { vi } from '../i18n/vi';
 import { isCommonPassword } from '../security/common-passwords';
 
-export const providerTypeSchema = z.enum(['fpt_marketplace', 'shopaikey_openai', 'shopaikey_minimax', 'openai_compatible']);
+export const ttsProviderTypeSchema = z.enum(['fpt_marketplace', 'shopaikey_openai', 'shopaikey_minimax', 'openai_compatible']);
+export type TtsProviderType = z.infer<typeof ttsProviderTypeSchema>;
+
+export const providerTypeSchema = z.enum(['fpt_marketplace', 'shopaikey_openai', 'shopaikey_minimax', 'openai_compatible', 'soniox']);
 export type ProviderType = z.infer<typeof providerTypeSchema>;
 
 export const jobStatusSchema = z.enum(['queued', 'running', 'completed', 'failed', 'stopped', 'interrupted']);

@@ -1,10 +1,9 @@
 import { notFound, type RouteContext, pathParam } from '../api/errors';
-import { providerTypeSchema } from '../schemas/common';
-import type { ProviderType } from './types';
+import { ttsProviderTypeSchema, type TtsProviderType } from '../schemas/common';
 
 /** Đọc `[type]` từ đường dẫn; giá trị lạ → 404. */
-export async function providerTypeParam(ctx: RouteContext): Promise<ProviderType> {
-  const parsed = providerTypeSchema.safeParse(await pathParam(ctx, 'type'));
+export async function providerTypeParam(ctx: RouteContext): Promise<TtsProviderType> {
+  const parsed = ttsProviderTypeSchema.safeParse(await pathParam(ctx, 'type'));
   if (!parsed.success) throw notFound();
   return parsed.data;
 }

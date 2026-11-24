@@ -320,6 +320,7 @@ export const vi = {
   jobs: {
     startTitle: 'Tạo voice',
     startDesc: 'Chọn tệp kịch bản và thiết lập giọng đọc.',
+    sonioxTtsNotice: 'Nhà cung cấp SONIOX được dùng để tạo phụ đề từ Audio/Video (STT), không hỗ trợ tạo giọng đọc (TTS).',
     file: 'Tệp kịch bản',
     model: 'Model',
     voice: 'Giọng đọc',
