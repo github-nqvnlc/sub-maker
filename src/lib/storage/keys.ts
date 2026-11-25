@@ -11,6 +11,13 @@ export const storageKeys = {
   avatar: (userId: string) => `users/${userId}/avatar`,
   /** File media tạm của STT job (spec 004): nằm dưới tiền tố User để xóa User cũng xóa file này */
   sttTemp: (userId: string, jobId: string, ext: string) => `users/${userId}/stt-tmp/${jobId}/source.${ext}`,
+  /** Video overlay thành phẩm (spec 005), tính vào hạn mức; khóa cố định theo id tiến trình */
+  overlayVideo: (userId: string, jobId: string, ext: string) => `users/${userId}/overlay/video/${jobId}.${ext}`,
+  /** Âm thanh tải lên cho overlay sau khi chuẩn hóa MP3, tính vào hạn mức */
+  overlayAudio: (userId: string, audioId: string) => `users/${userId}/overlay/audio/${audioId}.mp3`,
+  /** Tệp âm thanh gốc chờ chuẩn hóa: KHÔNG tính vào hạn mức */
+  overlayAudioTemp: (userId: string, audioId: string, ext: string) => `users/${userId}/overlay-tmp/${audioId}/source.${ext}`,
+  overlayTempPrefix: (userId: string) => `users/${userId}/overlay-tmp/`,
 } as const;
 
 /** Chặn khóa thoát khỏi vùng của User (phòng thủ chiều sâu). */

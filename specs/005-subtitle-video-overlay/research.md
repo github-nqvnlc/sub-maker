@@ -20,6 +20,30 @@ Số đo trong tài liệu này lấy trên máy dev: Windows, Ryzen 5 2600X (12
   | Karaoke | mov trong suốt | 21,9 s | 206 MB |
 
   Như vậy SC-009 (5 phút video trong 5 phút) đạt với dư địa khoảng 2–4 lần trên máy dev.
+- **Đo trong ảnh worker (T006, 2026-11-25, đạt cổng)**: Debian bookworm, ffmpeg 5.1.9, 12 luồng, phông chữ Be Vietnam Pro, 60 giây video chưa có tiếng, `fork` dưới `tsx`; đủ `libx264`, `prores_ks`, `libvpx-vp9`, `aac`, `libopus`.
+
+  | Cảnh | mp4 | webm | mov |
+  | --- | --- | --- | --- |
+  | Dứt khoát | 21,2 s, 0,76 MB | 42,9 s, 1,46 MB | 21,0 s, 151 MB |
+  | Karaoke | 22,0 s, 1,76 MB | 41,3 s, 2,87 MB | 21,3 s, 214 MB |
+  | Nhòe (thu-phóng, R2) | 22,2 s, 2,18 MB | 37,5 s, 3,95 MB | 19,6 s, 200 MB |
+
+  `.mp4` nhanh hơn thời gian thực 2,7–2,8 lần; `.webm` 1,4–1,6 lần; bộ nhớ tiến trình con dưới 240 MB.
+- **Đo lại sau khi hoàn thiện (T092, T094, 2026-11-25)**: cùng ảnh worker và cùng máy, nhưng bằng **bộ dựng hình thật** (`scripts/overlay-bench.ts` đã đổi sang gọi đúng tiến trình con, bộ vẽ và tham số ffmpeg của sản phẩm), 60 giây, chưa có tiếng. Hiệu ứng đặt ở thời lượng dài nhất 600 ms.
+
+  | Cảnh | mp4 | webm | mov |
+  | --- | --- | --- | --- |
+  | Dứt khoát | 15,6 s, 0,76 MB | 34,0 s, 1,45 MB | 18,0 s, 151 MB |
+  | Nảy và trượt xuống | 21,0 s, 2,11 MB | | |
+  | Karaoke | 18,6 s, 2,17 MB | 35,3 s, 3,44 MB | 21,5 s, 163 MB |
+  | Nhòe tụ nét | 22,1 s, 2,48 MB | 34,2 s, 5,26 MB | 22,9 s, 154 MB |
+  | Phát sáng | 22,0 s, 1,47 MB | | |
+  | Rung mọi câu (không khung nào dùng lại) | 28,2 s, 7,41 MB | | |
+
+  **SC-009 đạt trên máy này**: video `.mp4` 5 phút với hiệu ứng theo câu (nảy, trượt xuống) xuất trong **92 giây**. `.mp4` nhanh hơn thời gian thực 2,1–3,9 lần, `.mov` 2,6–3,3 lần, `.webm` 1,7–1,8 lần; bộ nhớ tiến trình con cao nhất 352 MB. Chưa đo trên máy production.
+  **SC-011 đạt**: worker chạy trong ảnh Docker, một video 60 phút (nhòe 600 ms, trượt xuống) đang xuất; ba tiến trình voice của ba User khác (nhà cung cấp giả) rời hàng đợi sau 1,3–1,7 giây, video vẫn chạy.
+- **Hai chỗ đã sửa nhờ đo và kiểm thử**: (1) quầng sáng của "phát sáng neon" trước đây tính bóng mờ cho từng khung (khoảng 87 ms/khung, 49,5 s cho 60 s); nay tính một lần mỗi câu rồi giảm dần độ đục. (2) Lớp tạm dùng lại lớn hơn khối chữ làm kết quả thu nhỏ (nhòe, lật) phụ thuộc câu đã vẽ trước đó, tức là xem trước khi tua có thể khác video; nay lớp tạm luôn đúng kích thước khối và có kiểm thử thứ tự vẽ.
+- **SC-005 đạt trên Chromium**: 20 thời điểm, ba cấu hình; mép khối lệch trong 1% chiều cao, vùng chữ trùng 98,4–98,5% (9:16 mặc định), 95,5–96,4% (16:9, bóng mờ 24), 99,0–99,1% (1:1 karaoke). Firefox và WebKit chưa đo (chưa tải trình duyệt của Playwright; cách đo ở `user-tasks.md`).
 - **Alternatives considered**: libass (tệp `.ass`): mã hóa nhanh tương đương (14,4 s) nhưng xem trước phải chạy libass bản WebAssembly, và hộp nền bo góc, quét màu, phát sáng khó làm giống. Chromium không giao diện chụp khung: giống tuyệt đối với xem trước nhưng ảnh worker tăng hàng trăm MB và chậm. Vẽ bằng `MediaRecorder` ở trình duyệt: trái FR-035 (chạy nền).
 
 ## R2. Hiệu ứng nhòe
@@ -98,7 +122,21 @@ Số đo trong tài liệu này lấy trên máy dev: Windows, Ryzen 5 2600X (12
 ## R11. Hạn mức lưu trữ (FR-043, FR-044)
 
 - **Decision**: Lưu `estimated_bytes` ở tiến trình; khi tạo, trong giao dịch có khóa tư vấn theo User, kiểm `đã dùng + Σ ước tính tiến trình đang chờ/chạy + ước tính mới ≤ hạn mức`. Không cộng ước tính vào `storage_used_bytes`. Khi xong, ghi đối tượng vào khóa cố định theo id trước, rồi trong **một giao dịch** vừa `reserveBytes` chặt theo dung lượng thật vừa chuyển `completed`; vượt hoặc job không còn `running` thì xóa đối tượng (báo `QUOTA_EXCEEDED` nếu vượt). Worker chết giữa chừng thì lần chạy sau ghi đè cùng khóa và hạn mức chưa hề bị trừ. Mọi đường kết thúc khác `completed` đều xóa đối tượng ở khóa đó. Khi đang xuất, tiến trình con dừng sớm nếu tệp tạm đã lớn hơn chỗ còn lại. Tệp tạm `overlay-tmp/` bị trừ khỏi đối soát, User có tiến trình overlay được coi là bận.
-- **Ước tính MB/phút** (khung 1080×1920, kèm tiếng 1,4): mp4 4,5; webm 6,5; mov 212. Khung vuông nhân 0,6. Nằm trong một bảng hằng ghi rõ là ước tính.
+- **Ước tính MB/phút** (khung 1080×1920, kèm tiếng 1,4): mp4 4,5; webm 6,5; mov 211. Khung vuông nhân 0,85. Rung mọi câu nhân 2,5 (mp4, webm). Riêng `.mov` cộng 110 khi có bóng mờ, cộng 110 khi có hộp nền, rồi nhân cỡ chữ / 72 (không dưới 0,6). Nằm trong một bảng hằng ghi rõ là ước tính (`src/lib/overlay/estimate.ts`).
+- **Đo lại khi triển khai (2026-11-25, bộ dựng hình thật, 10 giây chữ phủ gần hết, quy ra MB/phút, chưa kể tiếng)**: `.mov` phụ thuộc mạnh vào cấu hình vì nén từng khung riêng.
+
+  | Cấu hình `.mov` | Đo được | Ước tính mới |
+  | --- | --- | --- |
+  | mặc định (viền) | 167 | 210 |
+  | chữ trơn | 180 | 210 |
+  | bóng mờ 24 | 289 | 320 |
+  | hộp 50% / 100% | 289 / 248 | 320 |
+  | bóng mờ 24 và hộp 50% | 367 | 430 |
+  | cỡ 120, rất đậm | 268 | 350 |
+  | cỡ 120, viền, bóng mờ 40, hộp 50% | 642 | 717 |
+  | khung vuông | 142 | 179 |
+
+  Công thức cũ (212 cho mọi cấu hình) thấp hơn thực tế tới 3 lần nên người dùng chỉ biết vượt hạn mức sau khi dựng gần xong. Công thức mới không thấp hơn số đo ở mọi cấu hình đã đo. `.mp4` 0,5–1,1 và `.webm` 1,3–2,8 ở cùng các cấu hình. **Hệ quả**: `.mov` 1 phút với bóng mờ, hộp nền và chữ lớn có thể vượt 500 MB; hệ thống chặn trước khi xuất và gợi ý `.webm`.
 - **Rationale**: Số trên Dashboard luôn là dung lượng thật (SC-014); không tiến trình nào làm vượt hạn mức kể cả khi nhiều việc cùng lúc.
 - **Alternatives considered**: cộng trước ước tính vào bộ đếm (Dashboard sai, phải hoàn lại khi sự cố).
 

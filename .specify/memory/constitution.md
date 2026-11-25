@@ -1,19 +1,3 @@
-<!--
-Sync Impact Report (tạm thời, xóa trước khi commit)
-- Thay đổi phiên bản: 1.1.0 → 1.2.0 → 1.3.0 (hai lần sửa trong ngày 2026-11-25, đều chưa commit)
-- 1.3.0 (MINOR: thêm một mục quy trình, không bỏ hay định nghĩa lại nguyên tắc nào)
-  - Lý do: người dùng yêu cầu tự commit và push lên main khi implement xong mọi task
-  - Nội dung thêm: "Hoàn tất triển khai trên main" trong Quy trình phát triển và chất lượng
-  - Tác động: spec 005 đã đồng bộ (spec.md, plan.md, tasks.md ghi nhánh main, có T100 commit, push
-    và thông báo; plan.md kiểm tra theo 1.3.0); spec 003, 004 đã xong và spec 001 còn T153, không đổi
-- 1.2.0 (MINOR: mở rộng phạm vi và thêm một ràng buộc)
-  - Lý do: spec 005 (video overlay phụ đề) cần tạo video và hiển thị theo từng từ
-  - Nội dung thêm: ràng buộc "Mốc từng từ trong video overlay"
-  - Nội dung sửa: "Lưu trữ file", "Văn bản và âm thanh", "Phạm vi giai đoạn này"
-- Nguyên tắc sửa: không (I–VI giữ nguyên). Mục bị xóa: không
-- TODO hoãn lại: không
--->
-
 # Sub Maker Constitution
 
 ## Core Principles

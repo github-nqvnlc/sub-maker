@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, FileAudio, Loader2, Upload } from 'lucide-react';
+import { AlertCircle, FileAudio, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { EventLog } from '@/components/shared/event-log';
+import { FileDropzone } from '@/components/shared/file-dropzone';
 import { ErrorState, LoadingList } from '@/components/shared/states';
 import { ApiError, api } from '@/lib/api-client';
 import { fmtBytes } from '@/lib/format';
@@ -60,12 +62,6 @@ function SttStatusBadge({ status }: { status: SttStatus }) {
   );
 }
 
-const LEVEL_STYLE: Record<SttLogDto['level'], string> = {
-  info: 'text-foreground',
-  warn: 'text-amber-600 dark:text-amber-400',
-  error: 'text-destructive',
-};
-
 function renderLog(t: Dict, l: SttLogDto): string {
   const tpl = (t.stt.log as Record<string, string>)[l.messageKey] ?? l.messageKey;
   const params = { ...(l.params ?? {}) };
@@ -77,23 +73,11 @@ function renderLog(t: Dict, l: SttLogDto): string {
 
 function SttLog({ jobId }: { jobId: string }) {
   const t = useT();
-  const fx = useFormat();
   const q = useSttJob(jobId);
   if (q.isPending) return <LoadingList rows={2} />;
   if (q.isError) return <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />;
   return (
-    <div role="log" aria-label={t.stt.showLog} className="max-h-48 overflow-y-auto rounded-lg border bg-muted/30 p-3 font-mono text-xs leading-relaxed">
-      {q.data.logs.length === 0 ? (
-        <p className="text-muted-foreground">{t.stt.logEmpty}</p>
-      ) : (
-        q.data.logs.map((l) => (
-          <div key={l.id} className={cn('flex gap-2 py-0.5', LEVEL_STYLE[l.level])}>
-            <span className="shrink-0 text-muted-foreground">{fx.time(l.ts)}</span>
-            <span className="min-w-0 break-words">{renderLog(t, l)}</span>
-          </div>
-        ))
-      )}
-    </div>
+    <EventLog label={t.stt.showLog} empty={t.stt.logEmpty} entries={q.data.logs.map((l) => ({ id: l.id, ts: l.ts, level: l.level, text: renderLog(t, l) }))} />
   );
 }
 
@@ -170,9 +154,7 @@ export function SttDialog({
 }) {
   const t = useT();
   const qc = useQueryClient();
-  const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [drag, setDrag] = useState(false);
   const [name, setName] = useState('');
   const [format, setFormat] = useState<'srt' | 'txt' | 'md'>('srt');
   const [language, setLanguage] = useState<string>(AUTO);
@@ -211,8 +193,7 @@ export function SttDialog({
     },
   });
 
-  function pick(f: File | undefined | null) {
-    if (!f) return;
+  function pick(f: File) {
     const problem = checkFile(t, f);
     setError(problem);
     setFile(problem ? null : f);
@@ -233,65 +214,19 @@ export function SttDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <Card
-            role="button"
-            tabIndex={0}
-            aria-label={t.stt.dropHint}
-            onClick={() => input.current?.click()}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && input.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDrag(true);
-            }}
-            onDragLeave={() => setDrag(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDrag(false);
-              pick(e.dataTransfer.files[0]);
-            }}
-            className={cn(
-              'cursor-pointer border-2 border-dashed transition-all hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring',
-              drag && 'border-primary bg-accent/60 shadow-inner',
-              start.isPending && 'pointer-events-none opacity-60',
-            )}
-          >
-            <CardContent className="flex flex-col items-center justify-between gap-4 p-4 sm:flex-row sm:p-5">
-              <div className="flex min-w-0 items-center gap-3.5">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  {start.isPending ? <Loader2 className="size-5 animate-spin" /> : <FileAudio className="size-5" />}
-                </div>
-                <div className="min-w-0 space-y-0.5">
-                  <p className="truncate text-sm font-medium">{file ? `${file.name} (${fmtBytes(file.size)})` : t.stt.dropHint}</p>
-                  <p className="line-clamp-2 text-xs text-muted-foreground">{t.stt.formatsHint}</p>
-                </div>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant={file ? 'outline' : 'default'}
-                disabled={start.isPending}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  input.current?.click();
-                }}
-                className="shrink-0 gap-1.5 font-medium"
-              >
-                <Upload className="size-4" />
-                {file ? t.stt.changeFile : t.stt.chooseFile}
-              </Button>
-              <input
-                ref={input}
-                type="file"
-                accept={ACCEPT}
-                className="hidden"
-                aria-label={t.stt.chooseFile}
-                onChange={(e) => {
-                  pick(e.target.files?.[0]);
-                  e.target.value = '';
-                }}
-              />
-            </CardContent>
-          </Card>
+          <FileDropzone
+            accept={ACCEPT}
+            label={t.stt.dropHint}
+            inputLabel={t.stt.chooseFile}
+            title={file ? `${file.name} (${fmtBytes(file.size)})` : t.stt.dropHint}
+            hint={t.stt.formatsHint}
+            buttonLabel={file ? t.stt.changeFile : t.stt.chooseFile}
+            icon={FileAudio}
+            busy={start.isPending}
+            hasFile={!!file}
+            truncateTitle
+            onPick={pick}
+          />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">

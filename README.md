@@ -44,6 +44,7 @@ Giao diện hoàn toàn bằng tiếng Việt, dùng được trên điện tho�
 | **Theo dõi** | Nhật ký chi tiết **theo thời gian thực** (SSE; tự chuyển sang hỏi định kỳ nếu mất kết nối), thanh tiến độ, danh sách đoạn lỗi, thanh "tiến trình đang chạy" ở đầu trang. Nhiều tab/thiết bị cùng thấy một log. |
 | **Quản lý tiến trình** | **Dừng**, **tiếp tục** (bỏ qua các đoạn đã xong), **chạy lại** (tạo tiến trình mới; đoạn trùng được lấy từ cache, không tốn phí lặp), **sửa thiết lập** (model/giọng/tốc độ khi đã dừng hoặc lỗi), xóa một hoặc nhiều. |
 | **Nghe voice** | Trình phát có tua, tốc độ phát, âm lượng, tải `.mp3`; **highlight đúng câu đang đọc**, bấm câu để phát từ đó, tự cuộn theo câu đang đọc. |
+| **Video Overlay** | Tab riêng trong mỗi Project: xuất video **chỉ có chữ phụ đề** chạy khớp voice, để chèn đè lên video chính trong CapCut, Premiere, DaVinci Resolve, After Effects. Nguồn là voice của Project hoặc tệp `.mp3`/`.wav`/`.m4a` tải lên (≤ 100 MB), cùng kịch bản `.srt` có mốc. Khung 9:16, 16:9, 1:1; phông xanh lá, xanh dương, đen (`.mp4`) hoặc **nền trong suốt** (`.mov` ProRes 4444, `.webm` VP9). 5 phông chữ đủ tiếng Việt, viền, bóng, hộp nền, vị trí; 13 hiệu ứng xuất hiện, 3 cách biến mất, chế độ theo câu, theo từng từ và karaoke (nhịp từng từ là **ước lượng**). **Xem trước ngay trong trình duyệt** bằng cùng bộ vẽ với video xuất ra; cấu hình tự lưu. Xuất chạy nền, có tiến độ, nhật ký, dừng, chạy lại, dùng lại cấu hình, xóa nhiều mục. Vận hành: `docs/operations.md` §11. |
 | **Dashboard** | Số Project/voice, tổng thời lượng, ký tự đã gửi tới AI (theo ngày, theo nhà cung cấp, tách cấu hình chung/riêng), chi phí ước tính, dung lượng đã dùng so với hạn mức, lọc theo khoảng ngày. |
 | **Cấu hình AI riêng** | Người dùng được Admin cho phép có thể nhập base URL/khóa API riêng để thay cho cấu hình chung (chi phí do tài khoản đó chịu). |
 
@@ -77,7 +78,7 @@ Trình phát dùng timeline để highlight câu đang đọc
 
 Những điểm đáng chú ý:
 
-- **Timeline chính xác theo số mẫu** (không ước lượng): highlight khớp đoạn đang đọc, kiểm thử E2E đối chiếu theo `currentTime` của trình duyệt.
+- **Timeline chính xác theo số mẫu** (không ước lượng): highlight khớp đoạn đang đọc, kiểm thử E2E đối chiếu theo `currentTime` của trình duyệt. Video overlay dùng lại đúng các mốc này.
 - **Cache theo người dùng**: khóa cache = `sha256(user | nhà cung cấp | model | giọng | tốc độ | định dạng | văn bản)`. Đổi một câu trong kịch bản chỉ tốn tiền cho câu đó. Cache không bao giờ dùng chung giữa các người dùng.
 - **Phân loại lỗi nhà cung cấp**: lỗi tạm thời (timeout, 429, 5xx) thử lại tối đa 4 lần với backoff mũ + jitter, tôn trọng `Retry-After`; lỗi vĩnh viễn (sai khóa, hết hạn mức, sai giọng, nội dung bị chặn) **không thử lại**. Nội dung bị chặn chỉ làm hỏng đúng đoạn đó; các đoạn khác vẫn chạy rồi job báo lỗi kèm danh sách đoạn.
 - **Bền vững**: tiến trình có heartbeat; worker chết giữa chừng thì bộ quét đánh dấu "Bị gián đoạn" rồi tự xếp hàng lại, bỏ qua đoạn đã xong. Hàng đợi nằm trong PostgreSQL (pg-boss) nên không mất việc khi khởi động lại.
@@ -95,7 +96,8 @@ Trình duyệt ──HTTPS──► Cloudflare ──► cloudflared ──► w
                                                           ▼                   │
                                                         MinIO (S3)        worker (tsx)
                                                   kịch bản · voice · cache   ├─ tạo voice (ffmpeg)
-                                                  avatar (bucket riêng tư)   ├─ xóa người dùng
+                                                  avatar · video overlay     ├─ xuất video overlay (tiến trình con riêng)
+                                                  (bucket riêng tư)          ├─ xóa người dùng
                                                                              ├─ bộ quét tiến trình treo
                                                                              └─ đối soát dung lượng (hằng ngày)
                                                                                      │
@@ -117,6 +119,7 @@ Trình duyệt ──HTTPS──► Cloudflare ──► cloudflared ──► w
 | Hàng đợi | pg-boss (trong PostgreSQL) |
 | Lưu trữ | MinIO / S3 (`@aws-sdk/client-s3`) |
 | Âm thanh | ffmpeg (giải mã, ghép, mã hóa MP3 có tag LAME/Xing) |
+| Video overlay | Canvas 2D dùng chung cho xem trước (trình duyệt) và xuất (`@napi-rs/canvas`), mã hóa bằng ffmpeg (H.264, ProRes 4444, VP9) |
 | Kiểm thử | Vitest (unit / integration / contract / isolation) · Playwright (desktop + mobile 375 px) |
 | Triển khai | Docker Compose · Cloudflare Tunnel |
 
@@ -153,9 +156,11 @@ Giới hạn mặc định (Administrator chỉnh trong **Quản trị → Cài 
 | Giới hạn | Mặc định |
 | --- | --- |
 | Kích thước mỗi tệp kịch bản | 2 MB |
-| Hạn mức lưu trữ mỗi người (kịch bản + voice + cache + avatar) | 500 MB |
+| Hạn mức lưu trữ mỗi người (kịch bản + voice + cache + avatar + video overlay + âm thanh tải lên) | 500 MB |
 | Tiến trình chạy đồng thời toàn hệ thống / mỗi người | 3 / 2 |
 | Số đoạn gọi AI song song trong một tiến trình | 3 |
+| Xuất video overlay: toàn hệ thống / mỗi người (chờ hoặc chạy) | 1 / 2 |
+| Thời lượng voice để xuất video: phông màu / nền trong suốt | 60 phút / 10 phút |
 | Đăng nhập / đăng ký | 5 lần mỗi phút / 5 lần mỗi giờ (theo IP) |
 
 ---
@@ -170,6 +175,7 @@ Các ràng buộc này nằm trong "hiến pháp" dự án (`.specify/memory/con
 - **CSRF**: mọi thao tác ghi kiểm tra `Origin` khớp `APP_URL`. Cookie `HttpOnly`, `SameSite=Lax`, `Secure` ở production.
 - **Tiêu đề an toàn**: CSP (chỉ cùng nguồn), `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, HSTS (production).
 - **Rà soát tĩnh**: `tests/unit/route-guards.test.ts` bảo đảm mọi route đều bọc `route()`, có `requireUser`/`requireAdmin`, và không nhận `ownerId` từ client.
+- **Dựng hình video overlay**: chạy trong tiến trình con chỉ có biến môi trường tối thiểu (không có CSDL, MinIO hay khóa API); chữ phụ đề chỉ đi vào lệnh vẽ chữ, không vào tham số ffmpeg; tệp âm thanh tải lên bị ép bộ tách theo đuôi và chỉ được đọc từ tệp trên đĩa.
 - **Xóa dữ liệu**: mọi thao tác xóa đều có hộp xác nhận; xóa người dùng xóa sạch dữ liệu (CSDL + MinIO), giữ thống kê ẩn danh.
 
 ---
@@ -249,11 +255,11 @@ npm run test:e2e          # Playwright desktop + mobile; tự dựng web + worke
 
 | Bộ test | Nội dung chính |
 | --- | --- |
-| **unit** | Tách đoạn/Markdown/SRT và cue, đơn vị đọc, đặt mốc/nén/trượt (`placeUnits`, `planParts`), cắt lặng, giới hạn yêu cầu/phút, ghép audio theo mẫu, highlight, mã hóa, `safeFetch`, ẩn bí mật trong log, máy chủ giả, rà soát route, từ điển vi/en, tương phản viền ô nhập |
+| **unit** | Tách đoạn/Markdown/SRT và cue, đơn vị đọc, đặt mốc/nén/trượt (`placeUnits`, `planParts`), cắt lặng, giới hạn yêu cầu/phút, ghép audio theo mẫu, highlight, bộ dựng hình video overlay (bố cục, hiệu ứng, mốc từng từ, màu), mã hóa, `safeFetch`, ẩn bí mật trong log, máy chủ giả, rà soát route, từ điển vi/en, tương phản viền ô nhập |
 | **contract** | Cùng một bộ kịch bản (thành công, 429, 5xx, 401, hết hạn mức, nội dung bị chặn, phản hồi hỏng, timeout, hủy giữa chừng, redirect vào mạng nội bộ…) chạy với **từng adapter** |
-| **integration** | API thật trên PostgreSQL/MinIO thật: xác thực, file, job, SSE, pipeline tạo voice, phục hồi sau sự cố, đồng thời, xóa, tìm kiếm, thống kê, cài đặt, đối soát dung lượng, hiệu năng (SC-006/007/009), không lộ khóa |
+| **integration** | API thật trên PostgreSQL/MinIO thật: xác thực, file, job, SSE, pipeline tạo voice, phục hồi sau sự cố, đồng thời, xóa, tìm kiếm, thống kê, cài đặt, đối soát dung lượng, xuất video overlay thật (`.mp4`, `.mov`, `.webm`), hiệu năng (SC-006/007/009), không lộ khóa |
 | **isolation** | Mọi đường dẫn OpenAPI: 401 / 404 / quyền admin |
-| **e2e** | Đăng ký/đăng nhập, tạo voice trọn đường (UI → API → hàng đợi → worker → nhà cung cấp giả), voice khớp mốc từ `.srt`, nghe & highlight, quản lý/xóa tiến trình, tìm kiếm, chạy nền nhiều tab, dashboard, cài đặt, chọn giọng, Sáng/Tối, đổi ngôn ngữ, font tiếng Việt, tab quản trị |
+| **e2e** | Đăng ký/đăng nhập, tạo voice trọn đường (UI → API → hàng đợi → worker → nhà cung cấp giả), voice khớp mốc từ `.srt`, nghe & highlight, quản lý/xóa tiến trình, tìm kiếm, chạy nền nhiều tab, dashboard, cài đặt, chọn giọng, Sáng/Tối, đổi ngôn ngữ, font tiếng Việt, tab quản trị, video overlay (xem trước, so khớp xem trước với video, quản lý lần xuất) |
 
 **Kiểm thử với nhà cung cấp thật** (tốn phí nhỏ, mặc định bị bỏ qua):
 
@@ -299,9 +305,10 @@ src/
 │   ├── providers/              adapter nhà cung cấp, catalog, phân loại lỗi, cấu hình
 │   ├── parsing/                giải mã UTF-8, Markdown/SRT, tách đoạn
 │   ├── audio/                  giải mã PCM, ghép theo mẫu, mã hóa MP3
+│   ├── overlay/                video overlay: cấu hình, mốc, bố cục, hiệu ứng, bộ vẽ dùng chung, dịch vụ
 │   ├── projects/ jobs/ voices/ users/ usage/ storage/ player/
 │   └── i18n/vi.ts              TOÀN BỘ chuỗi tiếng Việt của giao diện
-├── worker/                 Tiến trình nền: tạo voice, xóa người dùng, đối soát dung lượng, bộ quét tiến trình treo
+├── worker/                 Tiến trình nền: tạo voice, xuất video overlay (`render/` là tiến trình con), xóa người dùng, đối soát dung lượng, bộ quét tiến trình treo
 └── instrumentation.ts      Khởi động web: migration, tạo bucket, tạo Administrator
 mock-provider/              Máy chủ nhà cung cấp AI giả dùng cho kiểm thử
 tests/                      unit · integration · contract · isolation · e2e
@@ -327,10 +334,11 @@ Toàn bộ nằm dưới `/api`, trả JSON; lỗi có dạng `{ error: { code, 
 | Tiến trình | `GET/POST /projects/{id}/jobs`, `GET /jobs`, `GET/PATCH/DELETE /jobs/{id}`, `POST /jobs/{id}/stop`, `/resume`, `/rerun`, `POST /jobs/bulk-delete` |
 | Log thời gian thực | `GET /jobs/{id}/logs` (phân trang), `GET /jobs/{id}/events` (SSE, hỗ trợ `Last-Event-ID` để nối lại không mất dòng) |
 | Voice | `GET /voices/{id}`, `GET /voices/{id}/audio` (hỗ trợ `Range`, tải về) |
+| Video Overlay | `GET/PUT /projects/{id}/overlay`, `GET …/overlay/timeline`, `GET/POST …/overlay/audios`, `GET/POST …/overlay/jobs`, `GET /overlay/jobs/{id}`, `POST …/stop`, `/rerun`, `GET …/video`, `POST /overlay/jobs/bulk-delete`, `GET /overlay/audios/{id}/stream`, `POST /overlay/audios/bulk-delete` (đặc tả: `specs/005-subtitle-video-overlay/contracts/`) |
 | Quản trị | `/admin/users[/{id}[/reset-password]]`, `/admin/ai-configs[/{type}[/test]]`, `/admin/custom-ai-users[/{id}]`, `/admin/stats`, `/admin/settings` |
 
 Mô hình dữ liệu (rút gọn): `users` · `ai_provider_configs` (chung/riêng, khóa đã mã hóa) · `projects` · `subtitle_files` · `segments` · `voice_jobs` ·
-`job_segments` · `job_logs` · `voices` (kèm timeline) · `audio_cache` · `usage_records` (ẩn danh khi xóa người dùng) · `system_settings`. Chi tiết:
+`job_segments` · `job_logs` · `voices` (kèm timeline) · `audio_cache` · `usage_records` (ẩn danh khi xóa người dùng) · `overlay_configs` · `overlay_audios` · `overlay_jobs` · `overlay_job_logs` · `system_settings`. Chi tiết:
 `specs/001-voice-sub-projects/data-model.md`.
 
 ---
@@ -347,6 +355,7 @@ Mô hình dữ liệu (rút gọn): `users` · `ai_provider_configs` (chung/riê
 | 403 "FORBIDDEN_ORIGIN" khi gọi API | `APP_URL` không khớp địa chỉ đang truy cập (kể cả `http`/`https`, cổng). |
 | Không đăng nhập được sau nhiều lần sai | Giới hạn tốc độ theo IP; đợi một lúc. |
 | Hết dung lượng ("QUOTA_EXCEEDED") | Xóa bớt voice/Project, hoặc Administrator tăng hạn mức. |
+| Xuất video báo "Máy chủ tạm hết chỗ" | Đĩa tạm của worker đầy. Video nền trong suốt `.mov` cần nhiều chỗ nhất (khoảng 120–230 MB mỗi phút). Xem [docs/operations.md](docs/operations.md) §11. |
 | Cần đặt lại mật khẩu | v1 chưa có email: Administrator đặt lại ở Quản trị → Người dùng; quên mật khẩu admin thì đổi `ADMIN_PASSWORD` rồi khởi động lại. |
 
 ---
@@ -361,6 +370,7 @@ Phiên bản đầu (v1) đã hoàn thiện theo đặc tả: 9 user story, toà
 - `--setup-tunnel` của `deploy.sh` chưa chạy với tài khoản Cloudflare thật (đã kiểm tra bằng phản hồi API giả).
 - Adapter ShopAIKey OpenAI TTS chưa kiểm chứng bằng khóa thật; Gemini TTS của ShopAIKey chưa có adapter.
 - Chưa có chính sách tự xóa cache audio (cache chỉ bị dọn khi xóa tiến trình/Project/người dùng; vượt hạn mức thì chặn tạo mới).
+- **Video overlay**: nhịp từng từ là ước lượng theo độ dài chữ (chưa đo độ chính xác bằng nhận dạng giọng nói); chưa kiểm tay trong CapCut, Premiere, DaVinci Resolve, After Effects; khung xem trước mới so khớp với video trên Chromium. Một lần xuất bị gián đoạn sẽ xuất lại từ đầu. Với hạn mức 500 MB, `.mov` trong suốt chỉ dài được khoảng 2–3,5 phút (dùng `.webm` nếu cần tệp gọn).
 - Chất lượng giọng tiếng Việt của từng nhà cung cấp cần nghe thử và chọn theo cảm nhận (mẫu từ spike nằm ở `tmp/spike/`).
 
 ---
@@ -376,6 +386,7 @@ Phiên bản đầu (v1) đã hoàn thiện theo đặc tả: 9 user story, toà
 | [specs/001-voice-sub-projects/contracts/](specs/001-voice-sub-projects/contracts/) | OpenAPI, sự kiện log SSE, hợp đồng adapter TTS |
 | [specs/001-voice-sub-projects/quickstart.md](specs/001-voice-sub-projects/quickstart.md) | Các kịch bản kiểm chứng |
 | [specs/001-voice-sub-projects/tasks.md](specs/001-voice-sub-projects/tasks.md) | Danh sách task và trạng thái |
+| [specs/005-subtitle-video-overlay/](specs/005-subtitle-video-overlay/) | Video overlay phụ đề: yêu cầu, kế hoạch, quyết định kỹ thuật, hợp đồng, kịch bản kiểm chứng |
 | [docs/operations.md](docs/operations.md) | Vận hành production: tên miền, sao lưu, đổi khóa, deploy |
 | [docs/provider-spikes.md](docs/provider-spikes.md) | Kết quả kiểm chứng nhà cung cấp bằng khóa thật |
 | [docs/fpt-ai-voice-guide.md](docs/fpt-ai-voice-guide.md), [docs/shopaikey-guide.md](docs/shopaikey-guide.md) | Tài liệu tham khảo của nhà cung cấp |

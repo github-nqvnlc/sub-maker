@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { getDb } from '../../lib/db';
-import { users, voiceJobs } from '../../lib/db/schema';
+import { overlayJobs, users, voiceJobs } from '../../lib/db/schema';
 import { deleteByPrefix } from '../../lib/storage/client';
 import { storageKeys } from '../../lib/storage/keys';
 import { stopAllForUser } from '../../lib/jobs/control';
@@ -40,7 +40,11 @@ export async function deleteUserData(userId: string): Promise<{ existed: boolean
       .select({ running: sql<number>`count(*)::int` })
       .from(voiceJobs)
       .where(and(eq(voiceJobs.ownerId, userId), eq(voiceJobs.status, 'running')));
-    if (running > 0) throw new JobsStillRunningError(running);
+    const [{ overlay } = { overlay: 0 }] = await db
+      .select({ overlay: sql<number>`count(*)::int` })
+      .from(overlayJobs)
+      .where(and(eq(overlayJobs.ownerId, userId), eq(overlayJobs.status, 'running')));
+    if (running + overlay > 0) throw new JobsStillRunningError(running + overlay);
   }
 
   // STT (spec 004, FR-021): lấy id dữ liệu trên Soniox trước khi xóa bản ghi (file tạm nằm dưới tiền tố User)

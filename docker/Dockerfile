@@ -22,6 +22,8 @@ FROM base AS web
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
+# tài nguyên tĩnh (phông chữ video overlay, giọng nghe thử): bản standalone không tự kèm public/
+COPY --from=build --chown=node:node /app/public ./public
 # migration chạy lúc khởi động (instrumentation) và cần thư mục SQL
 COPY --from=build --chown=node:node /app/src/lib/db/migrations ./src/lib/db/migrations
 USER node
@@ -39,5 +41,7 @@ ENV NODE_ENV=production
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json tsconfig.json ./
 COPY --chown=node:node src ./src
+# phông chữ dựng hình video overlay (spec 005): cùng tệp với trình duyệt
+COPY --chown=node:node public/fonts/overlay ./public/fonts/overlay
 USER node
 CMD ["npx", "tsx", "src/worker/index.ts"]

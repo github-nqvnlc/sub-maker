@@ -1,7 +1,7 @@
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { getDb } from '../../lib/db';
-import { STT_ACTIVE_STATUSES, sttJobs, users, voiceJobs } from '../../lib/db/schema';
+import { OVERLAY_ACTIVE_STATUSES, overlayAudios, overlayJobs, STT_ACTIVE_STATUSES, sttJobs, users, voiceJobs } from '../../lib/db/schema';
 import { sizeByPrefix } from '../../lib/storage/client';
 import { storageKeys } from '../../lib/storage/keys';
 import { QUEUES, type ReconcileStoragePayload } from '../queues';
@@ -32,7 +32,15 @@ export async function reconcileStorage(): Promise<ReconcileResult> {
   const sttBusy = all.length
     ? await db.selectDistinct({ id: sttJobs.ownerId }).from(sttJobs).where(and(inArray(sttJobs.status, [...STT_ACTIVE_STATUSES]), inArray(sttJobs.ownerId, all.map((u) => u.id))))
     : [];
-  const busy = new Set([...busyRows, ...sttBusy].map((r) => r.id));
+  // Video overlay (spec 005): tiến trình xuất đang hoạt động hoặc âm thanh đang xử lý cũng đang ghi đối tượng
+  const ids = all.map((u) => u.id);
+  const overlayBusy = all.length
+    ? await db.selectDistinct({ id: overlayJobs.ownerId }).from(overlayJobs).where(and(inArray(overlayJobs.status, [...OVERLAY_ACTIVE_STATUSES]), inArray(overlayJobs.ownerId, ids)))
+    : [];
+  const audioBusy = all.length
+    ? await db.selectDistinct({ id: overlayAudios.ownerId }).from(overlayAudios).where(and(eq(overlayAudios.status, 'processing'), inArray(overlayAudios.ownerId, ids)))
+    : [];
+  const busy = new Set([...busyRows, ...sttBusy, ...overlayBusy, ...audioBusy].map((r) => r.id));
 
   const result: ReconcileResult = { checked: 0, skippedBusy: 0, corrected: [] };
   for (const u of all) {
@@ -41,8 +49,11 @@ export async function reconcileStorage(): Promise<ReconcileResult> {
       continue;
     }
     result.checked++;
-    // File media tạm của STT không tính vào hạn mức (spec 004, FR-001)
-    const actual = (await sizeByPrefix(storageKeys.userPrefix(u.id))) - (await sizeByPrefix(`${storageKeys.userPrefix(u.id)}stt-tmp/`));
+    // File media tạm của STT (spec 004, FR-001) và âm thanh tạm của overlay (spec 005, FR-043) không tính vào hạn mức
+    const actual =
+      (await sizeByPrefix(storageKeys.userPrefix(u.id))) -
+      (await sizeByPrefix(`${storageKeys.userPrefix(u.id)}stt-tmp/`)) -
+      (await sizeByPrefix(storageKeys.overlayTempPrefix(u.id)));
     if (actual === u.used) continue;
     const updated = await db
       .update(users)

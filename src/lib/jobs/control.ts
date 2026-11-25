@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { voiceJobs } from '../db/schema';
+import { stopAllOverlayForUser } from '../overlay/control';
 import { appendLogSafe } from './log';
 
 /**
@@ -50,6 +51,8 @@ export async function stopAllForUser(ownerId: string): Promise<StopResult> {
     .select({ id: voiceJobs.id })
     .from(voiceJobs)
     .where(and(eq(voiceJobs.ownerId, ownerId), inArray(voiceJobs.status, ['queued', 'running', 'interrupted'])));
+  // Tiến trình xuất video overlay của User cũng dừng (spec 005); không gộp vào kết quả vì khác loại tiến trình
+  await stopAllOverlayForUser(ownerId);
   return requestStop(ownerId, rows.map((r) => r.id));
 }
 

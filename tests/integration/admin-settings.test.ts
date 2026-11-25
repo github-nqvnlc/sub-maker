@@ -34,6 +34,10 @@ describe('/api/admin/settings', () => {
       maxConcurrentJobs: 3,
       maxJobsPerUser: 2,
       maxSttJobsPerUser: 2,
+      maxOverlayJobsPerUser: 2,
+      maxConcurrentOverlayJobs: 1,
+      overlayMaxMinutes: 60,
+      overlayMaxMinutesTransparent: 10,
       segmentConcurrency: 3,
       timingMaxSlipMs: 500,
       timingMaxCompressPct: 125,
@@ -50,6 +54,13 @@ describe('/api/admin/settings', () => {
     expect(res.status).toBe(200);
     expect(await get()).toMatchObject({ timingMaxSlipMs: 300, timingMaxCompressPct: 115, timingPartMinutes: 5, timingMergeGapMs: 800, rpmFptMarketplace: 20 });
     await put({ timingMaxSlipMs: 500, timingMaxCompressPct: 125, timingPartMinutes: 10, timingMergeGapMs: 1000, rpmFptMarketplace: 0 });
+  });
+
+  it('ghi và đọc lại các khóa video overlay (spec 005) trong khoảng hợp lệ', async () => {
+    const on = { maxOverlayJobsPerUser: 20, maxConcurrentOverlayJobs: 10, overlayMaxMinutes: 180, overlayMaxMinutesTransparent: 60 };
+    expect((await put(on)).status).toBe(200);
+    expect(await get()).toMatchObject(on);
+    await put({ maxOverlayJobsPerUser: 2, maxConcurrentOverlayJobs: 1, overlayMaxMinutes: 60, overlayMaxMinutesTransparent: 10 });
   });
 
   it('ghi từng phần và đọc lại đúng', async () => {
@@ -75,6 +86,11 @@ describe('/api/admin/settings', () => {
     ['cửa sổ phần 0 phút', { timingPartMinutes: 0 }],
     ['cửa sổ phần 31 phút', { timingPartMinutes: 31 }],
     ['khoảng nghỉ ghép dưới 200 ms', { timingMergeGapMs: 100 }],
+    ['số tiến trình overlay mỗi người trên 20', { maxOverlayJobsPerUser: 21 }],
+    ['số video overlay cùng lúc trên 10', { maxConcurrentOverlayJobs: 11 }],
+    ['số video overlay cùng lúc bằng 0', { maxConcurrentOverlayJobs: 0 }],
+    ['thời lượng overlay trên 180 phút', { overlayMaxMinutes: 181 }],
+    ['thời lượng overlay trong suốt trên 60 phút', { overlayMaxMinutesTransparent: 61 }],
     ['rpm âm', { rpmFptMarketplace: -1 }],
     ['rpm trên 600', { rpmShopaikeyMinimax: 601 }],
   ])('giá trị %s → 422 và không thay đổi gì', async (_name, body) => {

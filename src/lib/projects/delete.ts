@@ -5,6 +5,7 @@ import { projects, subtitleFiles, voiceJobs, voices } from '../db/schema';
 import { requestStop } from '../jobs/control';
 import { waitUntilNotRunning } from '../jobs/delete';
 import { cacheIdsReferencedByJobs, purgeObjects, purgeOrphanCache } from '../storage/cleanup';
+import { collectOverlayCleanup, runOverlayCleanup, stopProjectOverlay } from '../overlay/cleanup';
 import { collectSttCleanup, runSttCleanup } from '../stt/cleanup';
 
 /**
@@ -30,7 +31,8 @@ export async function deleteProjects(ownerId: string, ids: string[], opts: { wai
     const jobIds = jobs.map((j) => j.id);
     await requestStop(ownerId, jobIds);
     const stillRunning = await waitUntilNotRunning(jobIds, opts.waitMs);
-    if (stillRunning.length > 0) {
+    const overlayRunning = await stopProjectOverlay(ownerId, projectId, opts.waitMs);
+    if (stillRunning.length > 0 || overlayRunning.length > 0) {
       result.busy.push(projectId); // chưa dừng kịp: không xóa (tránh để lại đối tượng mồ côi)
       continue;
     }
@@ -41,6 +43,8 @@ export async function deleteProjects(ownerId: string, ids: string[], opts: { wai
     const candidates = await cacheIdsReferencedByJobs(jobIds);
     // STT job (spec 004, FR-021): file media tạm + dữ liệu trên Soniox; worker đang chạy tự dừng khi thấy job đã mất
     const sttItems = await collectSttCleanup({ projectId });
+    // Video overlay (spec 005, FR-047)
+    const overlayItems = await collectOverlayCleanup(ownerId, projectId);
 
     // 3) Xóa bản ghi (cascade: file, đoạn, tiến trình, log, voice)
     await db.delete(projects).where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)));
@@ -49,6 +53,7 @@ export async function deleteProjects(ownerId: string, ids: string[], opts: { wai
     await purgeObjects(ownerId, [...files, ...vs]);
     await purgeOrphanCache(ownerId, candidates);
     await runSttCleanup(sttItems);
+    await runOverlayCleanup(ownerId, overlayItems);
     result.deleted.push(projectId);
   }
   return result;

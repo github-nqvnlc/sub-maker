@@ -18,6 +18,10 @@ type Settings = {
   maxConcurrentJobs: number;
   maxJobsPerUser: number;
   maxSttJobsPerUser: number;
+  maxOverlayJobsPerUser: number;
+  maxConcurrentOverlayJobs: number;
+  overlayMaxMinutes: number;
+  overlayMaxMinutesTransparent: number;
   segmentConcurrency: number;
   timingMaxSlipMs: number;
   timingMaxCompressPct: number;
@@ -36,6 +40,11 @@ const fieldsOf = (t: Dict): Field[] => [
   { key: 'maxConcurrentJobs', label: t.adminSettings.maxConcurrentJobs, hint: t.adminSettings.concurrencyHint, unit: 'int', min: 1, max: 50 },
   { key: 'maxJobsPerUser', label: t.adminSettings.maxJobsPerUser, hint: t.adminSettings.concurrencyHint, unit: 'int', min: 1, max: 50 },
   { key: 'maxSttJobsPerUser', label: t.adminSettings.maxSttJobsPerUser, hint: t.adminSettings.sttJobsHint, unit: 'int', min: 1, max: 20 },
+  // Video overlay (spec 005)
+  { key: 'maxOverlayJobsPerUser', label: t.adminSettings.maxOverlayJobsPerUser, hint: t.adminSettings.overlayJobsHint, unit: 'int', min: 1, max: 20 },
+  { key: 'maxConcurrentOverlayJobs', label: t.adminSettings.maxConcurrentOverlayJobs, hint: t.adminSettings.overlayConcurrencyHint, unit: 'int', min: 1, max: 10 },
+  { key: 'overlayMaxMinutes', label: t.adminSettings.overlayMaxMinutes, hint: t.adminSettings.overlayMinutesHint, unit: 'int', min: 1, max: 180 },
+  { key: 'overlayMaxMinutesTransparent', label: t.adminSettings.overlayMaxMinutesTransparent, hint: t.adminSettings.overlayMinutesTransparentHint, unit: 'int', min: 1, max: 60 },
   { key: 'segmentConcurrency', label: t.adminSettings.segmentConcurrency, hint: t.adminSettings.segmentHint, unit: 'int', min: 1, max: 16 },
   // Voice khớp mốc thời gian phụ đề (spec 003)
   { key: 'timingMaxSlipMs', label: t.adminSettings.timingMaxSlipMs, hint: t.adminSettings.timingMaxSlipHint, unit: 'int', min: 100, max: 2000 },

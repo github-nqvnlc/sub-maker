@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Download, Eye, FileAudio, Import, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -11,13 +11,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { FileDropzone } from '@/components/shared/file-dropzone';
 import { EmptyState, ErrorState, LoadingList } from '@/components/shared/states';
 import { ApiError, api } from '@/lib/api-client';
 import { fmtBytes } from '@/lib/format';
 import { useSttJobs, type SttJobDto } from '@/lib/hooks/use-stt-jobs';
 import { useFormat, useT } from '@/lib/i18n/client';
 import type { Dict } from '@/lib/i18n/types';
-import { cn } from '@/lib/utils';
 
 const AUDIO = ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'];
 const VIDEO = ['mp4', 'mov', 'mkv', 'webm'];
@@ -47,10 +47,7 @@ export function MediaTab({
   const t = useT();
   const fx = useFormat();
   const qc = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const [file, setFile] = useState<File | null>(null);
-  const [drag, setDrag] = useState(false);
   const [name, setName] = useState('');
   const [format, setFormat] = useState<'srt' | 'txt' | 'md'>('srt');
   const [language, setLanguage] = useState<string>(AUTO);
@@ -86,8 +83,7 @@ export function MediaTab({
     },
   });
 
-  function pickFile(f: File | undefined | null) {
-    if (!f) return;
+  function pickFile(f: File) {
     const problem = checkFile(t, f);
     setError(problem);
     setFile(problem ? null : f);
@@ -106,54 +102,19 @@ export function MediaTab({
           <Card>
             <CardContent className="space-y-4 p-5">
               {/* Dropzone */}
-              <div
-                tabIndex={0}
-                role="region"
-                aria-label={t.stt.dropHint}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    fileInputRef.current?.click();
-                  }
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDrag(true);
-                }}
-                onDragLeave={() => setDrag(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDrag(false);
-                  pickFile(e.dataTransfer.files[0]);
-                }}
-                className={cn(
-                  'flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-6 text-center transition-colors',
-                  drag ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-muted-foreground/40',
-                  file ? 'bg-muted/30' : '',
-                )}
-              >
-                <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  {file ? <FileAudio className="size-6" /> : <Upload className="size-6" />}
-                </div>
-                <div className="space-y-1">
-                  <p className="truncate text-sm font-medium">{file ? `${file.name} (${fmtBytes(file.size)})` : t.stt.dropHint}</p>
-                  <p className="line-clamp-2 text-xs text-muted-foreground">{t.stt.formatsHint}</p>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                  {file ? t.stt.changeFile : t.stt.chooseFile}
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={ACCEPT}
-                  className="sr-only"
-                  aria-label={t.stt.chooseFile}
-                  onChange={(e) => {
-                    pickFile(e.target.files?.[0]);
-                    e.target.value = '';
-                  }}
-                />
-              </div>
+              <FileDropzone
+                variant="stack"
+                accept={ACCEPT}
+                label={t.stt.dropHint}
+                inputLabel={t.stt.chooseFile}
+                title={file ? `${file.name} (${fmtBytes(file.size)})` : t.stt.dropHint}
+                hint={t.stt.formatsHint}
+                buttonLabel={file ? t.stt.changeFile : t.stt.chooseFile}
+                icon={file ? FileAudio : Upload}
+                hasFile={!!file}
+                truncateTitle
+                onPick={pickFile}
+              />
 
               {/* Tên kịch bản */}
               <div className="space-y-2">

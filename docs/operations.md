@@ -14,10 +14,10 @@ Internet ──► Cloudflare ──► cloudflared ──► web:3000 ──►
 | Dịch vụ | Vai trò | Mạng |
 | --- | --- | --- |
 | `postgres` | Dữ liệu ứng dụng **và** hàng đợi pg-boss | chỉ `internal` |
-| `minio` | Lưu kịch bản, voice, cache audio, avatar (bucket riêng tư) | chỉ `internal` |
+| `minio` | Lưu kịch bản, voice, cache audio, avatar, video overlay và âm thanh tải lên (bucket riêng tư) | chỉ `internal` |
 | `migrate` | Chạy migration một lần rồi thoát | `internal` |
 | `web` | Giao diện + API (Next.js standalone) | `internal` + `egress` |
-| `worker` | Tạo voice nền, dọn dẹp, đối soát dung lượng (có `ffmpeg`) | `internal` + `egress` |
+| `worker` | Tạo voice nền, xuất video overlay, dọn dẹp, đối soát dung lượng (có `ffmpeg`) | `internal` + `egress` |
 | `cloudflared` | Cổng vào duy nhất từ Internet | `egress` + `internal` |
 
 Mạng `internal` được đặt `internal: true` nên `postgres`/`minio` không có đường ra Internet và **không công bố cổng nào ra host**.
@@ -205,3 +205,54 @@ Chỉnh ở **Quản trị → Cài đặt hệ thống** (có hiệu lực ngay
 | `rpmFptMarketplace`, `rpmShopaikeyOpenai`, `rpmShopaikeyMinimax` | 0 | 0–600 | Giới hạn yêu cầu/phút ghi đè mặc định của catalog (FPT: 30/phút theo tài liệu — chỉ là ước tính). 0 = dùng mặc định. Tiến trình chờ rồi tiếp tục khi chạm giới hạn, không thất bại. |
 
 **Kiểm thử với nhà cung cấp giả**: ngoài các kịch bản lỗi hiện có, địa chỉ gốc nhận thêm thành phần ghép bằng dấu `+`: `ms-<n>` (thời lượng = ký tự × n ms), `pad-<n>` (thêm n ms im lặng ở đầu/cuối), `429-<k>` (k yêu cầu đầu trả 429), `blocked-<từ khóa>` (chặn nội dung có từ khóa) — ví dụ `/s/ms-120+pad-200/v1`.
+
+## 11. Video overlay phụ đề (spec 005)
+
+### Cài đặt hệ thống
+
+Chỉnh ở **Quản trị → Cài đặt hệ thống**, có hiệu lực ngay:
+
+| Khóa | Mặc định | Khoảng | Ý nghĩa |
+|------|----------|--------|---------|
+| `maxOverlayJobsPerUser` | 2 | 1–20 | Số tiến trình xuất đang chờ, đang chạy hoặc bị gián đoạn của một người; vượt thì bị từ chối kèm thông báo. |
+| `maxConcurrentOverlayJobs` | 1 | 1–10 | Số video được dựng cùng lúc toàn hệ thống, tách khỏi voice và phụ đề. Mỗi video dùng khoảng nửa số luồng CPU: chỉ tăng khi máy còn dư. |
+| `overlayMaxMinutes` | 60 | 1–180 | Thời lượng voice tối đa với phông màu; cũng là giới hạn của tệp âm thanh tải lên. |
+| `overlayMaxMinutesTransparent` | 10 | 1–60 | Thời lượng voice tối đa với nền trong suốt. |
+
+### Dung lượng
+
+Video và tệp âm thanh tải lên tính vào hạn mức lưu trữ của người dùng theo dung lượng thật và được giữ tới khi người dùng xóa. Số dưới đây là **ước tính** cho khung 1080×1920:
+
+| Định dạng | Ước tính mỗi phút (kèm tiếng) | Hạn mức 500 MB chứa được |
+|-----------|-------------------------------|---------------------------|
+| `.mp4` phông màu | khoảng 2–4,5 MB | hơn 100 phút |
+| `.webm` trong suốt | khoảng 3–6,5 MB | hơn 70 phút |
+| `.mov` trong suốt | khoảng 120–230 MB | khoảng 2–3,5 phút |
+
+Cần `.mov` dài hơn thì tăng `userQuotaBytes` (hạn mức mỗi người) trước khi tăng `overlayMaxMinutesTransparent`.
+
+### Tài nguyên của worker
+
+- Mỗi lần xuất là một **tiến trình con** (`src/worker/render/main.ts`) có độ ưu tiên CPU thấp hơn worker, cùng một tiến trình `ffmpeg`. Bộ nhớ khoảng 200–350 MB cho mỗi video đang dựng.
+- Tệp đang dựng nằm ở **đĩa tạm của container worker** (`/tmp/submaker-overlay-*`), được dọn khi kết thúc và khi worker khởi động. Cần chỗ trống ít nhất bằng 1,2 lần dung lượng ước tính cộng 64 MB; thiếu thì người dùng nhận lỗi "Máy chủ tạm hết chỗ". Một `.mov` 10 phút cần khoảng 2,5 GB.
+- Worker khởi động lại giữa lúc xuất: tiến trình được đánh dấu "Bị gián đoạn" rồi tự xuất lại từ đầu; gián đoạn quá 3 lần thì báo lỗi để người dùng chạy lại.
+
+### Tải âm thanh lên qua Cloudflare Tunnel
+
+Tệp tối đa 100 MB. Cloudflare giới hạn thân yêu cầu theo gói (thường 100 MB với gói miễn phí), nên tệp sát 100 MB có thể bị Cloudflare chặn (lỗi 413) trước khi tới ứng dụng. Dùng `.mp3` hoặc `.m4a` thay cho `.wav` là cách đơn giản nhất.
+
+### Phông chữ và giấy phép
+
+Phông chữ của video nằm trong repo ở `public/fonts/overlay/` (Be Vietnam Pro, Roboto, Montserrat, Inter, Arimo và Noto Sans làm phông chữ thay thế), giấy phép SIL Open Font License 1.1 kèm theo trong `public/fonts/overlay/licenses/`. Trình duyệt và worker phải dùng **cùng tệp** thì khung xem trước mới giống video; ảnh `web` và `worker` đều chép thư mục này. Arimo thay cho Arial vì Arial không được phép phân phối lại.
+
+Thêm hoặc đổi phông chữ: chép tệp `.ttf` và giấy phép vào thư mục trên, khai báo ở `src/lib/overlay/fonts.ts`, chạy `npx tsx scripts/build-font-coverage.ts` để cập nhật `coverage.json`, rồi `npx vitest run tests/unit/overlay/font-coverage.test.ts`.
+
+### Đo hiệu năng
+
+```bash
+docker build --target worker -t submaker-worker:bench -f docker/Dockerfile .
+docker run --rm -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/docs/example:/app/docs/example:ro" submaker-worker:bench \
+  npx tsx scripts/overlay-bench.ts docs/example/tham-quyen-2026.srt 60 cut,karaoke,blur mp4,webm,mov
+```
+
+Đạt khi thời gian xuất không dài hơn thời lượng video. Số đã đo: `specs/005-subtitle-video-overlay/research.md` R1.

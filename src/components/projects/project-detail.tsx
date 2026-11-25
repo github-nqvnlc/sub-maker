@@ -16,14 +16,17 @@ import { StartJobDialog } from '@/components/jobs/start-job-dialog';
 import { EditProjectDialog } from '@/components/projects/edit-project-dialog';
 import { FilePreviewDialog } from '@/components/projects/file-preview-dialog';
 import { ImportMediaDialog } from '@/components/projects/import-media-dialog';
+import { OverlayTab } from '@/components/overlay/overlay-tab';
 import { JobTable, type JobRowDto } from '@/components/projects/job-table';
 import { MediaTab } from '@/components/projects/media-tab';
 import { ScriptEditor } from '@/components/projects/script-editor';
 import { SttActiveBanner, SttJobList } from '@/components/projects/stt-dialog';
 import { UploadDropzone } from '@/components/projects/upload-dropzone';
 import { ApiError, api, apiDelete } from '@/lib/api-client';
+import { OVERLAY_ACTIVE, useOverlayJobs } from '@/lib/hooks/use-overlay';
 import { STT_ACTIVE, useSttJobs } from '@/lib/hooks/use-stt-jobs';
 import { fmtBytes, fmtDuration } from '@/lib/format';
+import { fmt } from '@/lib/i18n/fmt';
 import { useFormat, useT } from '@/lib/i18n/client';
 
 type FileDto = { id: string; originalName: string; ext: string; sizeBytes: number; charCount: number; segmentCount: number; hasTimecodes?: boolean; cueCount?: number | null; durationMs?: number | null; createdAt: string };
@@ -58,6 +61,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const sttJobs = useSttJobs(projectId);
   const completedSttCount = (sttJobs.data ?? []).filter((j) => j.status === 'completed' && j.resultSubtitleFileId).length;
   const activeSttJobs = (sttJobs.data ?? []).filter((j) => STT_ACTIVE.has(j.status)).length;
+  const overlayJobs = useOverlayJobs(projectId);
+  const activeOverlayJobs = (overlayJobs.data ?? []).filter((j) => OVERLAY_ACTIVE.has(j.status)).length;
 
   const q = useQuery({
     queryKey: ['project', projectId],
@@ -74,7 +79,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const p = q.data;
   const fileNames = new Map(p.files.map((f) => [f.id, f.originalName]));
   const activeJobs = p.jobs.filter((j) => ACTIVE.has(j.status)).length;
-  const totalActive = activeJobs + activeSttJobs;
+  const totalActive = activeJobs + activeSttJobs + activeOverlayJobs;
 
   return (
     <div className="space-y-5">
@@ -100,7 +105,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       <SttActiveBanner projectId={p.id} onOpen={() => setTab('jobs')} />
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList className="flex h-auto flex-wrap group-data-horizontal/tabs:h-auto">
           <TabsTrigger value="files">
             {t.projects.tabFiles} ({p.files.length})
           </TabsTrigger>
@@ -112,6 +117,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           </TabsTrigger>
           <TabsTrigger value="voices">
             {t.projects.tabVoices} ({p.voices.length})
+          </TabsTrigger>
+          <TabsTrigger value="overlay">
+            {t.overlay.tab} ({overlayJobs.data?.length ?? 0})
+            {activeOverlayJobs > 0 ? <Badge variant="secondary">{fmt(t.overlay.runningCount, { n: activeOverlayJobs })}</Badge> : null}
           </TabsTrigger>
         </TabsList>
 
@@ -270,6 +279,18 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               ))}
             </ul>
           )}
+        </TabsContent>
+        <TabsContent value="overlay">
+          <OverlayTab
+            projectId={p.id}
+            files={p.files}
+            voices={p.voices}
+            onGoToScripts={() => setTab('files')}
+            onCreateVoice={() => {
+              const file = p.files.find((f) => f.hasTimecodes) ?? p.files[0];
+              if (file) setStartFileId(file.id);
+            }}
+          />
         </TabsContent>
       </Tabs>
 

@@ -17,6 +17,13 @@ const EN_RULES: Rule[] = [
   ['Trang hoặc kích thước trang không hợp lệ', 'Invalid page or page size'],
   ['Không có thay đổi nào', 'There are no changes'],
   ['Thiếu xác nhận', 'Confirmation is missing'],
+  // ---- video overlay (spec 005) ----
+  ['Cấu hình video overlay không hợp lệ', 'Invalid video overlay settings'],
+  ['Cần chọn đúng một nguồn voice và một tệp phụ đề', 'Choose exactly one voice source and one subtitle file'],
+  ['Tệp này không có mốc thời gian hợp lệ nên không dùng làm phụ đề được. Hãy chọn tệp .srt có mốc thời gian.', 'This file has no valid timecodes, so it cannot be used as a subtitle. Choose a .srt file with timecodes.'],
+  ['Không đủ dung lượng lưu trữ cho video này. Hãy xóa bớt video, tệp âm thanh hoặc voice rồi thử lại.', 'Not enough storage for this video. Delete some videos, audio files or voices and try again.'],
+  ['Không đủ dung lượng lưu trữ cho tệp âm thanh này. Hãy xóa bớt video, tệp âm thanh hoặc voice rồi thử lại.', 'Not enough storage for this audio file. Delete some videos, audio files or voices and try again.'],
+  ['Thiếu tệp âm thanh.', 'The audio file is missing.'],
   // ---- jobs ----
   ['Dự án sử dụng nhà cung cấp SONIOX (STT), không hỗ trợ tạo voice.', 'The project uses SONIOX (STT) provider, voice generation is not supported.'],
   ['Chỉ tiếp tục được tiến trình đã dừng, bị lỗi hoặc bị gián đoạn.', 'Only a job that is stopped, failed or interrupted can be resumed.'],

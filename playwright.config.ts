@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.E2E_PORT ?? 3100);
+/** Chạy thêm ở trình duyệt khác để ghi nhận (spec 005, SC-005), ví dụ E2E_BROWSERS=firefox,webkit; mặc định chỉ Chromium. */
+const EXTRA = (process.env.E2E_BROWSERS ?? '').split(',').filter((b): b is 'firefox' | 'webkit' => b === 'firefox' || b === 'webkit');
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -23,6 +25,7 @@ export default defineConfig({
       grep: /@mobile/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true },
     },
+    ...EXTRA.map((name) => ({ name, grep: /@parity/, use: { ...devices[name === 'firefox' ? 'Desktop Firefox' : 'Desktop Safari'] } })),
   ],
   // scripts/e2e-up.ts tạo CSDL + bucket E2E riêng, rồi chạy web (đã build) và worker.
   webServer: process.env.E2E_NO_SERVER
