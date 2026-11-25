@@ -128,7 +128,7 @@ export const SHOPAIKEY_TYPES: readonly TtsProviderType[] = ['shopaikey_openai', 
 export async function upsertConfig(scope: ConfigScope, ownerUserId: string | null, input: AiConfigInput): Promise<AiConfigDto> {
   // Spec 004: nhà cung cấp chuẩn OpenAI dùng chung nay quản lý ở custom_ai_providers (nhiều provider, có phân quyền)
   if (scope === 'global' && input.type === 'openai_compatible') {
-    throw new HttpError(422, 'VALIDATION', undefined, { type: 'Nhà cung cấp chuẩn OpenAI dùng chung được quản lý ở mục Nhà cung cấp OpenAI tùy chỉnh.' });
+    throw new HttpError(422, 'VALIDATION', undefined, { type: 'Nhà cung cấp chuẩn OpenAI dùng chung được quản lý ở mục Nhà cung cấp AI tùy chỉnh.' });
   }
   const dto = await upsertOne(scope, ownerUserId, input);
   if (scope === 'global' && SHOPAIKEY_TYPES.includes(input.type)) await syncShopAIKeySibling(input);

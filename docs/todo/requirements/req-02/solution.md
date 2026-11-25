@@ -66,7 +66,7 @@ Giao diện trang Quản trị AI chung được chia thành 4 Tab trực quan:
 │  Cấu hình AI chung                                                                     │
 │  Quản lý khóa API, danh mục mô hình và phân quyền nhà cung cấp AI trong hệ thống        │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
-│  [ FPT.AI ]   [ SONIOX STT ]   [ ShopAIKey ]   [ Nhà cung cấp OpenAI tùy chỉnh (3) ]   │
+│  [ FPT.AI ]   [ SONIOX STT ]   [ ShopAIKey ]   [ Nhà cung cấp AI tùy chỉnh (3) ]   │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -93,7 +93,7 @@ Giao diện trang Quản trị AI chung được chia thành 4 Tab trực quan:
 - **Model mặc định**: `tts-1`, `tts-1-hd`, `speech-01-turbo`...
 - **Nút "Kiểm tra kết nối"** & **Công tắc Bật/Tắt**.
 
-### 2.4. Chi tiết Tab "Nhà cung cấp OpenAI tùy chỉnh" (Admin CRUD & Phân quyền)
+### 2.4. Chi tiết Tab "Nhà cung cấp AI tùy chỉnh" (Admin CRUD & Phân quyền)
 - **Thanh thao tác**: Nút **"+ Thêm Provider chuẩn OpenAI"**, Ô tìm kiếm provider.
 - **Bảng danh sách các Provider**:
   | Tên Provider | Base URL | Model mặc định | Quyền truy cập | Trạng thái | Thao tác |

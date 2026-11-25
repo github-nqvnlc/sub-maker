@@ -144,7 +144,7 @@ const OPENAI_COMPATIBLE_MODELS: ModelInfo[] = [
 
 const OPENAI_COMPATIBLE: ProviderCatalog = {
   type: 'openai_compatible',
-  label: 'Nhà cung cấp OpenAI tùy chỉnh',
+  label: 'Nhà cung cấp AI tùy chỉnh',
   defaultBaseUrl: 'https://api.openai.com/v1',
   models: OPENAI_COMPATIBLE_MODELS,
   speed: { min: 0.25, max: 4, default: 1, step: 0.05 },

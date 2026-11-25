@@ -379,7 +379,7 @@ function ProviderConfigForm({
                 setVoiceChoice(NONE);
               }}
             >
-              <SelectTrigger aria-label={t.aiConfig.defaultModel}>
+              <SelectTrigger className="w-full" aria-label={t.aiConfig.defaultModel}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -411,7 +411,7 @@ function ProviderConfigForm({
           <div className="space-y-2">
             <Label>{t.aiConfig.defaultVoice}</Label>
             <Select value={voiceChoice} onValueChange={setVoiceChoice}>
-              <SelectTrigger aria-label={t.aiConfig.defaultVoice}>
+              <SelectTrigger className="w-full" aria-label={t.aiConfig.defaultVoice}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

@@ -102,7 +102,7 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
                     setVoice(null);
                   }}
                 >
-                  <SelectTrigger aria-label={t.jobs.model}>
+                  <SelectTrigger className="w-full" aria-label={t.jobs.model}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -120,7 +120,7 @@ function Form({ job, providerType, mode, onClose }: Props & { job: EditableJob }
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
                   <Select value={effVoice} onValueChange={setVoice}>
-                    <SelectTrigger aria-label={t.jobs.voice}>
+                    <SelectTrigger className="w-full" aria-label={t.jobs.voice}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

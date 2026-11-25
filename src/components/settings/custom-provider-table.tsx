@@ -16,7 +16,7 @@ type TestResult = { ok: boolean; message: string };
 
 export const useCustomProviders = () => useQuery({ queryKey: ['custom-ai-providers'], queryFn: () => api<CustomProviderDto[]>('/api/admin/custom-ai-providers') });
 
-/** Tab "Nhà cung cấp OpenAI tùy chỉnh" (spec 004, US5): danh sách CRUD, phạm vi sử dụng, kiểm tra kết nối. */
+/** Tab "Nhà cung cấp AI tùy chỉnh" (spec 004, US5): danh sách CRUD, phạm vi sử dụng, kiểm tra kết nối. */
 export function CustomProviderTable() {
   const t = useT();
   const qc = useQueryClient();

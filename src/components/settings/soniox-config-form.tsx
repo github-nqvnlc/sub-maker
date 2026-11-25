@@ -133,7 +133,7 @@ function SonioxConfigForm({ config, title }: { config: SttConfig | null; title: 
           <div className="space-y-2">
             <Label>{t.providersAdmin.sonioxModel}</Label>
             <Select value={modelChoice} onValueChange={setModelChoice}>
-              <SelectTrigger aria-label={t.providersAdmin.sonioxModel}>
+              <SelectTrigger className="w-full" aria-label={t.providersAdmin.sonioxModel}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

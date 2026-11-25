@@ -140,7 +140,7 @@ function CustomProviderForm({ provider, onClose }: { provider: CustomProviderDto
         <div className="space-y-2 md:col-span-2">
           <Label>{t.providersAdmin.access}</Label>
           <Select value={access} onValueChange={(v) => setAccess(v as AccessMode)}>
-            <SelectTrigger aria-label={t.providersAdmin.access}>
+            <SelectTrigger className="w-full" aria-label={t.providersAdmin.access}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

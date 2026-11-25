@@ -122,7 +122,7 @@ Quản trị viên có thể thêm **nhiều nhà cung cấp AI chuẩn OpenAI**
 **Independent Test**: Admin tạo Custom Provider "DeepSeek" với quyền "Chỉ định User A"; đăng nhập tài khoản User A thấy provider này; đăng nhập User B không thấy provider này.
 
 **Acceptance Scenarios**:
-1. **Given** Admin ở tab "Nhà cung cấp OpenAI tùy chỉnh", **When** bấm "Thêm Provider", **Then** mở biểu mẫu nhập Tên, Base URL, API Key, Danh sách Models và Phạm vi phân quyền.
+1. **Given** Admin ở tab "Nhà cung cấp AI tùy chỉnh", **When** bấm "Thêm Provider", **Then** mở biểu mẫu nhập Tên, Base URL, API Key, Danh sách Models và Phạm vi phân quyền.
 2. **Given** Custom Provider được đặt chế độ "Công khai", **When** bất kỳ User nào tạo Project hoặc Voice, **Then** provider này xuất hiện trong danh sách lựa chọn (Custom Provider không xuất hiện ở lựa chọn engine STT — STT chỉ dùng Soniox).
 3. **Given** Custom Provider được đặt chế độ "Chỉ định User", **When** Admin chọn User A, **Then** chỉ User A thấy provider này, các User khác không thấy.
 4. **Given** Admin xóa một Custom Provider, **When** xác nhận, **Then** provider bị xóa khỏi danh sách; các Job đang chạy dùng provider này hoàn tất bình thường, các Job chưa bắt đầu chuyển sang `failed` kèm thông báo tiếng Việt "Nhà cung cấp đã bị xóa hoặc tắt".

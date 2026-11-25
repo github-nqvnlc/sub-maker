@@ -685,7 +685,7 @@ export const vi = {
     fptDescription: 'Một token FPT.AI dùng cho mọi model FPT (FPT.AI-VITs, TTS-pro, TTS-ultra và model mở rộng sau này).',
     shopaikeyTab: 'ShopAIKey',
     shopaikeyDescription: 'Một token ShopAIKey dùng cho mọi model đã đăng ký (OpenAI TTS, MiniMax TTS…).',
-    customTab: 'Nhà cung cấp OpenAI tùy chỉnh',
+    customTab: 'Nhà cung cấp AI tùy chỉnh',
     customDescription: 'Thêm nhiều nhà cung cấp chuẩn OpenAI (DeepSeek, Groq, OpenAI…) và chọn ai được dùng.',
     addProvider: 'Thêm Provider',
     editProvider: 'Sửa Provider',

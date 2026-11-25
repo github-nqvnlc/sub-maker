@@ -86,7 +86,7 @@ const EN_RULES: Rule[] = [
   ['Thiếu tệp âm thanh hoặc video.', 'The audio or video file is missing.'],
   ['Model real-time không dùng được để tạo phụ đề. Hãy chọn model async.', 'Real-time models cannot create subtitles. Choose an async model.'],
   [
-    'Nhà cung cấp chuẩn OpenAI dùng chung được quản lý ở mục Nhà cung cấp OpenAI tùy chỉnh.',
+    'Nhà cung cấp chuẩn OpenAI dùng chung được quản lý ở mục Nhà cung cấp AI tùy chỉnh.',
     'Shared OpenAI-compatible providers are managed under Custom OpenAI providers.',
   ],
   ['Chỉ Project dùng nhà cung cấp chuẩn OpenAI mới chọn được nhà cung cấp tùy chỉnh.', 'Only a Project that uses an OpenAI-compatible provider can choose a custom provider.'],

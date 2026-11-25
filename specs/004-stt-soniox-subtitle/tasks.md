@@ -163,7 +163,7 @@ description: "Danh sách công việc triển khai tính năng 004 — STT Sonio
 - [X] T023 [US5] Xây dựng component `src/components/settings/custom-provider-table.tsx` (kèm khóa i18n): Hiển thị bảng danh sách các Custom Provider do Admin quản lý với huy hiệu phân quyền (Công khai, Số User chỉ định, Chỉ Admin), trạng thái và nút thao tác (Sửa, Xóa, Test). Nút Xóa mở hộp thoại xác nhận nêu tên provider và hậu quả ("N tiến trình đang chờ sẽ bị hủy", lấy từ `countPendingJobs`), theo Hiến pháp VI. Đủ trạng thái đang tải, rỗng ("Chưa có nhà cung cấp nào") và lỗi có nút thử lại.
 - [X] T024 [US5] Xây dựng component `src/components/settings/custom-provider-dialog.tsx` (kèm khóa i18n): Hộp thoại thêm/sửa Custom Provider với các trường Name, Base URL, API Key, Default Model và Radio chọn phạm vi phân quyền.
 - [X] T025 [US5] Xây dựng component `src/components/settings/user-assignment-picker.tsx` (kèm khóa i18n): Bộ chọn danh sách User (tìm kiếm, tích chọn nhiều User) hiển thị khi chọn chế độ phân quyền "Chỉ định User". Ô tìm kiếm chấp nhận gõ tiếng Việt không dấu, dùng lại cách chuẩn hóa trong `src/lib/projects/service.ts` (Hiến pháp VI).
-- [X] T026 [US5] Tích hợp Tab 4 "Nhà cung cấp OpenAI tùy chỉnh" vào `src/components/settings/ai-config-manager.tsx`.
+- [X] T026 [US5] Tích hợp Tab 4 "Nhà cung cấp AI tùy chỉnh" vào `src/components/settings/ai-config-manager.tsx`.
 - [X] T027 [P] [US5] Rà trang `/settings/ai` hiện có (dùng `/api/me/ai-config` và `ai_provider_configs` với `scope = 'user'`): chỉ bổ sung phần còn thiếu để User có `canUseCustomAi = true` thêm/sửa cấu hình chuẩn OpenAI theo enum mới. Không tạo nơi lưu thứ hai.
   - Ghi chú triển khai: vì giữ tên kiểu nội bộ, trang `/settings/ai` hiện có dùng được nguyên trạng; không cần sửa.
 
