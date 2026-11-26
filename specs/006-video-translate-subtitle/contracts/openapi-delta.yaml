@@ -1,0 +1,146 @@
+openapi: 3.1.0
+info:
+  title: Sub Maker — API dịch video (spec 006)
+  version: 0.1.0
+  description: |
+    Phần thêm vào API hiện có. Mọi đường dẫn yêu cầu phiên đăng nhập và Origin hợp lệ với phương thức ghi.
+    Dữ liệu của người khác (kể cả Administrator xem của User) trả 404. Thao tác tạo, tải phần, dịch, xuất, chạy lại
+    yêu cầu quyền Dịch Video, thiếu quyền trả 403 `VIDEO_NOT_ALLOWED`.
+    Lỗi dùng dạng chung `{ code, message, fields? }`, thông báo theo ngôn ngữ giao diện.
+paths:
+  /api/projects/{projectId}/video:
+    get: { summary: "Thông tin tab: quyền, hạn mức video (dùng, giữ chỗ, tối đa), giới hạn, Soniox đã cấu hình, cài đặt Project" }
+  /api/projects/{projectId}/video/settings:
+    put: { summary: "Lưu hướng dịch, từ điển, kiểu gần nhất", responses: { "200": { description: ok }, "422": { description: "GLOSSARY_INVALID, GLOSSARY_TOO_LARGE" } } }
+  /api/projects/{projectId}/video/jobs:
+    get: { summary: "Danh sách việc dịch kèm trạng thái hiển thị, tiến độ, hạn xóa" }
+    post:
+      summary: Tạo việc và phiên tải video nguồn
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileName, size, fingerprint, direction]
+              properties:
+                fileName: { type: string, maxLength: 255 }
+                size: { type: integer, format: int64, minimum: 1 }
+                fingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+                direction: { enum: [to_vi, vi_to_en] }
+                clientAudio: { type: boolean, description: "Trình duyệt sẽ gửi âm thanh riêng" }
+      responses:
+        "201": { description: "{ job, upload: { id, partSize, partCount } }" }
+        "403": { description: VIDEO_NOT_ALLOWED }
+        "409": { description: "STT_NOT_CONFIGURED, VIDEO_QUOTA_EXCEEDED (needBytes), VIDEO_SYSTEM_FULL" }
+        "413": { description: VIDEO_TOO_LARGE }
+        "422": { description: VIDEO_UNSUPPORTED }
+        "429": { description: VIDEO_TOO_MANY_JOBS }
+  /api/video/uploads/{uploadId}:
+    get: { summary: "Phiên tải và danh sách số phần đã nhận (tải tiếp)" }
+    delete: { summary: "Hủy phiên; với video nguồn lần đầu thì xóa luôn việc chưa có cue" }
+  /api/video/uploads/{uploadId}/parts/{n}:
+    put:
+      summary: Gửi một phần (thân nhị phân thô), gửi lại được
+      parameters:
+        - { name: x-part-sha256, in: header, required: true, schema: { type: string } }
+      responses:
+        "204": { description: đã nhận }
+        "409": { description: UPLOAD_CLOSED }
+        "422": { description: "UPLOAD_PART_SIZE, UPLOAD_PART_CHECKSUM" }
+        "429": { description: "UPLOAD_BUSY (kèm Retry-After)" }
+  /api/video/uploads/{uploadId}/complete:
+    post:
+      summary: Ghép các phần, kiểm dung lượng, xếp việc chuẩn bị; gọi lại an toàn
+      responses:
+        "200": { description: job }
+        "409": { description: "UPLOAD_INCOMPLETE (missingParts)" }
+  /api/video/jobs/{jobId}:
+    get: { summary: "Chi tiết việc, media, bản xuất, 50 dòng nhật ký" }
+    delete: { summary: "Dừng, hủy phiên tải, xóa mọi tệp, trả dung lượng" }
+  /api/video/jobs/bulk-delete:
+    post: { summary: "Xóa nhiều việc" }
+  /api/video/jobs/{jobId}/events:
+    get: { summary: "SSE `log`, `status`, `progress`, `end`; nối lại bằng Last-Event-ID" }
+  /api/video/jobs/{jobId}/stop:
+    post: { summary: "Dừng pipeline đang chạy" }
+  /api/video/jobs/{jobId}/rerun:
+    post: { summary: "Chạy lại việc lỗi hoặc đã dừng, dùng lại phần đã xong" }
+  /api/video/jobs/{jobId}/retranslate:
+    post:
+      summary: "Dịch lại; thay toàn bộ cue và phát sinh phí"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm, direction, baseRevision]
+              properties:
+                confirm: { const: true }
+                direction: { enum: [to_vi, vi_to_en] }
+                baseRevision: { type: integer }
+      responses: { "202": { description: đã xếp hàng }, "409": { description: "VIDEO_SOURCE_GONE, CUE_CONFLICT" } }
+  /api/video/jobs/{jobId}/source:
+    post: { summary: "Phiên tải lại video nguồn đã xóa (FR-046); fingerprint khác trả 409 FILE_MISMATCH" }
+  /api/video/jobs/{jobId}/client-audio:
+    post: { summary: "Phiên tải âm thanh do trình duyệt tách (≤ 500 MB)" }
+  /api/video/jobs/{jobId}/client-audio/skip:
+    post: { summary: "Bỏ luồng nhanh; âm thanh sẽ tách ở máy chủ sau khi tải xong" }
+  /api/video/jobs/{jobId}/cues:
+    get: { summary: "{ revision, cues[] }" }
+  /api/video/jobs/{jobId}/cues/ops:
+    post:
+      summary: "Áp dụng một lô thao tác (subtitle-pipeline §3)"
+      responses:
+        "200": { description: "{ revision }" }
+        "409": { description: "CUE_CONFLICT (revision hiện tại)" }
+        "422": { description: "CUE_INVALID (id, lý do)" }
+  /api/video/jobs/{jobId}/style:
+    put: { summary: "Lưu kiểu của việc và kiểu gần nhất của Project" }
+  /api/video/jobs/{jobId}/subtitles:
+    get:
+      summary: Tải tệp phụ đề
+      parameters:
+        - { name: format, in: query, schema: { enum: [srt, vtt] } }
+        - { name: content, in: query, schema: { enum: [target, source, bilingual] } }
+  /api/video/jobs/{jobId}/to-script:
+    post: { summary: "Lưu `.srt` thành kịch bản của Project (giới hạn kịch bản hiện có)" }
+  /api/video/jobs/{jobId}/media:
+    get:
+      summary: "Phát video nguồn, bản xem trước hoặc âm thanh; hỗ trợ Range"
+      parameters:
+        - { name: kind, in: query, required: true, schema: { enum: [source, preview, audio] } }
+  /api/video/jobs/{jobId}/exports/estimate:
+    post: { summary: "Dung lượng, thời gian ước tính, cảnh báo (HDR, ký tự thiếu, chữ lấn vùng che), có đủ chỗ không" }
+  /api/video/jobs/{jobId}/exports:
+    post:
+      summary: Chốt nội dung và kiểu rồi tạo bản xuất
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, format, baseRevision]
+              properties:
+                kind: { enum: [burn, layer] }
+                format: { enum: [mp4, mov] }
+                baseRevision: { type: integer }
+      responses:
+        "201": { description: export }
+        "403": { description: VIDEO_NOT_ALLOWED }
+        "409": { description: "VIDEO_SOURCE_GONE, VIDEO_SOURCE_NOT_READY, CUE_CONFLICT, VIDEO_QUOTA_EXCEEDED, VIDEO_SYSTEM_FULL" }
+        "422": { description: "VIDEO_LAYER_TOO_LONG (nền trong suốt quá `overlayMaxMinutesTransparent`)" }
+        "429": { description: VIDEO_TOO_MANY_JOBS }
+  /api/video/exports/{exportId}/video:
+    get: { summary: "Tải thành phẩm; Range; gia hạn thẻ giữ lượt tải" }
+  /api/video/exports/{exportId}/stop:
+    post: { summary: "Dừng bản xuất" }
+  /api/video/exports/{exportId}/rerun:
+    post: { summary: "Chạy lại bằng nội dung đã chốt" }
+  /api/video/exports/{exportId}:
+    delete: { summary: "Xóa một bản xuất, trả dung lượng" }
+  /api/admin/users/{userId}:
+    patch: { summary: "Thêm trường `canTranslateVideo`; tắt thì dừng tiến trình đang chạy" }
+  /api/admin/settings:
+    put: { summary: "Thêm 9 khóa video (data-model §4)" }
+  /api/admin/stats:
+    get: { summary: "Thêm dung lượng video đã dùng theo User và toàn hệ thống" }

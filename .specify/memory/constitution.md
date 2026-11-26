@@ -58,9 +58,22 @@ tư. Một lần lộ dữ liệu giữa các User là lỗi nghiêm trọng nh�
   ý muốn.
 - Giới hạn lưu trữ (file 2 MB, 500 MB mỗi User; Administrator chỉnh được) MUST được áp dụng ở
   máy chủ.
+- **Hạn mức video**: tính năng dịch video dùng hạn mức riêng, mặc định 30 GB mỗi User
+  (Administrator chỉnh được), tách khỏi hạn mức 500 MB. Video nguồn, video thành phẩm và lớp phụ
+  đề xuất từ tính năng này MUST tính vào hạn mức video; máy chủ MUST chặn khi vượt, kể cả khi
+  nhiều yêu cầu đến cùng lúc. Tệp tạm không tính. Video overlay của tab riêng và voice vẫn tính
+  vào hạn mức 500 MB.
+- **Thời hạn tự xóa**: tệp thuộc hạn mức video MUST được tự xóa khi hết hạn (mặc định: video
+  nguồn 48 giờ sau lần xuất thành công gần nhất, hoặc sau 7 ngày không hoạt động nếu chưa xuất;
+  video thành phẩm và lớp phụ đề 7 ngày sau khi tạo) và MUST NOT bị xóa khi tiến trình hoặc lượt
+  tải đang dùng nó. Hạn xóa MUST hiện cho User. Thời hạn này không áp dụng cho tệp của hạn mức
+  500 MB.
+- Kịch bản và tệp phụ đề của dịch video được giữ đến khi User xóa và tính vào hạn mức 500 MB;
+  hạn mức đầy MUST NOT làm mất kết quả đã trả phí hoặc bản đang sửa.
 
 **Lý do**: Khóa chung do hệ thống chịu phí và ai cũng đăng ký được; chi phí phải nhìn thấy được
-và không phát sinh lặp.
+và không phát sinh lặp. Một video có thể lớn gấp nhiều lần hạn mức 500 MB, nên cần hạn mức riêng
+và thời hạn xóa để ổ đĩa không đầy dần.
 
 ### V. Kiểm thử trước khi phát hành
 
@@ -80,7 +93,9 @@ và không phát sinh lặp.
 - Giao diện MUST đầy đủ bằng tiếng Việt, là ngôn ngữ mặc định. MAY thêm ngôn ngữ giao diện khác
   (hiện thêm English) với điều kiện: mọi ngôn ngữ có đủ khóa chữ (kiểm tra tự động), khóa thiếu
   bản dịch MUST rơi về tiếng Việt và MUST NOT hiện khóa kỹ thuật, và lựa chọn của người dùng
-  MUST được ghi nhớ. Nội dung do người dùng tạo (tên Project, nội dung phụ đề) MUST NOT bị dịch.
+  MUST được ghi nhớ. Nội dung do người dùng tạo (tên Project, nội dung phụ đề) MUST NOT bị giao
+  diện tự dịch theo ngôn ngữ đã chọn; dịch phụ đề do User yêu cầu ở tính năng dịch video là việc
+  khác.
 - Giao diện MUST theo đúng theme và thành phần chung của hệ thống thiết kế đã chọn; MUST NOT tự
   viết kiểu riêng cho thứ đã có thành phần chuẩn.
 - Mọi màn hình MUST có đủ trạng thái: đang tải, rỗng, lỗi, không có kết quả.
@@ -99,8 +114,9 @@ mà không được làm giảm trải nghiệm tiếng Việt.
   https://tweakcn.com/themes/cmmdxhg6d000804l5f6xlcbh3.
 - **Backend và cơ sở dữ liệu**: chọn ở bước `/speckit-plan`, kèm lý do; lựa chọn MUST hỗ trợ tiến
   trình nền bền vững, truyền log thời gian thực và truy vấn tìm kiếm/lọc/sắp xếp cho 200+ Project.
-- **Lưu trữ file**: S3 MinIO cho file subtitle, audio, video overlay và avatar. File MUST NOT truy cập
-  công khai không xác thực; tải về MUST đi qua kiểm tra quyền (ví dụ liên kết ký có thời hạn).
+- **Lưu trữ file**: S3 MinIO cho file subtitle (gồm phụ đề dịch), audio, video overlay, video
+  nguồn và video thành phẩm của dịch video, và avatar. File MUST NOT truy cập công khai không xác
+  thực; tải về MUST đi qua kiểm tra quyền (ví dụ liên kết ký có thời hạn).
 - **Triển khai**: Docker, công bố qua Cloudflare Tunnel và gắn tên miền. Các dịch vụ nội bộ (cơ sở
   dữ liệu, MinIO, tiến trình nền) MUST NOT mở cổng trực tiếp ra Internet.
 - **Bền dữ liệu**: dữ liệu MUST nằm trên volume bền, không mất khi khởi động lại hoặc triển khai
@@ -112,12 +128,19 @@ mà không được làm giảm trải nghiệm tiếng Việt.
 - **Văn bản và âm thanh**: văn bản MUST chuẩn hóa Unicode NFC và UTF-8; chia câu/đoạn theo giới
   hạn từng nhà cung cấp; mốc thời gian chuẩn của voice và phụ đề theo câu/đoạn (không theo
   từng từ).
-- **Mốc từng từ trong video overlay**: MAY dùng mốc từng từ ước lượng, chỉ để hiển thị chữ trong
-  video overlay phụ đề. Mốc này MUST được suy ra từ mốc câu/đoạn và nằm trong khoảng của câu/đoạn
-  đó, MUST NOT thay thế mốc câu/đoạn làm chuẩn cho voice, và giao diện MUST ghi rõ là ước lượng.
+- **Mốc từng từ để hiển thị chữ trong video**: MAY dùng mốc từng từ ước lượng, chỉ để hiển thị
+  chữ trong video overlay phụ đề, video gắn cứng phụ đề và khung xem trước của chúng. Mốc này MUST
+  được suy ra từ mốc câu/đoạn và nằm trong khoảng của câu/đoạn đó, MUST NOT thay thế mốc câu/đoạn
+  làm chuẩn cho voice, và giao diện MUST ghi rõ là ước lượng. Với phụ đề dịch, giao diện MUST nêu
+  thêm rằng từ được tô không phải từ đang được nói.
   Lý do: hiển thị theo từ chỉ cần nhịp gần đúng; voice vẫn cần mốc kiểm chứng được.
+- **Mốc của phụ đề dịch**: mốc MUST lấy từ mốc của lời gốc. Khi một đoạn lời gốc phải tách thành
+  nhiều cue, mốc của các cue đó MAY ước lượng trong khoảng của đoạn và MUST được lưu kèm dấu hiệu
+  là ước lượng.
+  Lý do: nhà cung cấp không trả mốc cho phần chữ dịch.
 - **Định dạng phụ đề**: dùng chuẩn SubRip `.srt` (số thứ tự, dòng mốc `hh:mm:ss,mmm --> hh:mm:ss,mmm`,
-  chữ); không dùng định dạng riêng `.skt`. Kịch bản `.txt` và `.md` vẫn được hỗ trợ.
+  chữ); không dùng định dạng riêng `.skt`. Kịch bản `.txt` và `.md` vẫn được hỗ trợ. Tải phụ đề
+  về MAY có thêm WebVTT `.vtt`; `.vtt` chỉ để xuất.
 
 ## Quy trình phát triển và chất lượng
 
@@ -125,9 +148,13 @@ mà không được làm giảm trải nghiệm tiếng Việt.
   `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`. Thay đổi hành vi MUST cập nhật spec
   trước.
 - Phạm vi giai đoạn này: CRUDS Project, tạo voice, xem/nghe đồng bộ, tài khoản, thống kê, cấu hình
-  AI, tạo video overlay phụ đề (gồm hiển thị theo từng từ trong video overlay). Tính phí theo usage,
-  hạn mức theo User, chia sẻ Project, highlight theo từng từ trong trình phát voice, xuất phụ đề,
-  chỉnh văn bản trong ứng dụng thuộc giai đoạn sau và MUST NOT làm sớm khi chưa có spec.
+  AI, tạo video overlay phụ đề (gồm hiển thị theo từng từ trong video overlay), và dịch video (nhận
+  dạng lời nói và dịch, chỉnh sửa phụ đề gốc và phụ đề dịch, xuất tệp phụ đề, xuất video gắn cứng
+  phụ đề).
+  Tính phí theo usage, hạn mức sử dụng AI theo User (khác hạn mức lưu trữ ở nguyên tắc IV), chia sẻ
+  Project, highlight theo từng từ trong trình phát voice, và việc xuất phụ đề hoặc chỉnh văn bản
+  trong ứng dụng ngoài tính năng dịch video thuộc giai đoạn sau và MUST NOT làm sớm khi chưa có
+  spec.
 - Mỗi thay đổi MUST được rà soát đối chiếu Core Principles; vi phạm MUST được ghi lại cùng lý do
   trong mục theo dõi độ phức tạp của plan.
 - Tài liệu dự án (spec, plan, README, hướng dẫn vận hành) dùng tiếng Việt; thông báo giao diện
@@ -160,4 +187,4 @@ mà không được làm giảm trải nghiệm tiếng Việt.
 - **Rà soát tuân thủ**: mọi plan MUST có bước kiểm tra constitution trước khi thiết kế và sau khi
   thiết kế; mọi lần review MUST đối chiếu Nguyên tắc I, II và IV (bảo mật và chi phí) trước tiên.
 
-**Version**: 1.3.0 | **Ratified**: 2026-11-19 | **Last Amended**: 2026-11-25
+**Version**: 1.4.0 | **Ratified**: 2026-11-19 | **Last Amended**: 2026-11-26
