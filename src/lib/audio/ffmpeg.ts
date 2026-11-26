@@ -189,11 +189,18 @@ export class NoAudioStreamError extends Error {
 /**
  * Tách luồng âm thanh thành MP3 mono 16 kHz (FR-002, research R2) từ tệp trên đĩa sang tệp trên đĩa.
  * Không có luồng âm thanh → NoAudioStreamError.
+ *
+ * Mốc phụ đề tính theo âm thanh này, nên nó phải cùng dòng thời gian với video: MP3 không lưu mốc, vì vậy khoảng lệch đầu luồng
+ * và quãng hở giữa luồng được điền im lặng (`aresample=async=1:first_pts=0`).
  */
 export async function extractAudioToMp3File(inputPath: string, outPath: string, timeoutMs = 15 * 60_000): Promise<void> {
   const probe = await probeMedia(inputPath);
   if (!probe.hasAudio) throw new NoAudioStreamError();
-  await runFfmpeg(['-i', inputPath, '-vn', '-map', '0:a:0', '-acodec', 'libmp3lame', '-q:a', '4', '-ac', '1', '-ar', '16000', '-y', outPath], null, timeoutMs);
+  await runFfmpeg(
+    ['-i', inputPath, '-vn', '-map', '0:a:0', '-af', 'aresample=async=1:first_pts=0', '-acodec', 'libmp3lame', '-q:a', '4', '-ac', '1', '-ar', '16000', '-y', outPath],
+    null,
+    timeoutMs,
+  );
 }
 
 /** Bản dùng bộ nhớ (kiểm thử, tệp nhỏ): media → MP3 mono 16 kHz. */
