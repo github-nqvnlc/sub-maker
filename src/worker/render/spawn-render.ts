@@ -2,7 +2,7 @@ import { fork } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ChildMessage, RenderErrorCode, RenderTask } from './protocol';
+import type { BurnTask, ChildMessage, RenderErrorCode, RenderTask } from './protocol';
 
 /** Chạy tiến trình con dựng hình và theo dõi nó (research R4). Không chạm CSDL: phần nghiệp vụ ở jobs/render-overlay. */
 
@@ -15,7 +15,7 @@ export type RenderHooks = {
 
 export type RenderHandle = { done: Promise<RenderOutcome>; cancel: () => void; pid: number | undefined };
 
-export type SpawnRender = (task: RenderTask, hooks: RenderHooks, opts: { stallMs: number }) => RenderHandle;
+export type SpawnRender<T extends RenderTask | BurnTask = RenderTask> = (task: T, hooks: RenderHooks, opts: { stallMs: number }) => RenderHandle;
 
 /** Biến môi trường tối thiểu cho tiến trình con: KHÔNG có thông tin CSDL, MinIO hay khóa (Nguyên tắc II). */
 const ENV_ALLOWED = ['PATH', 'Path', 'FFMPEG_PATH', 'TMPDIR', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'SystemRoot', 'SYSTEMROOT', 'windir', 'LANG', 'LC_ALL', 'NODE_ENV'];
@@ -28,7 +28,7 @@ export function childEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.Proces
 const ENTRY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'main.ts');
 const FINISH_STALL_MS = 10 * 60_000;
 
-export const spawnRender: SpawnRender = (task, hooks, opts) => {
+export const spawnRender: SpawnRender<RenderTask | BurnTask> = (task, hooks, opts) => {
   const child = fork(ENTRY, [], { execArgv: ['--import', 'tsx'], env: childEnv(), stdio: ['ignore', 'inherit', 'inherit', 'ipc'], serialization: 'advanced' });
   if (child.pid) {
     try {

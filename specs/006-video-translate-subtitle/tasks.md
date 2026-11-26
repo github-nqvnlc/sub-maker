@@ -198,40 +198,47 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 
 ### Tests (viết trước)
 
-- [ ] T071 [P] [US3] `tests/unit/video/subtitle-files.test.ts` theo contracts/subtitle-pipeline.md §6 (FR-039).
-- [ ] T072 [P] [US3] `tests/integration/video-render.test.ts` (ffmpeg thật): thời lượng lệch ≤ 100 ms, giữ số khung khi tốc độ thay đổi, cờ xoay, chép tiếng AAC, chuyển Opus, `.avi`, HDR có cảnh báo, vượt hạn mức không lưu; lỗi dựng hình hoặc kho lưu tệp được thử lại tối đa 3 lần, tệp nguồn hỏng, vượt hạn mức, hết đĩa thì không; tắt worker giữa lúc xuất rồi chạy lại; video thử có chớp sáng và tiếng bíp cùng lúc ở đầu và cuối, trong thành phẩm hai mốc lệch không quá 50 ms kể cả khi tốc độ khung hình thay đổi (FR-037, FR-042, FR-043, FR-050, FR-051, SC-008). Khi đang dịch và xuất video lớn, tiến trình voice, phụ đề, video overlay vẫn bắt đầu trong 10 giây nếu còn chỗ (FR-052).
-- [ ] T073 [P] [US3] Thêm ca tải lại video nguồn đã xóa (đúng tệp thì xuất tiếp, tệp khác trả `FILE_MISMATCH`, không dịch lại) vào `tests/integration/video-upload.test.ts` (FR-046).
-- [ ] T074 [P] [US3] `tests/integration/video-retention.test.ts`: nguồn 48 giờ sau lần xuất gần nhất, 7 ngày không hoạt động, thành phẩm 7 ngày, phiên dở 48 giờ, không xóa khi đang dùng; video được sửa ở ngày thứ 6 không bị xóa ở ngày thứ 7 (FR-054, SC-013).
-- [ ] T075 [P] [US3] `tests/integration/video-deletion.test.ts`: xóa việc, Project, User khi đang tải dở và đang xuất; không còn đối tượng, phiên multipart; hai bộ đếm đúng (FR-057). User bị thu hồi quyền vẫn xem, tải, xóa được dữ liệu đã có (FR-008).
-- [ ] T076 [P] [US3] Thêm mọi đường dẫn video đã có vào `tests/isolation/isolation.test.ts` (hai User và Administrator; trả 404) (FR-056, SC-012).
+- [X] T071 [P] [US3] `tests/unit/video/subtitle-files.test.ts` theo contracts/subtitle-pipeline.md §6 (FR-039).
+- [X] T072 [P] [US3] `tests/integration/video-render.test.ts` (ffmpeg thật): thời lượng lệch ≤ 100 ms, giữ số khung khi tốc độ thay đổi, cờ xoay, chép tiếng AAC, chuyển Opus, `.avi`, HDR có cảnh báo, vượt hạn mức không lưu; lỗi dựng hình hoặc kho lưu tệp được thử lại tối đa 3 lần, tệp nguồn hỏng, vượt hạn mức, hết đĩa thì không; tắt worker giữa lúc xuất rồi chạy lại; video thử có chớp sáng và tiếng bíp cùng lúc ở đầu và cuối, trong thành phẩm hai mốc lệch không quá 50 ms kể cả khi tốc độ khung hình thay đổi (FR-037, FR-042, FR-043, FR-050, FR-051, SC-008). Khi đang dịch và xuất video lớn, tiến trình voice, phụ đề, video overlay vẫn bắt đầu trong 10 giây nếu còn chỗ (FR-052).
+- [X] T073 [P] [US3] Thêm ca tải lại video nguồn đã xóa (đúng tệp thì xuất tiếp, tệp khác trả `FILE_MISMATCH`, không dịch lại) vào `tests/integration/video-upload.test.ts` (FR-046).
+- [X] T074 [P] [US3] `tests/integration/video-retention.test.ts`: nguồn 48 giờ sau lần xuất gần nhất, 7 ngày không hoạt động, thành phẩm 7 ngày, phiên dở 48 giờ, không xóa khi đang dùng; video được sửa ở ngày thứ 6 không bị xóa ở ngày thứ 7 (FR-054, SC-013).
+- [X] T075 [P] [US3] `tests/integration/video-deletion.test.ts`: xóa việc, Project, User khi đang tải dở và đang xuất; không còn đối tượng, phiên multipart; hai bộ đếm đúng (FR-057). User bị thu hồi quyền vẫn xem, tải, xóa được dữ liệu đã có (FR-008).
+- [X] T076 [P] [US3] Thêm mọi đường dẫn video đã có vào `tests/isolation/isolation.test.ts` (hai User và Administrator; trả 404) (FR-056, SC-012).
 
 ### Cài đặt
 
-- [ ] T077 [US3] Viết `src/lib/video/subtitle-files.ts`.
-- [ ] T078 [US3] Viết route `src/app/api/video/jobs/[jobId]/subtitles/route.ts` và `to-script/route.ts` (dùng `uploadScript`, giới hạn kịch bản hiện có) (FR-040).
-- [ ] T079 [US3] Viết `src/lib/video/estimate.ts`: `thời lượng × (maxrate + tiếng) / 8 × 1,05`; thời gian ước tính theo độ phân giải; cảnh báo HDR, ký tự thiếu; ghi rõ là ước tính. Cảnh báo cả khi phải làm tròn kích thước hình.
-- [ ] T080 [US3] Viết `src/lib/video/exports.ts`: chốt cue và kiểu, giữ chỗ, dừng, chạy lại, xóa, hết hạn. Gọi `recomputeSourceExpiry` trong cùng giao dịch khi đổi trạng thái hoặc có hoạt động.
-- [ ] T081 [US3] Viết route `src/app/api/video/jobs/[jobId]/exports/route.ts`, `exports/estimate/route.ts`, `src/app/api/video/exports/[exportId]/route.ts`, `video`, `stop`, `rerun`.
-- [ ] T082 [US3] Viết route `src/app/api/video/jobs/[jobId]/source/route.ts` (phiên tải lại, so nhận diện tệp) và nối vào `src/lib/video/uploads.ts` (FR-046).
-- [ ] T083 [US3] Thêm `BurnTask` và mã `SOURCE_UNREADABLE` vào `src/worker/render/protocol.ts`; thêm tham số gắn cứng đúng contracts/render-and-media.md §3 vào `src/worker/render/ffmpeg-args.ts` kèm `tests/unit/video/burn-args.test.ts` (`maxrate` = max(1,3 × nguồn; 720p 4, 1080p 8, 4K 24 Mbps)) (FR-038).
-- [ ] T084 [US3] Thêm chế độ gắn cứng vào `src/worker/render/main.ts` (chỉ vẽ dải chữ, dùng lại bộ đệm khi khóa trùng, dừng sớm khi vượt chỗ).
-- [ ] T085 [US3] Viết `src/worker/jobs/video-render.ts`: giới hạn đồng thời bằng khóa tư vấn, kiểm đĩa tạm (nguồn + ước tính + 1 GB), tiến độ 50–100%, tải lên multipart, một giao dịch trừ hạn mức và hoàn tất, đặt hạn xóa (FR-050, FR-052). Gọi `recomputeSourceExpiry` trong cùng giao dịch khi đổi trạng thái hoặc có hoạt động. Nhịp tim mỗi 2 giây; dừng khi có yêu cầu dừng, bản ghi bị xóa hoặc bị thu hồi quyền; chỉ ghi khi còn đang chạy và đúng lượt, như `src/worker/jobs/render-overlay.ts`. Lỗi tạm (`STORAGE_UNAVAILABLE`, `RENDER_FAILED`, `RENDER_STALLED`) thử lại tối đa 3 lần, chờ tăng dần; lỗi vĩnh viễn (`SOURCE_UNREADABLE`, `VIDEO_UNSUPPORTED`, `QUOTA_EXCEEDED`, `DISK_FULL`) không thử lại; gián đoạn quá 3 lần thì báo lỗi.
-- [ ] T086 [US3] Mở rộng `src/worker/sweeper.ts` cho bản xuất.
-- [ ] T087 [US3] Viết `src/lib/video/retention.ts` và `src/worker/jobs/video-retention.ts` (mỗi 10 phút). `retention.ts` chỉ đọc `source_expires_at`, không tự tính.
-- [ ] T088 [US3] Viết `src/components/video/export-panel.tsx` (ước tính, cảnh báo, xuất, khóa kèm lý do khi nguồn chưa sẵn hoặc đã xóa, tải `.srt`/`.vtt`, lưu thành kịch bản), gắn vào `Tabs` của `editor.tsx`. Mẫu: `src/components/overlay/export-panel.tsx`.
+- [X] T077 [US3] Viết `src/lib/video/subtitle-files.ts`.
+- [X] T078 [US3] Viết route `src/app/api/video/jobs/[jobId]/subtitles/route.ts` và `to-script/route.ts` (dùng `uploadScript`, giới hạn kịch bản hiện có) (FR-040).
+- [X] T079 [US3] Viết `src/lib/video/estimate.ts`: `thời lượng × (maxrate + tiếng) / 8 × 1,05`; thời gian ước tính theo độ phân giải; cảnh báo HDR, ký tự thiếu; ghi rõ là ước tính. Cảnh báo cả khi phải làm tròn kích thước hình.
+- [X] T080 [US3] Viết `src/lib/video/exports.ts`: chốt cue và kiểu, giữ chỗ, dừng, chạy lại, xóa, hết hạn. Gọi `recomputeSourceExpiry` trong cùng giao dịch khi đổi trạng thái hoặc có hoạt động.
+- [X] T081 [US3] Viết route `src/app/api/video/jobs/[jobId]/exports/route.ts`, `exports/estimate/route.ts`, `src/app/api/video/exports/[exportId]/route.ts`, `video`, `stop`, `rerun`.
+- [X] T082 [US3] Viết route `src/app/api/video/jobs/[jobId]/source/route.ts` (phiên tải lại, so nhận diện tệp) và nối vào `src/lib/video/uploads.ts` (FR-046).
+- [X] T083 [US3] Thêm `BurnTask` và mã `SOURCE_UNREADABLE` vào `src/worker/render/protocol.ts`; thêm tham số gắn cứng đúng contracts/render-and-media.md §3 vào `src/worker/render/ffmpeg-args.ts` kèm `tests/unit/video/burn-args.test.ts` (`maxrate` = max(1,3 × nguồn; 720p 4, 1080p 8, 4K 24 Mbps)) (FR-038).
+- [X] T084 [US3] Thêm chế độ gắn cứng vào `src/worker/render/main.ts` (chỉ vẽ dải chữ, dùng lại bộ đệm khi khóa trùng, dừng sớm khi vượt chỗ).
+- [X] T085 [US3] Viết `src/worker/jobs/video-render.ts`: giới hạn đồng thời bằng khóa tư vấn, kiểm đĩa tạm (nguồn + ước tính + 1 GB), tiến độ 50–100%, tải lên multipart, một giao dịch trừ hạn mức và hoàn tất, đặt hạn xóa (FR-050, FR-052). Gọi `recomputeSourceExpiry` trong cùng giao dịch khi đổi trạng thái hoặc có hoạt động. Nhịp tim mỗi 2 giây; dừng khi có yêu cầu dừng, bản ghi bị xóa hoặc bị thu hồi quyền; chỉ ghi khi còn đang chạy và đúng lượt, như `src/worker/jobs/render-overlay.ts`. Lỗi tạm (`STORAGE_UNAVAILABLE`, `RENDER_FAILED`, `RENDER_STALLED`) thử lại tối đa 3 lần, chờ tăng dần; lỗi vĩnh viễn (`SOURCE_UNREADABLE`, `VIDEO_UNSUPPORTED`, `QUOTA_EXCEEDED`, `DISK_FULL`) không thử lại; gián đoạn quá 3 lần thì báo lỗi.
+- [X] T086 [US3] Mở rộng `src/worker/sweeper.ts` cho bản xuất.
+- [X] T087 [US3] Viết `src/lib/video/retention.ts` và `src/worker/jobs/video-retention.ts` (mỗi 10 phút). `retention.ts` chỉ đọc `source_expires_at`, không tự tính.
+- [X] T088 [US3] **`done`** (2026-11-26: agent kiểm ba lượt, sửa hai vòng. Còn mở, mức thấp: lỗi "phụ đề chưa được lưu" vẫn hiện sau khi đã lưu được, tới lần bấm sau hoặc khi đổi "Nội dung" hay trạng thái việc) Viết `src/components/video/export-panel.tsx` (ước tính, cảnh báo, xuất, khóa kèm lý do khi nguồn chưa sẵn hoặc đã xóa, tải `.srt`/`.vtt`, lưu thành kịch bản), gắn vào `Tabs` của `editor.tsx`. Mẫu: `src/components/overlay/export-panel.tsx`.
   - Tiêu đề `h2` `text-base font-semibold`; `SelectField` từ `overlay/fields.tsx`; lỗi `role="alert"`; `toast`; chữ "ước tính" rõ ràng.
   - Không chép: lựa chọn nền và định dạng của overlay.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T089 [US3] Thêm tải lại video nguồn vào `src/components/video/export-panel.tsx` dùng `upload-panel.tsx` (FR-046).
+- [X] T089 [US3] **`done`** (2026-11-26: agent kiểm ba lượt, sửa hai vòng. Còn mở, mức thấp: nếu lượt chuẩn bị đầu tiên lỗi tạm, chạy lại thành công rồi video hết hạn bị xóa thì khối tải lại hiện lỗi cũ đó; hướng sửa: `rejectedReason` trả `null` khi sau `uploadDone` gần nhất có `probed` hoặc `sourceExpired`) Thêm tải lại video nguồn vào `src/components/video/export-panel.tsx` dùng `upload-panel.tsx` (FR-046).
   - `FileDropzone`, `Progress`; lỗi `role="alert"`.
   - Mẫu: `src/components/overlay/source-picker.tsx`. Không chép: lựa chọn nguồn voice.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T090 [US3] Viết `src/components/video/export-list.tsx` (tiến độ qua SSE, tải về, dừng, chạy lại, xóa, ngày hết hạn). Mẫu: `src/components/overlay/overlay-job-list.tsx`.
+- [X] T090 [US3] **`done`** (2026-11-26: agent kiểm ba lượt, sửa hai vòng. Xóa từng bản xuất; không có chọn nhiều bản xuất vì FR-045 và T116 nói về việc dịch) Viết `src/components/video/export-list.tsx` (tiến độ qua SSE, tải về, dừng, chạy lại, xóa, ngày hết hạn). Mẫu: `src/components/overlay/overlay-job-list.tsx`.
   - `shared/data-table.tsx`, `StatusBadge` (bản xuất `expired` dùng tông `stopped` với `label` "Hết hạn"), `Progress` `h-1.5`; tải về `Button size="sm" variant="outline"`; xóa qua `ConfirmDialog` nêu số lượng, dung lượng.
   - Không chép: "Xem cấu hình", "Dùng lại cấu hình".
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T091 [US3] `tests/e2e/video-export.spec.ts`: xuất, tải ba loại tệp, ngày xóa video nguồn và thành phẩm hiện đúng, nguồn đã xóa thì tải lại đúng video rồi xuất được.
-- [ ] T092 [US3] Chạy Independent Test của US3 theo `specs/006-video-translate-subtitle/quickstart.md` §3 và §6 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+- [X] T091 [US3] **`done`** (2026-11-26: 3 ca đạt trên desktop, ca đầu đạt thêm ở khung 375 px) `tests/e2e/video-export.spec.ts`: xuất, tải ba loại tệp, ngày xóa video nguồn và thành phẩm hiện đúng, nguồn đã xóa thì tải lại đúng video rồi xuất được.
+- [X] T092 [US3] **`done`** (2026-11-26, kết quả ở dưới) Chạy Independent Test của US3 theo `specs/006-video-translate-subtitle/quickstart.md` §3 và §6 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - **Kết quả Independent Test US3 (2026-11-26)**: đạt.
+    - §3.1: video 5 phút 1280×720 25 fps xuất bằng kiểu mặc định qua giao diện: H.264, đúng kích thước, số khung, số gói tiếng AAC, thời lượng lệch ≤ 100 ms; tải được `.srt`, `.vtt` (`video-export.spec.ts`, ffmpeg thật, Soniox giả).
+    - §3.2: video có cờ xoay, tốc độ khung thay đổi, `.mkv` tiếng Opus, `.avi`, `.flv`, HDR (có cảnh báo, ra BT.709), nhiều luồng tiếng (`video-render.test.ts`).
+    - §3.3: ba kiểu nội dung, ffprobe đọc đủ số đoạn của cả hai định dạng, lưu thành kịch bản (`video-export-api.test.ts`, `subtitle-files.test.ts`). Chưa mở bằng một trình phát có giao diện.
+    - §3.4 (xuất lớp phụ đề) thuộc US10, ngoài MVP.
+    - §6.1–6.5: `video-recovery`, `video-render` (tắt worker giữa lúc xuất), `video-quota`, `video-export-api` (đồng thời sát hạn mức), `video-retention`, `video-deletion`, `reconcile-storage`; hai User ở `tests/isolation/`.
+    - Cổng: lint, `tsc --noEmit`, `check:i18n` đạt; `npm test` 1464 đạt, 6 bỏ qua (tệp `real-providers`); `test:isolation` 211 đạt; E2E toàn bộ 90/92 đạt, gồm mọi tệp `video-*`; 2 ca trượt không do spec 006 (theo lịch sử mã, chưa chạy lại trên mã trước spec 006): `ai-config.spec.ts:45` còn tìm tab "FPT AI Marketplace" trong khi nhãn đã là "FPT.AI" từ `fe57040`; `manage-jobs.spec.ts:20` sau "Chạy lại" ứng dụng chuyển sang trang tiến trình mới (`edit-settings-dialog.tsx`, từ `8a47e0e`) nên không còn tab để bấm.
 
 **Checkpoint (MVP)**: US1–US3 dùng được từ đầu tới cuối.
 

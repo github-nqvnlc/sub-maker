@@ -42,7 +42,35 @@ Cơ chế làm tiếp sau khi chạm hạn mức **chưa được thử**. Ngư�
 - Kiểm thử unit và contract đạt 552 sau khi bỏ 2 ca MiniMax; bộ tích hợp đạt ở lần chạy đầy đủ trước đó. `.env` có khóa `SPIKE_*`: không bao giờ đặt `REAL_PROVIDER_TESTS=1`.
 - Lỗi tốc độ giọng MiniMax (gửi ngoài 0,5–2) vẫn còn trong mã, ngoài phạm vi spec 006.
 
+## Hiện trạng khi bàn giao MVP (2026-11-26)
+
+- **T001–T092 xong**, trừ T041 (`parked — chờ video`). Dừng ở đây theo quyết định 2; T093–T143 chờ người dùng.
+- Commit cục bộ trên `main`, chưa push: `a12afa1`, `ed71bc4` (phase 1), `6f757b0` (phase 2), `1757af8` (phase 3), `0ae9c7a` (phase 4), và commit phase 5 là commit đi cùng ghi chú này.
+- Cổng trên mã phase 5: lint, `tsc --noEmit`, `check:i18n` đạt; `npm test` 1464 đạt, 6 bỏ qua; `test:isolation` 211 đạt; E2E 90/92 đạt.
+- Hai ca E2E trượt không do spec 006 (theo lịch sử mã, chưa chạy lại trên mã trước spec 006; chi tiết ở T092): `ai-config.spec.ts:45`, `manage-jobs.spec.ts:20`.
+- Lịch tự làm tiếp: các lời nhắc đã chạy được sau khi hạn mức đặt lại; đã xóa khi xong.
+
+### Còn mở, mức thấp (agent kiểm lượt cuối)
+
+- Khối xuất video: lỗi "phụ đề chưa được lưu" vẫn hiện sau khi đã lưu được, tới lần bấm sau.
+- Khối tải lại video nguồn: `rejectedReason` (`export-panel.tsx`) có thể hiện lỗi cũ của lượt chuẩn bị đầu tiên (lỗi tạm, chạy lại thành công, rồi video hết hạn). Hướng sửa: trả `null` khi sau `uploadDone` gần nhất có `probed` hoặc `sourceExpired`.
+
+### Việc ngoài phạm vi, phát hiện trong lúc làm (chưa sửa)
+
+- Hai ca E2E nêu trên cần cập nhật theo giao diện hiện tại.
+- `voice-view.tsx`: truy vấn lấy chữ gốc lỗi thì hiện "đang tải" mãi.
+- `users-table.tsx`: `ConfirmDialog` gọi `mutateAsync` có thể để lọt lỗi không bắt.
+- Ô cài đặt đơn vị MB làm tròn nên lưu lại có thể lệch giá trị đã lưu (các ô có từ trước spec 006).
+- Dựng video overlay dùng khóa đối tượng cố định: tiến trình cũ bị thay thế có thể ghi đè kết quả mới.
+- Tốc độ giọng MiniMax gửi ngoài khoảng 0,5–2.
+
+### Chưa kiểm được
+
+- Soniox thật (T041); chất lượng hình và chữ trên video thật; mở `.srt`/`.vtt` bằng trình phát; thời gian xuất trên máy triển khai.
+- Độ tương phản và chế độ tối; trình duyệt với kịch bản 20.000 đoạn.
+
 ## Còn chờ người dùng
 
 - Đường dẫn video cho T041.
 - **Token GitHub nằm trong địa chỉ remote `origin`**: người dùng chưa cho biết đã thu hồi hay chưa. Không in địa chỉ remote ra màn hình. Hỏi trước bước push ở T143.
+- Các việc kiểm tay ở `user-tasks.md`.

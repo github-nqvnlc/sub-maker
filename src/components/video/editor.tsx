@@ -13,6 +13,8 @@ import { EventLog } from '@/components/shared/event-log';
 import { EmptyState, ErrorState, LoadingList } from '@/components/shared/states';
 import type { CueActions } from '@/components/video/cue-editing';
 import { CueList } from '@/components/video/cue-list';
+import { ExportList } from '@/components/video/export-list';
+import { ExportPanel } from '@/components/video/export-panel';
 import { VideoStatusBadge } from '@/components/video/status';
 import { Timeline } from '@/components/video/timeline';
 import { VideoPreview } from '@/components/video/video-preview';
@@ -143,6 +145,14 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
   };
 
   const status = e.save[editor.status === 'conflict' ? 'error' : editor.status];
+  /** Lưu nốt phụ đề trước khi xuất hoặc tải tệp; null khi không lưu được. */
+  const ensureSaved = async (): Promise<number | null> => {
+    // mỗi lần gửi một lô; vài lượt là đủ cho phần vừa gõ trong lúc đang gửi
+    for (let i = 0; i < 3 && store.getSnapshot().status !== 'saved'; i++) await store.flush();
+    const now = store.getSnapshot();
+    return now.status === 'saved' ? now.revision : null;
+  };
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       {/* lỗi lưu và xung đột thấy được ở mọi tab */}
@@ -187,6 +197,7 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
             <TabsTrigger value="cues">
               {e.tabCues} ({cues.length})
             </TabsTrigger>
+            <TabsTrigger value="export">{t.video.export.tab}</TabsTrigger>
             <TabsTrigger value="log">{e.tabLog}</TabsTrigger>
           </TabsList>
           <TabsContent value="cues" className="space-y-3">
@@ -252,6 +263,10 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
                 }}
               />
             )}
+          </TabsContent>
+          <TabsContent value="export" className="space-y-6">
+            <ExportPanel job={job} revision={editor.revision} ensureSaved={ensureSaved} />
+            <ExportList job={job} revision={editor.revision} />
           </TabsContent>
           <TabsContent value="log">
             <JobLog job={job} />

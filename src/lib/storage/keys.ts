@@ -22,7 +22,9 @@ export const storageKeys = {
   videoPrefix: (userId: string) => `users/${userId}/video/`,
   videoJobPrefix: (userId: string, jobId: string) => `users/${userId}/video/${jobId}/`,
   videoSource: (userId: string, jobId: string, ext: string) => `users/${userId}/video/${jobId}/source.${ext}`,
-  videoExport: (userId: string, jobId: string, exportId: string, ext: string) => `users/${userId}/video/${jobId}/exports/${exportId}.${ext}`,
+  /** `attempt`: mỗi lượt dựng ghi khóa riêng nên lượt cũ (worker bị treo rồi chạy tiếp) không đè thành phẩm của lượt mới. */
+  videoExport: (userId: string, jobId: string, exportId: string, ext: string, attempt?: number) =>
+    `users/${userId}/video/${jobId}/exports/${exportId}${attempt ? `-${attempt}` : ''}.${ext}`,
   /** Dưới `video-tmp/`: tệp hệ thống dẫn xuất, không tính hạn mức người dùng (chỉ trần hệ thống). */
   videoTempPrefix: (userId: string) => `users/${userId}/video-tmp/`,
   videoJobTempPrefix: (userId: string, jobId: string) => `users/${userId}/video-tmp/${jobId}/`,

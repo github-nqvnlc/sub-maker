@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
@@ -101,7 +101,12 @@ export async function openVideoTab(page: Page, projectId: string): Promise<void>
 export const PICK_LABEL = 'Kéo thả video vào đây hoặc bấm để chọn';
 
 export async function chooseVideo(page: Page, file: VideoFile, label: string = PICK_LABEL): Promise<void> {
-  await page.locator(`input[type=file][aria-label="${label}"]`).setInputFiles(file);
+  const input = page.locator(`input[type=file][aria-label="${label}"]`);
+  if (file.buffer.length < 45 * MB) return input.setInputFiles(file);
+  // Playwright chỉ nhận bộ đệm dưới 50 MB: ghi ra đĩa (trình duyệt đọc dần trong lúc tải nên giữ tệp lại)
+  const onDisk = path.join(mkdtempSync(path.join(os.tmpdir(), 'e2e-big-')), file.name);
+  writeFileSync(onDisk, file.buffer);
+  await input.setInputFiles(onDisk);
 }
 
 export async function startUpload(page: Page, file: VideoFile): Promise<void> {

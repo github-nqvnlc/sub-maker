@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { videoExports, videoJobs, videoUploads } from '../db/schema';
-import { abortMultipart, deleteByPrefix } from '../storage/client';
+import { abortMultipart, deleteByPrefix, listMultipartUploads } from '../storage/client';
 import { storageKeys } from '../storage/keys';
 import { releaseBytes } from '../storage/quota';
 import { releaseProviderData, type ProviderSnapshot } from './provider-data';
@@ -18,6 +18,8 @@ export type VideoCleanup = {
   uploads: Array<{ key: string; storageUploadId: string }>;
   /** việc còn dữ liệu ở nhà cung cấp */
   provider: ProviderSnapshot[];
+  /** khóa thành phẩm của các bản xuất: có thể còn phiên multipart dở */
+  exportKeys: string[];
 };
 
 type Scope = { projectId?: string; jobIds?: string[] };
@@ -51,17 +53,31 @@ export async function collectVideoCleanup(ownerId: string, scope: Scope = {}, db
         .from(videoUploads)
         .where(and(inArray(videoUploads.jobId, jobIds), inArray(videoUploads.state, ['active', 'completing'])))
     : [];
+  const exports = jobIds.length
+    ? await db
+        .select({ id: videoExports.id, jobId: videoExports.jobId, format: videoExports.format, attempt: videoExports.attempt })
+        .from(videoExports)
+        .where(inArray(videoExports.jobId, jobIds))
+    : [];
   return {
     ownerId,
     jobIds,
     uploads,
     provider: jobs.filter((j) => j.sonioxFileId || j.sonioxTranscriptionId),
+    // lượt đang chạy và lượt trước đó (có thể bị bỏ dở)
+    exportKeys: exports.flatMap((e) => [e.attempt, e.attempt - 1].filter((n) => n > 0).map((n) => storageKeys.videoExport(ownerId, e.jobId, e.id, e.format, n))),
   };
+}
+
+/** Hủy phiên multipart dở của một thành phẩm (worker chết giữa lúc đưa lên kho). Lỗi được bỏ qua: lần dọn sau làm lại. */
+export async function abortExportUploads(key: string): Promise<void> {
+  for (const id of await listMultipartUploads(key).catch(() => [] as string[])) await abortMultipart(key, id).catch(() => undefined);
 }
 
 /** Hủy phiên tải, xóa mọi tệp của từng việc và dữ liệu ở nhà cung cấp. Lỗi từng mục không chặn các mục khác. */
 export async function runVideoCleanup(c: VideoCleanup): Promise<void> {
   for (const u of c.uploads) await abortMultipart(u.key, u.storageUploadId).catch(() => undefined);
+  for (const key of c.exportKeys) await abortExportUploads(key);
   for (const jobId of c.jobIds) {
     await deleteByPrefix(storageKeys.videoJobPrefix(c.ownerId, jobId)).catch(() => undefined);
     await deleteByPrefix(storageKeys.videoJobTempPrefix(c.ownerId, jobId)).catch(() => undefined);

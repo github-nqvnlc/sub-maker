@@ -1,4 +1,4 @@
-import type { OverlayConfig } from '../../lib/overlay/config';
+import type { OverlayConfig, SceneStyle } from '../../lib/overlay/config';
 import type { AppliedCue } from '../../lib/overlay/types';
 
 /** Giao thức IPC giữa worker và tiến trình con dựng hình (overlay-engine §8). */
@@ -16,9 +16,32 @@ export type RenderTask = {
   fontDir: string;
 };
 
-export type ParentMessage = RenderTask | { type: 'cancel' };
+/** Gắn cứng phụ đề lên video nguồn (spec 006, contracts/render-and-media.md §2). */
+export type BurnTask = {
+  type: 'burn';
+  cues: AppliedCue[];
+  /** kiểu cảnh đã tính theo kích thước thành phẩm */
+  style: SceneStyle;
+  source: {
+    path: string;
+    demuxer: 'mov' | 'matroska' | 'avi' | 'flv';
+    audioIndex: number;
+    fps: number;
+    durationMs: number;
+    hdr: boolean;
+    matrix: 'bt709' | 'bt601';
+    copyAudio: boolean;
+  };
+  maxrate: number;
+  outPath: string;
+  maxBytes: number;
+  threads: number;
+  fontDir: string;
+};
 
-export type RenderErrorCode = 'RENDER_FAILED' | 'QUOTA_EXCEEDED' | 'DISK_FULL' | 'AUDIO_UNREADABLE';
+export type ParentMessage = RenderTask | BurnTask | { type: 'cancel' };
+
+export type RenderErrorCode = 'RENDER_FAILED' | 'QUOTA_EXCEEDED' | 'DISK_FULL' | 'AUDIO_UNREADABLE' | 'SOURCE_UNREADABLE';
 
 export type ChildMessage =
   | { type: 'progress'; frame: number; total: number }

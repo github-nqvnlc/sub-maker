@@ -192,7 +192,7 @@ Xét trước mọi dòng trên: `source_state = rejected` (video không đạt 
 | Đối tượng | Khóa | Tính vào | Xóa khi |
 | --- | --- | --- | --- |
 | video nguồn | `users/{u}/video/{job}/source.{ext}` | hạn mức video | `source_expires_at` |
-| thành phẩm, lớp phụ đề | `users/{u}/video/{job}/exports/{id}.{ext}` | hạn mức video | `expires_at` |
+| thành phẩm, lớp phụ đề | `users/{u}/video/{job}/exports/{id}-{lượt}.{ext}` (mỗi lượt dựng một khóa) | hạn mức video | `expires_at` |
 | âm thanh tách / do trình duyệt gửi | `users/{u}/video-tmp/{job}/audio.*` | chỉ trần hệ thống | âm thanh trình duyệt: sau khi chuyển MP3; MP3: cùng video nguồn |
 | bản xem trước | `users/{u}/video-tmp/{job}/preview.mp4` | chỉ trần hệ thống | cùng video nguồn |
 | token thô của Soniox | `users/{u}/video-tmp/{job}/transcript-{lượt}.json` | chỉ trần hệ thống | sau khi lưu cue; còn sót thì theo `last_activity_at` + `videoIdleRetainDays` |

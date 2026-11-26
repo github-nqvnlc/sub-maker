@@ -270,7 +270,8 @@ export async function runRenderOverlay(jobId: string, opts: RenderRunOptions = {
       const out = await handle.done;
       handle = null;
       checkpoint();
-      if (!out.ok) throw new OverlayFailure(out.code === 'CANCELLED' ? 'RENDER_FAILED' : out.code, out.detail);
+      // `SOURCE_UNREADABLE` chỉ có ở gắn cứng phụ đề (dịch video)
+      if (!out.ok) throw new OverlayFailure(out.code === 'CANCELLED' || out.code === 'SOURCE_UNREADABLE' ? 'RENDER_FAILED' : out.code, out.detail);
       await log('info', 'rendered', { mb: Math.round((out.bytes / 1048576) * 100) / 100 });
 
       // Ghi đối tượng trước, rồi MỘT giao dịch trừ hạn mức + hoàn tất: worker chết giữa chừng thì hạn mức chưa bị trừ

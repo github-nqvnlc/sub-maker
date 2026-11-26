@@ -7,6 +7,8 @@ import { registerRenderOverlay } from './jobs/render-overlay';
 import { registerTranscribeMedia } from './jobs/transcribe-media';
 import { registerVideoPrepare } from './jobs/video-prepare';
 import { registerVideoPreview } from './jobs/video-preview';
+import { registerVideoRender } from './jobs/video-render';
+import { registerVideoRetention } from './jobs/video-retention';
 import { registerVideoTranslate } from './jobs/video-translate';
 
 /**
@@ -30,6 +32,8 @@ export const registrars: HandlerRegistrar[] = [
   registerVideoPrepare,
   registerVideoTranslate,
   registerVideoPreview,
+  registerVideoRender,
+  registerVideoRetention,
 ];
 
 export async function registerHandlers(boss: PgBoss): Promise<void> {

@@ -8,6 +8,8 @@ import { getObjectBuffer, headObject, listMultipartUploads } from '@/lib/storage
 import { storageKeys } from '@/lib/storage/keys';
 import { fingerprintOf } from '@/lib/video/fingerprint';
 import { videoQuotaInfo } from '@/lib/video/quota';
+import { runVideoRetention } from '@/lib/video/retention';
+import { runVideoPrepare } from '@/worker/jobs/video-prepare';
 import { stopBoss } from '@/worker/queues';
 import { sweepExpiredVideoUploads } from '@/worker/sweeper';
 import { startSonioxMock, type SonioxMock } from '../mocks/soniox-mock';
@@ -15,6 +17,8 @@ import { clearRateLimits, createAdmin, createUser, resetDb, TestClient, type Tes
 import { putSonioxConfig } from './stt-helpers';
 import { createVideoJobApi, MB, postVideoJob, putPart, PART, sha256, uploadAll } from './video-api';
 import { errorOf, grantVideo, videoJobRow, videoUsed } from './video-helpers';
+import { createExportApi, reviewJob } from './video-export-helpers';
+import { FAST_PREPARE, sampleVideo } from './video-pipeline-helpers';
 import { newProject } from './voice-helpers';
 
 /** Tải video từng phần (spec 006, T028; FR-002, FR-004 đến FR-007, FR-013). */
@@ -322,4 +326,53 @@ describe('hủy và hết hạn', () => {
   it('mã băm phần tính trên đúng nội dung gửi', () => {
     expect(sha256(Buffer.from('abc'))).toBe(createHash('sha256').update('abc').digest('hex'));
   });
+});
+
+describe('tải lại video nguồn đã xóa (T073, FR-046)', () => {
+  /** Việc đã có kịch bản, video nguồn đã hết hạn giữ. */
+  async function expired() {
+    mock.reset();
+    const bytes = await sampleVideo();
+    const job = await reviewJob(user, projectId, bytes);
+    await runVideoRetention(new Date(Date.now() + 8 * 24 * 3600_000));
+    expect(await videoJobRow(job.id)).toMatchObject({ sourceState: 'deleted', sourceKey: null, status: 'review_ready' });
+    return { job, bytes };
+  }
+  const reupload = async (jobId: string, bytes: Buffer, over: Record<string, unknown> = {}) =>
+    user.client.post(`/api/video/jobs/${jobId}/source`, { json: { size: bytes.length, fingerprint: await fingerprintOf(bytes.length, async (a, b) => bytes.subarray(a, b)), ...over } });
+
+  it('tệp khác bị từ chối; đúng tệp thì kiểm rồi xuất tiếp được, không dịch lại', async () => {
+    const { job, bytes } = await expired();
+    const sent = mock.requests.length;
+    for (const over of [{ fingerprint: 'b'.repeat(64) }, { size: bytes.length + 1 }]) {
+      const wrong = await reupload(job.id, bytes, over);
+      expect(wrong.status).toBe(409);
+      expect((await errorOf(wrong)).code).toBe('FILE_MISMATCH');
+    }
+    const res = await reupload(job.id, bytes);
+    expect(res.status).toBe(201);
+    const upload = (await res.json()) as { id: string; partSize: number; partCount: number };
+    expect((await videoQuotaInfo(user.id)).reservedBytes).toBe(bytes.length);
+    expect((await videoJobRow(job.id))!.sourceState).toBe('uploading');
+    expect((await reupload(job.id, bytes)).status).toBe(409);
+
+    await uploadAll(user, upload, bytes);
+    expect((await user.client.post(`/api/video/uploads/${upload.id}/complete`)).status).toBe(200);
+    expect(await videoJobRow(job.id)).toMatchObject({ sourceState: 'checking', status: 'review_ready' });
+    await runVideoPrepare(job.id, FAST_PREPARE);
+    expect(await videoJobRow(job.id)).toMatchObject({ sourceState: 'ready', status: 'review_ready', cueCount: 3 });
+    expect(await videoUsed(user.id)).toBe(bytes.length);
+    expect(mock.requests).toHaveLength(sent);
+    expect((await createExportApi(user, job.id)).status).toBe('queued');
+  }, 60_000);
+
+  it('hủy phiên tải lại: việc và kịch bản còn nguyên, chỗ giữ được trả; việc còn video thì không mở phiên', async () => {
+    const { job, bytes } = await expired();
+    const upload = (await (await reupload(job.id, bytes)).json()) as { id: string };
+    expect((await user.client.delete(`/api/video/uploads/${upload.id}`)).status).toBeLessThan(300);
+    expect(await videoJobRow(job.id)).toMatchObject({ sourceState: 'deleted', status: 'review_ready', cueCount: 3 });
+    expect((await videoQuotaInfo(user.id)).reservedBytes).toBe(0);
+    const fresh = await reviewJob(user, await newProject(user), bytes);
+    expect((await reupload(fresh.id, bytes)).status).toBe(409);
+  }, 60_000);
 });

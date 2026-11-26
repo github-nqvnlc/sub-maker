@@ -8,18 +8,21 @@ import {
   sttJobs,
   VIDEO_PIPELINE_ACTIVE,
   VIDEO_PIPELINE_RUNNING,
+  videoExports,
   videoJobs,
   videoUploads,
   voiceJobs,
 } from '../lib/db/schema';
 import { deleteOverlayObject } from '../lib/overlay/control';
 import { appendOverlayLog } from '../lib/overlay/log';
+import { storageKeys } from '../lib/storage/keys';
+import { abortExportUploads } from '../lib/video/cleanup';
 import { recomputeSourceExpiry } from '../lib/video/expiry';
 import { appendVideoLog } from '../lib/video/log';
 import { providerSnapshot, releaseProviderData } from '../lib/video/provider-data';
 import { expireUpload } from '../lib/video/uploads';
 import { appendLog } from './job-log';
-import { enqueueGenerateVoice, enqueuePrepareOverlayAudio, enqueueRenderOverlay, enqueueTranscribeMedia, enqueueVideoPrepare, enqueueVideoPreview, enqueueVideoTranslate } from './queues';
+import { enqueueGenerateVoice, enqueuePrepareOverlayAudio, enqueueRenderOverlay, enqueueTranscribeMedia, enqueueVideoPrepare, enqueueVideoPreview, enqueueVideoRender, enqueueVideoTranslate } from './queues';
 import { MAX_VIDEO_INTERRUPTIONS } from './video/run';
 
 /**
@@ -274,6 +277,60 @@ export async function sweepExpiredVideoUploads(): Promise<{ expired: string[] }>
   return { expired };
 }
 
+export type VideoExportSweepOptions = { staleMs?: number; lostMs?: number; render?: (exportId: string) => Promise<unknown> };
+
+/**
+ * Bản xuất video (spec 006, FR-050): mất nhịp tim → đã yêu cầu dừng thì `stopped`, còn lượt thì `interrupted` rồi xếp lại, quá 3 lần
+ * thì `failed`; bản đang chờ bị mất khỏi hàng đợi được xếp lại. Phiên multipart dở của bản đã kết thúc được hủy.
+ */
+export async function sweepStaleVideoExports(opts: VideoExportSweepOptions = {}): Promise<{ interrupted: string[]; stopped: string[]; failed: string[]; requeued: string[] }> {
+  const db = getDb();
+  const staleMs = opts.staleMs ?? HEARTBEAT_STALE_MS;
+  const lostMs = opts.lostMs ?? VIDEO_QUEUE_LOST_MS;
+  const render = opts.render ?? enqueueVideoRender;
+  const older = (column: unknown, ms: number) => sql`(${column} is null or ${column} < now() - (${ms} * interval '1 millisecond'))`;
+  const running = and(eq(videoExports.status, 'running'), older(videoExports.heartbeatAt, staleMs));
+  const back = { id: videoExports.id, jobId: videoExports.jobId, ownerId: videoExports.ownerId, format: videoExports.format, attempt: videoExports.attempt };
+
+  const stopped = await db
+    .update(videoExports)
+    .set({ status: 'stopped', cancelRequested: false, heartbeatAt: null, finishedAt: new Date() })
+    .where(and(running, eq(videoExports.cancelRequested, true)))
+    .returning(back);
+  const failed = await db
+    .update(videoExports)
+    .set({ status: 'failed', errorCode: 'INTERRUPTED', interruptions: sql`${videoExports.interruptions} + 1`, heartbeatAt: null, finishedAt: new Date() })
+    .where(and(running, sql`${videoExports.interruptions} >= ${MAX_VIDEO_INTERRUPTIONS}`))
+    .returning(back);
+  const interrupted = await db
+    .update(videoExports)
+    .set({ status: 'interrupted', interruptions: sql`${videoExports.interruptions} + 1`, heartbeatAt: null })
+    .where(running)
+    .returning(back);
+
+  for (const e of [...stopped, ...failed]) {
+    await recomputeSourceExpiry(e.jobId, db);
+    await abortExportUploads(storageKeys.videoExport(e.ownerId, e.jobId, e.id, e.format, e.attempt));
+  }
+  for (const e of stopped) await appendVideoLog(e.jobId, 'warn', 'stopped', undefined, { exportId: e.id });
+  for (const e of failed) await appendVideoLog(e.jobId, 'error', 'failed', { reason: 'INTERRUPTED' }, { exportId: e.id });
+  for (const e of interrupted) {
+    await appendVideoLog(e.jobId, 'warn', 'interrupted', undefined, { exportId: e.id });
+    await render(e.id);
+  }
+
+  // đang chờ quá lâu mà không lượt nhận nào chạm tới (mất việc trong hàng đợi, web chết trước khi xếp)
+  const lost = await db
+    .update(videoExports)
+    .set({ heartbeatAt: sql`now()` })
+    .where(and(inArray(videoExports.status, ['queued', 'interrupted']), older(videoExports.heartbeatAt, lostMs), sql`${videoExports.createdAt} < now() - (${lostMs} * interval '1 millisecond')`))
+    .returning({ id: videoExports.id });
+  for (const e of lost) await render(e.id);
+
+  const ids = (rows: Array<{ id: string }>) => rows.map((r) => r.id);
+  return { interrupted: ids(interrupted), stopped: ids(stopped), failed: ids(failed), requeued: ids(lost) };
+}
+
 /** Tệp âm thanh chờ quá lâu mà chưa worker nào nhận (mất việc trong hàng đợi, web chết giữa lúc nhận tệp). */
 const AUDIO_LOST_MS = 15 * 60_000;
 
@@ -302,8 +359,8 @@ export async function sweepStaleOverlayAudios(
 /** Quét ngay khi khởi động rồi định kỳ. Trả hàm dừng. */
 export function startSweeper(): () => void {
   const run = () =>
-    Promise.all([sweepStaleJobs(), sweepStaleSttJobs(), sweepStaleOverlayJobs(), sweepStaleOverlayAudios(), sweepStaleVideoJobs(), sweepExpiredVideoUploads()])
-      .then(([r, s, o, a, v, u]) => {
+    Promise.all([sweepStaleJobs(), sweepStaleSttJobs(), sweepStaleOverlayJobs(), sweepStaleOverlayAudios(), sweepStaleVideoJobs(), sweepExpiredVideoUploads(), sweepStaleVideoExports()])
+      .then(([r, s, o, a, v, u, x]) => {
         if (r.interrupted.length || r.stopped.length) console.log(`[sweeper] gián đoạn: ${r.interrupted.length}, dừng: ${r.stopped.length}`);
         if (s.interrupted.length) console.log(`[sweeper] STT gián đoạn: ${s.interrupted.length}`);
         if (o.interrupted.length || o.stopped.length || o.failed.length) {
@@ -314,6 +371,9 @@ export function startSweeper(): () => void {
           console.log(`[sweeper] video gián đoạn: ${v.interrupted.length}, dừng: ${v.stopped.length}, lỗi: ${v.failed.length}, xếp lại: ${v.requeued.length}`);
         }
         if (u.expired.length) console.log(`[sweeper] phiên tải video quá hạn: ${u.expired.length}`);
+        if (x.interrupted.length || x.stopped.length || x.failed.length || x.requeued.length) {
+          console.log(`[sweeper] xuất video gián đoạn: ${x.interrupted.length}, dừng: ${x.stopped.length}, lỗi: ${x.failed.length}, xếp lại: ${x.requeued.length}`);
+        }
       })
       .catch((e) => console.error('[sweeper] lỗi:', e instanceof Error ? e.message : e));
   void run();

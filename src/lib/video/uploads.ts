@@ -1,17 +1,20 @@
 import { createHash } from 'node:crypto';
 import { and, asc, eq, inArray } from 'drizzle-orm';
+import { z } from 'zod';
 import { HttpError, notFound } from '../api/errors';
 import { getDb, type Db } from '../db';
-import { videoJobs, videoUploadParts, videoUploads } from '../db/schema';
+import { VIDEO_PIPELINE_ACTIVE, videoJobs, videoUploadParts, videoUploads } from '../db/schema';
 import { isUuid } from '../projects/access';
-import { abortMultipart, completeMultipart, deleteObject, getObjectRange, headObject, uploadPart } from '../storage/client';
+import { abortMultipart, completeMultipart, createMultipart, deleteObject, getObjectRange, headObject, uploadPart } from '../storage/client';
+import { storageKeys } from '../storage/keys';
 import { enqueueVideoPrepare } from '../../worker/queues';
 import { deleteVideoJobs } from './cleanup';
 import { recomputeSourceExpiry } from './expiry';
 import { fingerprintOf } from './fingerprint';
 import { appendVideoLog } from './log';
 import { requireVideoPermission, type VideoPrincipal } from './permission';
-import { addVideoUsed, withVideoLock } from './quota';
+import { addVideoUsed, assertJobSlot, assertVideoRoom, withVideoLock } from './quota';
+import { VIDEO_CONTENT_TYPES } from './types';
 
 /**
  * Tải video từng phần (spec 006, FR-004 đến FR-006, research R7): trình duyệt gửi từng phần 16 MB qua ứng dụng (kiểm đăng nhập,
@@ -45,6 +48,17 @@ export async function getOwnedUpload(ownerId: string, uploadId: string, db: Db =
     .select()
     .from(videoUploads)
     .where(and(eq(videoUploads.id, uploadId), eq(videoUploads.ownerId, ownerId)))
+    .limit(1);
+  if (!row) throw notFound();
+  return row;
+}
+
+async function ownedJob(ownerId: string, jobId: string) {
+  if (!isUuid(jobId)) throw notFound();
+  const [row] = await getDb()
+    .select()
+    .from(videoJobs)
+    .where(and(eq(videoJobs.id, jobId), eq(videoJobs.ownerId, ownerId)))
     .limit(1);
   if (!row) throw notFound();
   return row;
@@ -201,6 +215,8 @@ export async function completeUpload(user: Principal, uploadId: string): Promise
           sourceKey: upload.key,
           sourceState: 'checking',
           ...(job?.status === 'waiting_media' ? { status: 'queued' as const, stageKey: 'queued' } : {}),
+          // tải lại cho việc không có pipeline chạy: bỏ nhịp tim cũ để lượt kiểm tệp được nhận ngay
+          ...(job && !(VIDEO_PIPELINE_ACTIVE as readonly string[]).includes(job.status) && job.status !== 'waiting_media' ? { heartbeatAt: null, interruptions: 0 } : {}),
           lastActivityAt: new Date(),
           updatedAt: new Date(),
         })
@@ -243,6 +259,42 @@ export async function cancelUpload(ownerId: string, uploadId: string): Promise<v
   const upload = await getOwnedUpload(ownerId, uploadId);
   if (upload.state !== 'active' && upload.state !== 'completing') throw closed();
   await discardUpload(ownerId, upload);
+}
+
+export const reuploadSchema = z.object({ size: z.number().int().min(1), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+
+/**
+ * Phiên tải LẠI video nguồn đã bị xóa (FR-046): chỉ nhận đúng tệp đã dịch (dung lượng và mã nhận diện khớp), không dịch lại. Giữ chỗ
+ * trong hạn mức như tải mới.
+ */
+export async function reuploadSource(user: Principal, jobId: string, raw: unknown): Promise<{ id: string; partSize: number; partCount: number }> {
+  const job = await ownedJob(user.id, jobId);
+  requireVideoPermission(user);
+  const body = reuploadSchema.parse(raw);
+  if (body.size !== job.fileSizeBytes || body.fingerprint !== job.fingerprint) throw mismatch();
+  const key = storageKeys.videoSource(user.id, job.id, job.ext);
+  const storageUploadId = await createMultipart(key, VIDEO_CONTENT_TYPES[job.ext]);
+  const partCount = partCountOf(body.size);
+  try {
+    const id = await withVideoLock(async (tx) => {
+      const [cur] = await tx.select({ source: videoJobs.sourceState }).from(videoJobs).where(eq(videoJobs.id, job.id)).for('update');
+      if (!cur) throw notFound();
+      if (cur.source !== 'deleted') throw new HttpError(409, 'CONFLICT');
+      await assertJobSlot(tx, user.id, { excludeJobId: job.id });
+      await assertVideoRoom(tx, user.id, body.size);
+      const [upload] = await tx
+        .insert(videoUploads)
+        .values({ jobId: job.id, ownerId: user.id, kind: 'source', storageUploadId, key, sizeBytes: body.size, partSize: VIDEO_PART_SIZE, partCount, fingerprint: body.fingerprint, expiresAt: new Date(Date.now() + UPLOAD_TTL_MS) })
+        .returning({ id: videoUploads.id });
+      await tx.update(videoJobs).set({ sourceState: 'uploading', sourceKey: null, lastActivityAt: new Date(), updatedAt: new Date() }).where(eq(videoJobs.id, job.id));
+      await recomputeSourceExpiry(job.id, tx);
+      return upload!.id;
+    });
+    return { id, partSize: VIDEO_PART_SIZE, partCount };
+  } catch (e) {
+    await abortMultipart(key, storageUploadId).catch(() => undefined);
+    throw e;
+  }
 }
 
 /** Dọn các phiên quá hạn 48 giờ (sweeper và lịch dọn gọi). Trả id phiên đã đóng. */
