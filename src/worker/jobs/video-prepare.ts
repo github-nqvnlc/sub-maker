@@ -22,6 +22,7 @@ import { recomputeSourceExpiry } from '../../lib/video/expiry';
 import { appendVideoLog, type VideoLogKey, type VideoLogLevel } from '../../lib/video/log';
 import { userMayTranslate } from '../../lib/video/permission';
 import { addVideoUsed, withVideoLock } from '../../lib/video/quota';
+import { needsPreview } from '../../lib/video/status';
 import type { VideoMedia } from '../../lib/video/types';
 import type { RetryPolicy } from '../pipeline/synthesize-segment';
 import { enqueueVideoPreview, enqueueVideoTranslate, QUEUES, type VideoPreparePayload } from '../queues';
@@ -65,9 +66,6 @@ const CHECK_STALE_MS = 30_000;
 const REJECTS: ReadonlySet<VideoErrorCode> = new Set<VideoErrorCode>(['SOURCE_UNREADABLE', 'VIDEO_UNSUPPORTED', 'NO_AUDIO_STREAM', 'VIDEO_TOO_LONG']);
 
 type Job = typeof videoJobs.$inferSelect;
-
-/** Nguồn cần bản xem trước khi trình duyệt không phát được phổ biến, lớn hơn 1080p hoặc trên 8 Mbps (research R11). */
-export const needsPreview = (m: VideoMedia): boolean => !m.browserPlayable || Math.min(m.width, m.height) > 1080 || m.videoBitrate > 8_000_000;
 
 /** Nhận việc của pipeline: đang chờ hoặc bị gián đoạn và chưa tách xong âm thanh. */
 async function claimPipeline(jobId: string): Promise<Job | null> {
@@ -164,7 +162,7 @@ const logger = (job: Job, control: RunControl) => async (level: VideoLogLevel, k
 async function logMedia(log: ReturnType<typeof logger>, media: VideoMedia): Promise<void> {
   await log('info', 'probed', { width: media.width, height: media.height, sec: Math.round(media.durationMs / 100) / 10 });
   // nêu rõ đang dùng luồng tiếng nào (edge case nhiều luồng tiếng)
-  if (media.audioStreams > 1) await log('info', 'audioStream', { count: media.audioStreams, n: media.audioIndex });
+  if (media.audioStreams > 1) await log('info', 'audioStream', { count: media.audioStreams, n: media.audioNumber ?? 1 });
 }
 
 async function runPipeline(job: Job, opts: VideoPrepareOptions): Promise<void> {

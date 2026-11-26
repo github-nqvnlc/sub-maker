@@ -384,6 +384,7 @@ export async function probeVideo(inputPath: string, opts: { demuxer: Demuxer; ma
     audioStartMs: Math.round(audioStartSec * 1000),
     audioDurationMs: Math.round(audioDurationSec * 1000),
     audioStreams: audios.length,
+    audioNumber: audios.indexOf(audio) + 1,
     rotation,
     hdr,
     matrix,

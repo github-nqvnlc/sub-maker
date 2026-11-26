@@ -18,16 +18,16 @@ import { getSettings } from '../settings';
 import { abortMultipart, createMultipart } from '../storage/client';
 import { storageKeys } from '../storage/keys';
 import { getSttConfigRow } from '../stt/config';
-import { enqueueVideoPrepare, enqueueVideoTranslate } from '../../worker/queues';
+import { enqueueVideoPrepare, enqueueVideoPreview, enqueueVideoTranslate } from '../../worker/queues';
 import { deleteVideoJobs } from './cleanup';
 import { requestStopVideoJobs } from './control';
 import { recomputeSourceExpiry } from './expiry';
 import { appendVideoLog } from './log';
 import { mayTranslate, requireVideoPermission, type VideoPrincipal } from './permission';
 import { assertJobSlot, assertVideoRoom, videoQuotaInfo, withVideoLock } from './quota';
-import { isBusyStatus, videoDisplayStatus, type VideoDisplayStatus } from './status';
+import { cuesEditable, isBusyStatus, needsPreview, videoDisplayStatus, type VideoDisplayStatus } from './status';
 import { parseStoredStyle, type VideoStyle } from './style';
-import { DIRECTIONS, VIDEO_EXTENSIONS, type Direction, type GlossaryPair, type PreviewState, type SourceState, type VideoExtension, type VideoMedia } from './types';
+import { DIRECTIONS, VIDEO_CONTENT_TYPES, VIDEO_EXTENSIONS, type Direction, type GlossaryPair, type PreviewState, type SourceState, type VideoExtension, type VideoMedia } from './types';
 import { partCountOf, UPLOAD_TTL_MS, VIDEO_PART_SIZE } from './uploads';
 
 /**
@@ -37,16 +37,6 @@ import { partCountOf, UPLOAD_TTL_MS, VIDEO_PART_SIZE } from './uploads';
 type JobRow = typeof videoJobs.$inferSelect;
 type ExportRow = typeof videoExports.$inferSelect;
 type Principal = VideoPrincipal & { id: string };
-
-export const VIDEO_CONTENT_TYPES: Record<VideoExtension, string> = {
-  mp4: 'video/mp4',
-  m4v: 'video/mp4',
-  mov: 'video/quicktime',
-  mkv: 'video/x-matroska',
-  webm: 'video/webm',
-  avi: 'video/x-msvideo',
-  flv: 'video/x-flv',
-};
 
 export type VideoUploadDto = { id: string; state: 'active' | 'completing'; sizeBytes: number; receivedBytes: number; partSize: number; partCount: number; expiresAt: string };
 
@@ -87,6 +77,8 @@ export type VideoJobDto = {
   previewState: PreviewState;
   cueCount: number;
   cueRevision: number;
+  /** đã có kịch bản và không có lượt dịch nào sắp thay nó */
+  editable: boolean;
   clientAudio: boolean;
   audioMismatch: boolean;
   upload: VideoUploadDto | null;
@@ -164,6 +156,7 @@ export function videoJobDto(j: JobRow, exports: ReadonlyArray<ExportListRow>, up
     previewState: j.previewState,
     cueCount: j.cueCount,
     cueRevision: j.cueRevision,
+    editable: cuesEditable(j),
     clientAudio: j.clientAudio,
     audioMismatch: j.audioMismatch,
     upload,
@@ -312,8 +305,9 @@ export function extensionOf(fileName: string): VideoExtension | null {
 }
 
 export async function createVideoJob(user: Principal, projectId: string, raw: unknown) {
-  requireVideoPermission(user);
+  // chủ sở hữu trước, quyền sau: Project của người khác luôn trả 404 như không tồn tại
   await getOwnedProject(user.id, projectId);
+  requireVideoPermission(user);
   const body = createSchema.parse(raw);
   const ext = extensionOf(body.fileName);
   if (!ext) throw new HttpError(422, 'VIDEO_UNSUPPORTED');
@@ -429,7 +423,19 @@ export async function rerunVideoJob(user: Principal, id: string): Promise<VideoJ
   if (!updated) throw new HttpError(409, 'CONFLICT');
   await appendVideoLog(job.id, 'info', 'rerun');
   await enqueuePipeline(updated).catch((e) => console.error('[video] không xếp được việc chạy lại:', e instanceof Error ? e.message : e));
+  await retryPreview(updated);
   return toDto(updated);
+}
+
+/** Bản xem trước bị dừng hoặc hỏng cùng lượt trước được tạo lại (bước chuẩn bị bị bỏ qua khi đã tách âm thanh). */
+async function retryPreview(job: JobRow): Promise<void> {
+  if (nextPipelineStep(job) !== 'translate' || job.sourceState !== 'ready' || !job.media || !needsPreview(job.media)) return;
+  const marked = await getDb()
+    .update(videoJobs)
+    .set({ previewState: 'pending', previewHeartbeatAt: null, previewAttempt: 0 })
+    .where(and(eq(videoJobs.id, job.id), eq(videoJobs.previewState, 'failed')))
+    .returning({ id: videoJobs.id });
+  if (marked.length > 0) await enqueueVideoPreview(job.id).catch(() => undefined); // sweeper xếp lại nếu mất
 }
 
 /** Xóa một việc: tiến trình đang chạy tự dừng khi thấy bản ghi mất; xóa mọi tệp và trả dung lượng ngay (FR-054, FR-057). */

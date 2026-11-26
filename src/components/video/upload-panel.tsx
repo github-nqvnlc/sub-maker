@@ -19,7 +19,7 @@ import { useFormat, useT } from '@/lib/i18n/client';
 import { fmt } from '@/lib/i18n/fmt';
 import { fingerprintFile } from '@/lib/video/fingerprint';
 import { DIRECTIONS, VIDEO_EXTENSIONS, type Direction } from '@/lib/video/types';
-import { uploadRegistry, VideoUpload } from '@/lib/video/upload-client';
+import { rememberLocalVideo, uploadRegistry, VideoUpload } from '@/lib/video/upload-client';
 
 const ACCEPT = VIDEO_EXTENSIONS.map((e) => `.${e}`).join(',');
 const extensionOk = (name: string): boolean => (VIDEO_EXTENSIONS as readonly string[]).includes(/\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase() ?? '');
@@ -37,13 +37,14 @@ function useRefreshUploads(projectId: string) {
 }
 
 /** Bắt đầu hoặc tiếp tục gửi tệp của một việc; lượt tải sống tiếp khi rời tab. */
-function useStartUpload(projectId: string) {
+export function useStartUpload(projectId: string) {
   const t = useT();
   const qc = useQueryClient();
   const refresh = useRefreshUploads(projectId);
   return (jobId: string, file: File, upload: { id: string; partSize: number; partCount: number }, received: number[] = []) => {
     const live = new VideoUpload({ uploadId: upload.id, file, partSize: upload.partSize, partCount: upload.partCount, received });
     uploadRegistry.add(jobId, live);
+    rememberLocalVideo(jobId, file);
     let phase = live.getSnapshot().phase;
     live.subscribe(() => {
       const snap = live.getSnapshot();
@@ -65,7 +66,7 @@ function useStartUpload(projectId: string) {
 }
 
 /** Một video đang được gửi từ thẻ trình duyệt này: tiến độ, tốc độ, thời gian còn lại, tạm dừng, tiếp tục, hủy (FR-005, FR-006). */
-function LiveUpload({ projectId, job }: { projectId: string; job: VideoJobDto }) {
+export function LiveUpload({ projectId, job }: { projectId: string; job: VideoJobDto }) {
   const t = useT();
   const refresh = useRefreshUploads(projectId);
   const snap = useLiveUpload(job.id);

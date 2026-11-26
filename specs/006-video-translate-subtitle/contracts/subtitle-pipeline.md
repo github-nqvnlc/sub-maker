@@ -30,7 +30,7 @@ Mọi hàm trong tài liệu này là **hàm thuần** ở `src/lib/video/`, kh�
 
 ```ts
 type CueOp =
-  | { type: 'update'; id: string; patch: Partial<Pick<Cue, 'startMs'|'endMs'|'sourceText'|'targetText'>> }
+  | { type: 'update'; id: string; patch: Partial<Pick<Cue, 'startMs'|'endMs'|'sourceText'|'targetText'|'timing'|'flags'>> }  // timing, flags chỉ dùng khi hoàn tác
   | { type: 'insert'; cue: Cue }          // id do trình duyệt sinh (uuid) để hoàn tác được
   | { type: 'delete'; id: string };
 type CueBatch = { baseRevision: number; ops: CueOp[] };   // 1–20.000 thao tác
@@ -39,7 +39,10 @@ type CueBatch = { baseRevision: number; ops: CueOp[] };   // 1–20.000 thao tá
 - `applyOps(cues, ops, durationMs)` trả danh sách mới và lô nghịch đảo, hoặc lỗi nêu cue vi phạm; áp dụng **tất cả hoặc không**.
 - Gộp = `update` cue đầu + `delete` cue sau (nối chữ bằng khoảng trắng). Tách = `update` + `insert`, mốc tách mặc định tại vị trí con trỏ chữ theo trọng số.
 - Sửa mốc đặt `timing = manual`.
+- Sửa chữ hoặc mốc mà thao tác không gửi `flags` thì cờ được suy ra lại: có câu dịch mới thì hết `untranslated` và `review`; `fast` tính theo tốc độ đọc.
+- Chỉ trạng thái cuối của lô được kiểm, và chỉ với cue bị đụng tới (cue cũ sai sẵn không chặn việc sửa cue khác).
 - Dịch mốc ±100/±500 ms bị kẹp để không vượt cue liền kề.
+- Sửa được khi việc đã có kịch bản và ở trạng thái chờ duyệt, lỗi hoặc đã dừng; khác thì `VIDEO_NOT_EDITABLE`.
 
 ## 4. Tìm và thay thế (`find-replace.ts`)
 

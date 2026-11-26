@@ -101,7 +101,7 @@ paths:
       summary: "Áp dụng một lô thao tác (subtitle-pipeline §3)"
       responses:
         "200": { description: "{ revision }" }
-        "409": { description: "CUE_CONFLICT (revision hiện tại)" }
+        "409": { description: "CUE_CONFLICT (revision hiện tại), VIDEO_NOT_EDITABLE" }
         "422": { description: "CUE_INVALID (id, lý do)" }
   /api/video/jobs/{jobId}/style:
     put: { summary: "Lưu kiểu của việc và kiểu gần nhất của Project" }
@@ -118,6 +118,10 @@ paths:
       summary: "Phát video nguồn, bản xem trước hoặc âm thanh; hỗ trợ Range"
       parameters:
         - { name: kind, in: query, required: true, schema: { enum: [source, preview, audio] } }
+      responses:
+        "200": { description: "tệp (206 khi có Range; dải mở trả tối đa 8 MB)" }
+        "404": { description: "chưa có bản xem trước hoặc âm thanh" }
+        "409": { description: "VIDEO_SOURCE_NOT_READY, VIDEO_SOURCE_GONE (kind=source)" }
   /api/video/jobs/{jobId}/exports/estimate:
     post: { summary: "Dung lượng, thời gian ước tính, cảnh báo (HDR, làm tròn kích thước, ký tự thiếu), có đủ chỗ không" }
   /api/video/jobs/{jobId}/exports:

@@ -1,17 +1,23 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { probeVideo } from '@/lib/audio/ffmpeg';
 import { getDb } from '@/lib/db';
 import { systemSettings, usageRecords, users, videoProjectSettings } from '@/lib/db/schema';
-import { headObject } from '@/lib/storage/client';
+import { downloadObjectToFile, headObject } from '@/lib/storage/client';
 import { storageKeys } from '@/lib/storage/keys';
 import { stopBoss } from '@/worker/queues';
 import { runVideoPrepare } from '@/worker/jobs/video-prepare';
+import { runVideoPreview, type VideoPreviewOptions } from '@/worker/jobs/video-preview';
 import { runVideoTranslate } from '@/worker/jobs/video-translate';
 import { startSonioxMock, type SonioxMock } from '../mocks/soniox-mock';
 import { clearRateLimits, createAdmin, createUser, resetDb, type TestUser } from './helpers';
 import { putSonioxConfig, SONIOX_KEY } from './stt-helpers';
 import { grantVideo, videoJobRow, videoUsed } from './video-helpers';
 import { cuesOf, FAST_PREPARE, FAST_TRANSLATE, runPipeline, uploadedJob, videoLogKeys, videoUsage } from './video-pipeline-helpers';
+import type { TestVideoOptions } from './video-media';
 import { newProject } from './voice-helpers';
 
 /** Nhận dạng và dịch (spec 006, T030; FR-009, FR-012, FR-013, FR-014, FR-016, FR-017). Soniox luôn là bản giả. */
@@ -195,4 +201,123 @@ describe('kết quả', () => {
     const dump = JSON.stringify([await videoJobRow(job.id), await videoUsage(job.id), await getDb().select().from(usageRecords)]) + JSON.stringify(await (await user.client.get(`/api/video/jobs/${job.id}`)).json());
     expect(dump).not.toContain(SONIOX_KEY);
   });
+});
+
+describe('bản xem trước (T061)', () => {
+  /** MPEG-4 trong .avi: trình duyệt không phát được nên cần bản xem trước. */
+  const AVI = { ext: 'avi' as const, size: '1920x1080', seconds: 3, videoCodec: ['-c:v', 'mpeg4', '-q:v', '5'], audioCodec: ['-c:a', 'libmp3lame'] };
+
+  async function prepared(video: TestVideoOptions = AVI) {
+    const job = await uploadedJob(user, projectId, { video, fileName: `phim.${video.ext ?? 'mp4'}` });
+    const queued: string[] = [];
+    await runVideoPrepare(job.id, { ...FAST_PREPARE, enqueuePreview: async (id) => queued.push(id) });
+    return { job, queued };
+  }
+  const preview = (jobId: string, over: VideoPreviewOptions = {}) => runVideoPreview(jobId, { ...FAST_PREPARE, ...over });
+  const previewKey = (jobId: string) => storageKeys.videoPreview(user.id, jobId);
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it('nguồn không phát được: tạo bản 720p H.264 + AAC cùng thời lượng; dung lượng không tính vào hạn mức người dùng', async () => {
+    const { job, queued } = await prepared();
+    expect(queued).toEqual([job.id]);
+    expect((await videoJobRow(job.id))!.previewState).toBe('pending');
+    const used = await videoUsed(user.id);
+    await preview(job.id);
+    const row = (await videoJobRow(job.id))!;
+    expect(row).toMatchObject({ previewState: 'ready', previewKey: previewKey(job.id), previewHeartbeatAt: null });
+    expect(row.previewBytes).toBe((await headObject(previewKey(job.id)))!.size);
+    expect(await videoUsed(user.id)).toBe(used);
+
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'pv-'));
+    try {
+      const file = path.join(dir, 'p.mp4');
+      await downloadObjectToFile(row.previewKey!, file);
+      const media = await probeVideo(file, { demuxer: 'mov', maxMinutes: 5 });
+      expect(media).toMatchObject({ width: 1280, height: 720, videoCodec: 'h264', audioCodec: 'aac', browserPlayable: true });
+      expect(Math.abs(media.durationMs - row.media!.durationMs)).toBeLessThan(150);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+    expect(await videoLogKeys(job.id)).toEqual(expect.arrayContaining(['previewStarted', 'previewDone']));
+    // gọi lại không làm gì thêm
+    await preview(job.id);
+    expect((await videoJobRow(job.id))!.previewAttempt).toBe(1);
+  }, 60_000);
+
+  it('nguồn phát được, nhỏ và nhẹ thì không tạo bản xem trước', async () => {
+    const { job, queued } = await prepared({ seconds: 2 });
+    expect(queued).toEqual([]);
+    await preview(job.id);
+    expect((await videoJobRow(job.id))!.previewState).toBe('none');
+    expect(await headObject(previewKey(job.id))).toBeNull();
+  });
+
+  it('lỗi kho tạm thời thì thử lại; tệp không đọc được thì báo hỏng ngay, không chặn việc dịch', async () => {
+    const { job } = await prepared();
+    let calls = 0;
+    await preview(job.id, {
+      download: async (key, file) => {
+        if (++calls < 3) throw new Error('ECONNRESET');
+        await downloadObjectToFile(key, file);
+      },
+    });
+    expect((await videoJobRow(job.id))!.previewState).toBe('ready');
+    expect(calls).toBe(3);
+
+    await runVideoTranslate(job.id, FAST_TRANSLATE); // mỗi người một việc đang chạy
+    const second = await prepared();
+    let tries = 0;
+    await preview(second.job.id, {
+      download: async (_key, file) => {
+        tries++;
+        await writeFile(file, 'khong phai video');
+      },
+    });
+    expect(tries).toBe(1);
+    expect(await videoJobRow(second.job.id)).toMatchObject({ previewState: 'failed', previewKey: null });
+    await runVideoTranslate(second.job.id, FAST_TRANSLATE);
+    expect((await videoJobRow(second.job.id))!.status).toBe('review_ready');
+  }, 60_000);
+
+  it('thu hồi quyền giữa chừng: dừng, không để lại tệp', async () => {
+    const { job } = await prepared();
+    await preview(job.id, {
+      download: async (key, file) => {
+        await downloadObjectToFile(key, file);
+        await grantVideo(admin, user.id, false);
+        await pause(500);
+      },
+    });
+    expect((await videoJobRow(job.id))!.previewState).toBe('failed');
+    expect(await headObject(previewKey(job.id))).toBeNull();
+  });
+
+  it('việc bị xóa giữa chừng: dừng, không để lại tệp', async () => {
+    const { job } = await prepared();
+    await preview(job.id, {
+      download: async (key, file) => {
+        await downloadObjectToFile(key, file);
+        expect((await user.client.delete(`/api/video/jobs/${job.id}`)).status).toBe(204);
+        await pause(500);
+      },
+    });
+    expect(await videoJobRow(job.id)).toBeUndefined();
+    expect(await headObject(previewKey(job.id))).toBeNull();
+  });
+
+  it('người dùng dừng việc: bản xem trước dừng theo; chạy lại thì được xếp tạo lại', async () => {
+    const { job } = await prepared();
+    await preview(job.id, {
+      download: async (key, file) => {
+        await downloadObjectToFile(key, file);
+        expect((await user.client.post(`/api/video/jobs/${job.id}/stop`)).status).toBe(200);
+        await pause(500);
+      },
+    });
+    expect((await videoJobRow(job.id))!.previewState).toBe('failed');
+    expect((await user.client.post(`/api/video/jobs/${job.id}/rerun`)).status).toBe(202);
+    expect(await videoJobRow(job.id)).toMatchObject({ previewState: 'pending', previewAttempt: 0 });
+    await preview(job.id);
+    expect((await videoJobRow(job.id))!.previewState).toBe('ready');
+  }, 60_000);
 });

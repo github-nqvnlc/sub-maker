@@ -20,10 +20,13 @@ const loginHolds = new Set<() => boolean>();
 
 /**
  * Trang đang giữ việc dở trong bộ nhớ (ví dụ đang tải video) thì 401 chỉ báo lỗi, không tự chuyển sang đăng nhập: chuyển trang sẽ
- * làm mất việc đó. `busy` trả true khi còn việc dở.
+ * làm mất việc đó. `busy` trả true khi còn việc dở. Trả hàm gỡ đăng ký.
  */
-export function holdLoginRedirect(busy: () => boolean): void {
+export function holdLoginRedirect(busy: () => boolean): () => void {
   loginHolds.add(busy);
+  return () => {
+    loginHolds.delete(busy);
+  };
 }
 
 export async function api<T = unknown>(path: string, init: Init = {}): Promise<T> {

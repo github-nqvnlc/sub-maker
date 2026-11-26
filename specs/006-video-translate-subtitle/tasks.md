@@ -147,44 +147,44 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 
 ### Tests (viết trước)
 
-- [ ] T055 [P] [US2] `tests/unit/video/cue-ops.test.ts`: tất cả hoặc không, lô nghịch đảo, gộp, tách, kẹp ±100/±500 ms, `end − start ≥ 100`, không chồng, không vượt thời lượng (FR-023, FR-024).
-- [ ] T056 [P] [US2] `tests/integration/video-cues.test.ts`: `CUE_CONFLICT`, `CUE_INVALID`, `script_bytes` và hạn mức 500 MB đầy vẫn lưu, 3.000 cue (FR-055).
+- [X] T055 [P] [US2] `tests/unit/video/cue-ops.test.ts`: tất cả hoặc không, lô nghịch đảo, gộp, tách, kẹp ±100/±500 ms, `end − start ≥ 100`, không chồng, không vượt thời lượng (FR-023, FR-024).
+- [X] T056 [P] [US2] `tests/integration/video-cues.test.ts`: `CUE_CONFLICT`, `CUE_INVALID`, `script_bytes` và hạn mức 500 MB đầy vẫn lưu, 3.000 cue (FR-055).
 
 ### Cài đặt
 
-- [ ] T057 [US2] Viết `src/lib/video/cue-ops.ts` theo contracts/subtitle-pipeline.md §3 (`ops` 1–20.000).
-- [ ] T058 [US2] Viết `src/lib/video/cues.ts` (giao dịch theo `cue_revision`, tối đa 20.000 cue, cập nhật `script_bytes`, `last_activity_at`). Gọi `recomputeSourceExpiry` trong cùng giao dịch khi đổi trạng thái hoặc có hoạt động.
-- [ ] T059 [US2] Viết route `src/app/api/video/jobs/[jobId]/cues/route.ts` và `cues/ops/route.ts`.
-- [ ] T060 [US2] Viết route `src/app/api/video/jobs/[jobId]/media/route.ts` (`kind` `source|preview|audio`, Range, thẻ giữ lượt tải).
-- [ ] T061 [US2] Viết `src/worker/jobs/video-preview.ts` (khi nguồn không phát được phổ biến, cao hơn 1080 hoặc trên 8 Mbps; 720p CRF 28, khung khóa 2 giây); xếp việc từ `video-prepare.ts`; kiểm trong `tests/integration/video-translate.test.ts`. Nhịp tim mỗi 2 giây; dừng khi có yêu cầu dừng, bản ghi bị xóa hoặc bị thu hồi quyền; chỉ ghi khi còn đang chạy và đúng lượt, như `src/worker/jobs/render-overlay.ts`. Dùng `preview_heartbeat_at`, `preview_attempt`. Lỗi tạm (`STORAGE_UNAVAILABLE`, `RENDER_FAILED`, `RENDER_STALLED`) thử lại tối đa 3 lần, chờ tăng dần; lỗi vĩnh viễn (`SOURCE_UNREADABLE`, `VIDEO_UNSUPPORTED`, `QUOTA_EXCEEDED`, `DISK_FULL`) không thử lại; gián đoạn quá 3 lần thì báo lỗi. ffmpeg/ffprobe đọc tệp không tin cậy với `-protocol_whitelist file` và ép bộ tách theo đuôi; chạy ưu tiên CPU thấp, tối đa số luồng − 2.
-- [ ] T062 [US2] Hỏi người dùng, rồi thêm `@tanstack/react-virtual` vào `package.json`.
-- [ ] T063 [US2] Hiệu chỉnh người kiểm cho loại **trang chi tiết dưới Project**: như T045 nhưng chép `src/components/player/voice-view.tsx`, checklist của T064–T068. Ghi kết quả tại đây.
-- [ ] T064 [US2] Viết `src/app/(app)/projects/[projectId]/video/[jobId]/page.tsx` và `src/components/video/editor.tsx`. Mẫu: `src/components/player/voice-view.tsx`.
+- [X] T057 [US2] Viết `src/lib/video/cue-ops.ts` theo contracts/subtitle-pipeline.md §3 (`ops` 1–20.000).
+- [X] T058 [US2] Viết `src/lib/video/cues.ts` (giao dịch theo `cue_revision`, tối đa 20.000 cue, cập nhật `script_bytes`, `last_activity_at`). Gọi `recomputeSourceExpiry` trong cùng giao dịch khi đổi trạng thái hoặc có hoạt động.
+- [X] T059 [US2] Viết route `src/app/api/video/jobs/[jobId]/cues/route.ts` và `cues/ops/route.ts`.
+- [X] T060 [US2] Viết route `src/app/api/video/jobs/[jobId]/media/route.ts` (`kind` `source|preview|audio`, Range, thẻ giữ lượt tải).
+- [X] T061 [US2] Viết `src/worker/jobs/video-preview.ts` (khi nguồn không phát được phổ biến, cao hơn 1080 hoặc trên 8 Mbps; 720p CRF 28, khung khóa 2 giây); xếp việc từ `video-prepare.ts`; kiểm trong `tests/integration/video-translate.test.ts`. Nhịp tim mỗi 2 giây; dừng khi có yêu cầu dừng, bản ghi bị xóa hoặc bị thu hồi quyền; chỉ ghi khi còn đang chạy và đúng lượt, như `src/worker/jobs/render-overlay.ts`. Dùng `preview_heartbeat_at`, `preview_attempt`. Lỗi tạm (`STORAGE_UNAVAILABLE`, `RENDER_FAILED`, `RENDER_STALLED`) thử lại tối đa 3 lần, chờ tăng dần; lỗi vĩnh viễn (`SOURCE_UNREADABLE`, `VIDEO_UNSUPPORTED`, `QUOTA_EXCEEDED`, `DISK_FULL`) không thử lại; gián đoạn quá 3 lần thì báo lỗi. ffmpeg/ffprobe đọc tệp không tin cậy với `-protocol_whitelist file` và ép bộ tách theo đuôi; chạy ưu tiên CPU thấp, tối đa số luồng − 2.
+- [X] T062 [US2] (2026-11-26: người dùng đã đồng ý trước khi triển khai, xem implementation-notes.md; thêm bản 3.14.26 phát hành ngày 03/11, bỏ qua bản mới hơn vừa phát hành vài ngày) Hỏi người dùng, rồi thêm `@tanstack/react-virtual` vào `package.json`.
+- [X] T063 [US2] **Kết quả (2026-11-26): ĐẠT.** Bản chép đặt ngoài repo, đổi nút về Project sang `variant="ghost"`; agent kiểm tìm đúng sai lệch đó (dòng 76), không báo thêm lỗi. Agent lưu ý: `h1`, `Tabs` và thông báo 404 riêng không phải cách viết chung của mọi trang chi tiết (`job-monitor.tsx` không có) — giữ theo trang mẫu mà task nêu. Ghi nhận có sẵn từ trước, ngoài phạm vi: `voice-view.tsx` hiện "đang tải" mãi khi truy vấn văn bản gốc lỗi. Hiệu chỉnh người kiểm cho loại **trang chi tiết dưới Project**: như T045 nhưng chép `src/components/player/voice-view.tsx`, checklist của T064–T068. Ghi kết quả tại đây.
+- [X] T064 [US2] **`done`** (2026-11-26: agent kiểm ba lượt; sửa: tải lại khi xung đột lỗi không bỏ thay đổi, rời trang vẫn lưu nốt, báo lỗi lưu ở mọi tab, khung xem trước đứng trước trong thứ tự Tab, không giữ bản đệm cue) Viết `src/app/(app)/projects/[projectId]/video/[jobId]/page.tsx` và `src/components/video/editor.tsx`. Mẫu: `src/components/player/voice-view.tsx`.
   - Đầu trang `h1` `truncate text-2xl font-semibold`; nút về Project `Button asChild variant="outline" size="sm"` bọc `Link`.
   - `LoadingList`, `ErrorState` với thông báo riêng cho 404.
   - Nhóm chức năng bằng `Tabs`; xem trước ở cột phải `lg:sticky lg:top-4`, lên đầu trên điện thoại.
   - Không chép: ô chọn voice khác, tab "văn bản gốc".
   - Khi video có nhiều luồng tiếng, nêu rõ đang dùng luồng nào.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T065 [US2] Viết `src/components/video/video-preview.tsx` (`<video>` hoặc `<audio>` + `<canvas>`, `requestVideoFrameCallback`, chỉ vẽ khi khóa khung đổi, ưu tiên tệp trên máy → bản xem trước → nguồn; báo rõ khi chưa phát được hình). Mẫu: `src/components/overlay/preview-player.tsx`.
+- [X] T065 [US2] **`done`** (2026-11-26: agent kiểm ba lượt; nền đen của khung video là chủ ý vì là nội dung; một phần tử `<video>` phát cả âm thanh thay cho `<audio>` để mốc không đổi khi đổi nguồn; chưa đo tương phản) Viết `src/components/video/video-preview.tsx` (`<video>` hoặc `<audio>` + `<canvas>`, `requestVideoFrameCallback`, chỉ vẽ khi khóa khung đổi, ưu tiên tệp trên máy → bản xem trước → nguồn; báo rõ khi chưa phát được hình). Mẫu: `src/components/overlay/preview-player.tsx`.
   - Cột phải `lg:sticky lg:top-4`; trạng thái bằng `LoadingList`, `ErrorState`; chữ qua `useT()`; màu chữ trong `<canvas>` là nội dung người dùng, mọi màu khác theo theme.
   - Không chép: điều khiển chỉ dành cho âm thanh của `overlay/preview-player.tsx`.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T066 [US2] Viết `src/components/video/cue-list.tsx` (hai cột gốc/dịch, ảo hóa, tô sáng, bấm để tua). Mẫu: `src/components/player/synced-text.tsx`.
+- [X] T066 [US2] **`done`** (2026-11-26: agent kiểm ba lượt; sửa: cú bấm đầu không bị mất, bấm vùng hàng thì tua, không giành tiêu điểm; chưa đo hiệu năng 20.000 cue trên trình duyệt) Viết `src/components/video/cue-list.tsx` (hai cột gốc/dịch, ảo hóa, tô sáng, bấm để tua). Mẫu: `src/components/player/synced-text.tsx`.
   - Tự cuộn vào giữa, ngưng 3,5 giây khi người dùng tự cuộn, tôn trọng `prefers-reduced-motion`, bấm để phát từ cue.
   - `EmptyState` khi không có cue; chữ qua `useT()`; khoảng cách theo theme.
   - Không chép: gộp nhiều cue trong một đoạn và nhãn "lỗi"/"tràn" của voice.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T067 [US2] Viết `src/components/video/cue-editing.tsx` và `src/lib/hooks/use-cue-editor.ts`: sửa tại chỗ, ±100/±500 ms, nhập mốc, gộp, tách, thêm, xóa, tự lưu sau 800 ms, hoàn tác và làm lại, báo tải lại khi xung đột.
+- [X] T067 [US2] **`done`** (2026-11-26: agent kiểm ba lượt; logic nằm ở `src/lib/video/cue-editor-store.ts` để kiểm thử được; mốc đang gõ dở mất khi cuộn hàng ra khỏi vùng nhìn) Viết `src/components/video/cue-editing.tsx` và `src/lib/hooks/use-cue-editor.ts`: sửa tại chỗ, ±100/±500 ms, nhập mốc, gộp, tách, thêm, xóa, tự lưu sau 800 ms, hoàn tác và làm lại, báo tải lại khi xung đột.
   - Nút `Button size="sm" variant="outline"`; xóa qua `shared/confirm-dialog.tsx` nêu số lượng và hậu quả; phản hồi `toast`; lỗi `role="alert"`.
   - Mẫu: `src/components/player/synced-text.tsx` cho hàng cue. Không chép: hàng là một nút bấm duy nhất (hàng ở đây có ô nhập).
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T068 [US2] Viết `src/components/video/timeline.tsx` (kéo mốc bắt đầu, kết thúc; dùng được bằng bàn phím). Thành phần mới do spec nêu tên (FR-023).
+- [X] T068 [US2] **`done`** (2026-11-26: agent kiểm ba lượt; hai thanh kéo dùng `ui/slider`, chưa đọc giá trị dạng mốc cho trình đọc màn hình) Viết `src/components/video/timeline.tsx` (kéo mốc bắt đầu, kết thúc; dùng được bằng bàn phím). Thành phần mới do spec nêu tên (FR-023).
   - Màu và khoảng cách theo theme; nút theo `Button`; chữ qua `useT()`.
   - Mẫu: thanh tua trong `src/components/player/voice-player.tsx`. Không chép: nút tốc độ, âm lượng.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T069 [US2] `tests/e2e/video-editor.spec.ts`: đồng bộ, sửa, hoàn tác, hai tab, 375 px (FR-022).
-- [ ] T070 [US2] Chạy Independent Test của US2 theo `specs/006-video-translate-subtitle/quickstart.md` §2 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+- [X] T069 [US2] (`tests/e2e/video-editor.spec.ts`, 5/5 ở máy tính và 375 px; Chromium của Playwright) `tests/e2e/video-editor.spec.ts`: đồng bộ, sửa, hoàn tác, hai tab, 375 px (FR-022).
+- [X] T070 [US2] **Kết quả (2026-11-26): ĐẠT bằng kiểm thử tự động** (Soniox giả). quickstart §2: (1) cue tô sáng, chữ nổi đúng mốc, bấm mốc thì phát từ đó — E2E; (2) sửa chữ, ±100/±500 ms, nhập mốc, dòng thời gian bằng phím, tách, gộp, thêm, xóa, hoàn tác, tải lại trang còn nguyên — E2E (kéo bằng chuột trên dòng thời gian chỉ kiểm qua phím); (3) hai thẻ cùng sửa, thẻ sau được báo tải lại, không đè — E2E và `video-cues.test.ts`; (5) 3.000 cue thay toàn bộ trong một lô dưới 5 giây ở máy chủ — `video-cues.test.ts` (độ mượt khi gõ chưa đo). Mục (4) tìm và thay thuộc US6. Chạy Independent Test của US2 theo `specs/006-video-translate-subtitle/quickstart.md` §2 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
 
 **Checkpoint**: sửa được kịch bản đã dịch.
 

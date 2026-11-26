@@ -47,12 +47,15 @@ export type ProjectDetailDto = {
 
 const ACTIVE = new Set(['queued', 'running']);
 
-export function ProjectDetail({ projectId }: { projectId: string }) {
+const PROJECT_TABS = ['files', 'media', 'jobs', 'voices', 'overlay', 'video'];
+
+/** `initialTab`: tab mở sẵn khi quay về từ trang con (ví dụ trình biên tập video). */
+export function ProjectDetail({ projectId, initialTab }: { projectId: string; initialTab?: string }) {
   const t = useT();
   const fx = useFormat();
   const qc = useQueryClient();
   const router = useRouter();
-  const [tab, setTab] = useState('files');
+  const [tab, setTab] = useState(initialTab && PROJECT_TABS.includes(initialTab) ? initialTab : 'files');
   const [editOpen, setEditOpen] = useState(false);
   const [deleteProject, setDeleteProject] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);

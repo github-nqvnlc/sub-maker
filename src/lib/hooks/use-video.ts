@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { api, apiDelete, apiPost } from '@/lib/api-client';
 import type { VideoJobDetailDto, VideoJobDto, VideoLogDto, VideoTabDto } from '@/lib/video/service';
 import { isBusyStatus } from '@/lib/video/status';
-import { uploadRegistry, type UploadSnapshot } from '@/lib/video/upload-client';
+import { forgetLocalVideo, uploadRegistry, type UploadSnapshot } from '@/lib/video/upload-client';
 
 /** Dữ liệu dịch video (spec 006) như API trả về. */
 export type { VideoJobDetailDto, VideoJobDto, VideoLogDto, VideoTabDto };
@@ -42,6 +42,8 @@ export function useVideoJob(jobId: string | null) {
     queryKey: videoKeys.job(jobId ?? ''),
     enabled: !!jobId,
     queryFn: () => api<VideoJobDetailDto>(`/api/video/jobs/${jobId}`),
+    // tải lại video nguồn và kiểm tệp không đổi trạng thái việc nên luồng sự kiện không báo: hỏi lại
+    refetchInterval: (q) => (q.state.data && (q.state.data.sourceState === 'checking' || q.state.data.upload) ? LIST_POLL_MS : false),
   });
 }
 
@@ -124,6 +126,7 @@ export function useVideoActions(projectId: string) {
       uploadRegistry.get(id)?.pause();
       await apiDelete(`/api/video/jobs/${id}`);
       uploadRegistry.remove(id);
+      forgetLocalVideo(id);
     },
     onSettled: refresh,
   });

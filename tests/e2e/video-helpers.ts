@@ -19,12 +19,19 @@ export type VideoFile = { name: string; mimeType: string; buffer: Buffer };
  */
 export function makeVideoFile(name: string, opts: { seconds?: number; padMb?: number; size?: string; rate?: number } = {}): VideoFile {
   const { seconds = 6, padMb = 0, size = '640x360', rate = 25 } = opts;
+  // đuôi quyết định định dạng: .webm phát được ở mọi trình duyệt, .avi (MPEG-4) thì không
+  const ext = name.endsWith('.webm') ? 'webm' : name.endsWith('.avi') ? 'avi' : 'mp4';
+  const codecs = {
+    webm: ['-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-pix_fmt', 'yuv420p', '-c:a', 'libopus'],
+    avi: ['-c:v', 'mpeg4', '-q:v', '5', '-c:a', 'libmp3lame'],
+    mp4: ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart'],
+  }[ext];
   const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-video-'));
   try {
-    const file = path.join(dir, 'v.mp4');
+    const file = path.join(dir, `v.${ext}`);
     const r = spawnSync(
       process.env.FFMPEG_PATH || 'ffmpeg',
-      ['-v', 'error', '-f', 'lavfi', '-i', `testsrc2=s=${size}:r=${rate}:d=${seconds}`, '-f', 'lavfi', '-i', `sine=frequency=600:duration=${seconds}`, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', '-y', file],
+      ['-v', 'error', '-f', 'lavfi', '-i', `testsrc2=s=${size}:r=${rate}:d=${seconds}`, '-f', 'lavfi', '-i', `sine=frequency=600:duration=${seconds}`, ...codecs, '-y', file],
       { stdio: 'inherit' },
     );
     if (r.status !== 0) throw new Error('Không tạo được video thử');
@@ -35,7 +42,7 @@ export function makeVideoFile(name: string, opts: { seconds?: number; padMb?: nu
       pad.write('free', 4, 'latin1');
       buffer = Buffer.concat([buffer, pad]);
     }
-    return { name, mimeType: 'video/mp4', buffer };
+    return { name, mimeType: ext === 'webm' ? 'video/webm' : ext === 'avi' ? 'video/x-msvideo' : 'video/mp4', buffer };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

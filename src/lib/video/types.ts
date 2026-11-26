@@ -5,6 +5,17 @@
 export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'flv', 'm4v'] as const;
 export type VideoExtension = (typeof VIDEO_EXTENSIONS)[number];
 
+/** Kiểu nội dung khi lưu và phát video nguồn. */
+export const VIDEO_CONTENT_TYPES: Record<VideoExtension, string> = {
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  mkv: 'video/x-matroska',
+  webm: 'video/webm',
+  avi: 'video/x-msvideo',
+  flv: 'video/x-flv',
+};
+
 /** Hướng dịch (FR-012). */
 export const DIRECTIONS = ['to_vi', 'vi_to_en'] as const;
 export type Direction = (typeof DIRECTIONS)[number];
@@ -64,6 +75,8 @@ export type VideoMedia = {
   audioDurationMs: number;
   /** số luồng tiếng trong tệp */
   audioStreams: number;
+  /** thứ tự (từ 1) của luồng được dùng trong các luồng tiếng */
+  audioNumber?: number;
   rotation: number;
   hdr: boolean;
   /** ma trận màu của nguồn SDR */

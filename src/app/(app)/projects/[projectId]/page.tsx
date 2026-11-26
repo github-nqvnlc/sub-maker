@@ -1,6 +1,7 @@
 import { ProjectDetail } from '@/components/projects/project-detail';
 
-export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
+export default async function ProjectPage({ params, searchParams }: { params: Promise<{ projectId: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { projectId } = await params;
-  return <ProjectDetail projectId={projectId} />;
+  const { tab } = await searchParams;
+  return <ProjectDetail projectId={projectId} initialTab={tab} />;
 }

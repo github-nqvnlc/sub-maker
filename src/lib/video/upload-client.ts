@@ -322,6 +322,23 @@ export class VideoUpload {
 
 // ---- Các lượt tải đang sống trong tab trình duyệt -----------------------------------------------
 
+/** Tệp trên máy của các video đã chọn trong phiên này: trình biên tập phát thẳng từ tệp, không phải tải lại từ máy chủ. */
+const localFiles = new Map<string, { file: Blob; url: string | null }>();
+export const rememberLocalVideo = (jobId: string, file: Blob): void => {
+  forgetLocalVideo(jobId);
+  localFiles.set(jobId, { file, url: null });
+};
+/** Địa chỉ phát của tệp trên máy, tạo một lần rồi dùng lại. */
+export function localVideoUrl(jobId: string): string | null {
+  const hit = localFiles.get(jobId);
+  return hit ? (hit.url ??= URL.createObjectURL(hit.file)) : null;
+}
+export function forgetLocalVideo(jobId: string): void {
+  const url = localFiles.get(jobId)?.url;
+  if (url) URL.revokeObjectURL(url);
+  localFiles.delete(jobId);
+}
+
 const live = new Map<string, VideoUpload>();
 const watchers = new Set<() => void>();
 let version = 0;

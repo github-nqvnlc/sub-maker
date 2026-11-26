@@ -33,9 +33,9 @@ const loadCoverage = () =>
     return r.json() as Promise<FontCoverage>;
   }));
 
-const asCtx = (c: CanvasRenderingContext2D): Ctx2D => c as unknown as Ctx2D;
+export const asCtx = (c: CanvasRenderingContext2D): Ctx2D => c as unknown as Ctx2D;
 
-function createLayer(width: number, height: number): Layer {
+export function createLayer(width: number, height: number): Layer {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -44,7 +44,7 @@ function createLayer(width: number, height: number): Layer {
 
 export type FontStatus = 'loading' | 'ready' | 'error';
 
-function useFontStatus(family: FontFamily): FontStatus {
+export function useFontStatus(family: FontFamily): FontStatus {
   const [state, setState] = useState<{ family: FontFamily; status: FontStatus }>({ family, status: 'loading' });
   useEffect(() => {
     let alive = true;

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -125,6 +126,11 @@ export function VideoJobList({ projectId, allowed }: { projectId: string; allowe
       header: l.colActions,
       cell: (j) => (
         <div className="flex flex-wrap gap-1">
+          {j.cueCount > 0 || j.editable ? (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/projects/${projectId}/video/${j.id}`}>{l.open}</Link>
+            </Button>
+          ) : null}
           {j.canStop ? (
             // đang dịch (hoặc bị gián đoạn khi đang dịch) mà dừng có thể mất kết quả đã trả phí: hỏi trước
             <Button size="sm" variant="outline" disabled={stop.isPending} onClick={() => (j.displayStatus === 'translating' || j.displayStatus === 'interrupted' ? setStopTarget(j) : void requestStop(j.id))}>

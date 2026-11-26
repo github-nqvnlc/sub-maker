@@ -14,6 +14,7 @@ type Rule = [match: string | RegExp, to: string];
 const EN_RULES: Rule[] = [
   // ---- src/lib/api, route ----
   ['Nội dung gửi lên phải là JSON hợp lệ', 'The request body must be valid JSON'],
+  ['Loại tệp phát không hợp lệ', 'Invalid media kind'],
   ['Trang hoặc kích thước trang không hợp lệ', 'Invalid page or page size'],
   ['Không có thay đổi nào', 'There are no changes'],
   ['Thiếu xác nhận', 'Confirmation is missing'],
