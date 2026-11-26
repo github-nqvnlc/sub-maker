@@ -7,6 +7,8 @@ import { waitUntilNotRunning } from '../jobs/delete';
 import { cacheIdsReferencedByJobs, purgeObjects, purgeOrphanCache } from '../storage/cleanup';
 import { collectOverlayCleanup, runOverlayCleanup, stopProjectOverlay } from '../overlay/cleanup';
 import { collectSttCleanup, runSttCleanup } from '../stt/cleanup';
+import { deleteVideoJobs } from '../video/cleanup';
+import { stopProjectVideo } from '../video/control';
 
 /**
  * Xóa Project và TOÀN BỘ dữ liệu liên quan (FR-004): dừng tiến trình đang chạy trước, rồi xóa file gốc, voice,
@@ -32,7 +34,8 @@ export async function deleteProjects(ownerId: string, ids: string[], opts: { wai
     await requestStop(ownerId, jobIds);
     const stillRunning = await waitUntilNotRunning(jobIds, opts.waitMs);
     const overlayRunning = await stopProjectOverlay(ownerId, projectId, opts.waitMs);
-    if (stillRunning.length > 0 || overlayRunning.length > 0) {
+    const videoRunning = await stopProjectVideo(ownerId, projectId, opts.waitMs);
+    if (stillRunning.length > 0 || overlayRunning.length > 0 || videoRunning > 0) {
       result.busy.push(projectId); // chưa dừng kịp: không xóa (tránh để lại đối tượng mồ côi)
       continue;
     }
@@ -45,6 +48,8 @@ export async function deleteProjects(ownerId: string, ids: string[], opts: { wai
     const sttItems = await collectSttCleanup({ projectId });
     // Video overlay (spec 005, FR-047)
     const overlayItems = await collectOverlayCleanup(ownerId, projectId);
+    // Dịch video (spec 006, FR-057): xóa bản ghi và trả cả hai hạn mức trong một giao dịch, rồi dọn tệp và phiên tải
+    await deleteVideoJobs(ownerId, { projectId });
 
     // 3) Xóa bản ghi (cascade: file, đoạn, tiến trình, log, voice)
     await db.delete(projects).where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)));

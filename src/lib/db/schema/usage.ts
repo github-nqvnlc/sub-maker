@@ -5,6 +5,7 @@ import { configScope, providerType } from './ai-config';
 import { voiceJobs } from './jobs';
 import { projects } from './projects';
 import { sttJobs } from './stt-jobs';
+import { videoJobs } from './video';
 
 /**
  * Mỗi lần GỌI THẬT nhà cung cấp (cache hit không ghi). Ẩn danh hóa khi xóa User:
@@ -20,6 +21,8 @@ export const usageRecords = pgTable(
     jobId: uuid('job_id').references(() => voiceJobs.id, { onDelete: 'set null' }),
     /** STT job (spec 004); NULL với bản ghi TTS */
     sttJobId: uuid('stt_job_id').references(() => sttJobs.id, { onDelete: 'set null' }),
+    /** Việc dịch video (spec 006) */
+    videoJobId: uuid('video_job_id').references(() => videoJobs.id, { onDelete: 'set null' }),
     providerType: providerType('provider_type').notNull(),
     configScope: configScope('config_scope').notNull(),
     model: text('model'),

@@ -47,7 +47,9 @@ Mọi bảng có chủ đều mang `owner_id`; mọi truy vấn của người d
 | `heartbeat_at` | timestamptz \| null | |
 | `soniox_file_id`, `soniox_transcription_id` | text \| null | tiếp tục sau gián đoạn |
 | `model` | text \| null | |
-| `translation_run` | int | tăng khi "Dịch lại" |
+| `translation_run` | int | mặc định 1; tăng khi "Dịch lại" |
+| `billed_run` | int | lượt đã ghi bản ghi tính phí, ghi cùng giao dịch với bản ghi đó để chạy lại không ghi lần hai (thêm khi cài đặt T004) |
+| `cue_run` | int | lượt mà cue đang lưu thuộc về, 0 = chưa có cue (thêm khi cài đặt T004) |
 | `cue_revision` | int | tăng mỗi lô thao tác |
 | `cue_count`, `script_bytes` | int, bigint | `script_bytes` tính vào hạn mức 500 MB (FR-055) |
 | `style` | jsonb | kiểu của việc (§2.1) |
@@ -76,7 +78,7 @@ Giới hạn `client_audio`: ≤ 500 MB.
 | `speaker` | text \| null | |
 | `flags` | jsonb | `{ untranslated?, fast?, review? }` |
 
-Chỉ mục `(job_id, start_ms)`. Tối đa 20.000 cue mỗi việc.
+Chỉ mục `(job_id, start_ms)`. Khóa chính `(job_id, id)` vì `id` của cue thêm mới do trình duyệt sinh. Tối đa 20.000 cue mỗi việc.
 
 ### 1.5 `video_exports` — bản xuất
 

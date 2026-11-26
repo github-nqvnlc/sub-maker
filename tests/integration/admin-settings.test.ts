@@ -4,6 +4,23 @@ import { TestClient, clearRateLimits, createAdmin, createUser, resetDb, type Tes
 import { newProject, uploadScript } from './voice-helpers';
 
 /** US8 — cài đặt hệ thống do Administrator chỉnh (FR-043..044): đọc/ghi, kiểm tra giá trị, có hiệu lực ngay. */
+const GB = 1024 ** 3;
+/** 13 cài đặt của dịch video (spec 006, data-model §4). */
+const VIDEO_DEFAULTS = {
+  userVideoQuotaBytes: 30 * GB,
+  videoSystemCapBytes: 100 * GB,
+  videoMaxBytes: 10 * GB,
+  videoMaxMinutes: 180,
+  videoMaxJobsPerUser: 1,
+  maxConcurrentVideoRenders: 1,
+  maxConcurrentVideoTranslations: 2,
+  videoSourceRetainHours: 48,
+  videoIdleRetainDays: 7,
+  videoOutputRetainDays: 7,
+  videoProviderMaxMinutes: 300,
+  videoGlossaryMaxPairs: 200,
+  videoGlossaryMaxChars: 8000,
+};
 let admin: TestUser;
 let user: TestUser;
 
@@ -46,6 +63,7 @@ describe('/api/admin/settings', () => {
       rpmFptMarketplace: 0,
       rpmShopaikeyOpenai: 0,
       rpmShopaikeyMinimax: 0,
+      ...VIDEO_DEFAULTS,
     });
   });
 
@@ -61,6 +79,14 @@ describe('/api/admin/settings', () => {
     expect((await put(on)).status).toBe(200);
     expect(await get()).toMatchObject(on);
     await put({ maxOverlayJobsPerUser: 2, maxConcurrentOverlayJobs: 1, overlayMaxMinutes: 60, overlayMaxMinutesTransparent: 10 });
+  });
+
+  it('ghi và đọc lại các khóa dịch video (spec 006); đổi cùng lúc hai giới hạn thời lượng thì kiểm theo giá trị mới', async () => {
+    const on = { userVideoQuotaBytes: GB, videoSystemCapBytes: 10 * 1024 * GB, videoMaxBytes: 100 * 1024 * 1024, videoMaxMinutes: 400, videoProviderMaxMinutes: 400, videoMaxJobsPerUser: 10, maxConcurrentVideoRenders: 4, maxConcurrentVideoTranslations: 10, videoSourceRetainHours: 1, videoIdleRetainDays: 90, videoOutputRetainDays: 1, videoGlossaryMaxPairs: 1, videoGlossaryMaxChars: 10_000 };
+    expect((await put(on)).status).toBe(200);
+    expect(await get()).toMatchObject(on);
+    expect((await put(VIDEO_DEFAULTS)).status).toBe(200);
+    expect(await get()).toMatchObject(VIDEO_DEFAULTS);
   });
 
   it('ghi từng phần và đọc lại đúng', async () => {
@@ -93,6 +119,23 @@ describe('/api/admin/settings', () => {
     ['thời lượng overlay trong suốt trên 60 phút', { overlayMaxMinutesTransparent: 61 }],
     ['rpm âm', { rpmFptMarketplace: -1 }],
     ['rpm trên 600', { rpmShopaikeyMinimax: 601 }],
+    ['hạn mức video dưới 1 GB', { userVideoQuotaBytes: GB - 1 }],
+    ['hạn mức video trên 1 TB', { userVideoQuotaBytes: 1024 * GB + 1 }],
+    ['trần video hệ thống trên 10 TB', { videoSystemCapBytes: 10 * 1024 * GB + 1 }],
+    ['video tối đa dưới 100 MB', { videoMaxBytes: 100 * 1024 * 1024 - 1 }],
+    ['video tối đa trên 10 GB', { videoMaxBytes: 10 * GB + 1 }],
+    ['thời lượng video 0 phút', { videoMaxMinutes: 0 }],
+    ['thời lượng video vượt giới hạn nhà cung cấp', { videoMaxMinutes: 301 }],
+    ['giới hạn nhà cung cấp thấp hơn thời lượng tối đa', { videoProviderMaxMinutes: 100 }],
+    ['11 việc video mỗi người', { videoMaxJobsPerUser: 11 }],
+    ['5 bản xuất video cùng lúc', { maxConcurrentVideoRenders: 5 }],
+    ['11 lượt dịch cùng lúc', { maxConcurrentVideoTranslations: 11 }],
+    ['giữ nguồn 721 giờ', { videoSourceRetainHours: 721 }],
+    ['giữ video không hoạt động 91 ngày', { videoIdleRetainDays: 91 }],
+    ['giữ thành phẩm 0 ngày', { videoOutputRetainDays: 0 }],
+    ['giới hạn nhà cung cấp trên 1000 phút', { videoProviderMaxMinutes: 1001 }],
+    ['từ điển 1001 cặp', { videoGlossaryMaxPairs: 1001 }],
+    ['từ điển 499 ký tự', { videoGlossaryMaxChars: 499 }],
   ])('giá trị %s → 422 và không thay đổi gì', async (_name, body) => {
     const before = await get();
     expect((await put(body)).status).toBe(422);

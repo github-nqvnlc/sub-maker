@@ -17,6 +17,7 @@ const EN_RULES: Rule[] = [
   ['Trang hoặc kích thước trang không hợp lệ', 'Invalid page or page size'],
   ['Không có thay đổi nào', 'There are no changes'],
   ['Thiếu xác nhận', 'Confirmation is missing'],
+  ['Thời lượng video tối đa không được vượt giới hạn của nhà cung cấp', 'The maximum video length cannot exceed the provider limit'],
   // ---- video overlay (spec 005) ----
   ['Cấu hình video overlay không hợp lệ', 'Invalid video overlay settings'],
   ['Cần chọn đúng một nguồn voice và một tệp phụ đề', 'Choose exactly one voice source and one subtitle file'],

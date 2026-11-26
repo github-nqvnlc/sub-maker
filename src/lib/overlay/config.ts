@@ -186,3 +186,72 @@ export const usesIntensity = (c: OverlayConfig): boolean => (c.sync !== 'word' &
 
 export const sizeOf = (c: Pick<OverlayConfig, 'aspect'>): { width: number; height: number } => SIZE_OF[c.aspect];
 export const isTransparent = (c: Pick<OverlayConfig, 'background'>): boolean => c.background === 'transparent';
+
+// ---- Kiểu của một cảnh (dùng chung với dịch video, spec 006) -------------------------------------
+
+/** Mọi thứ bộ vẽ cần biết về chữ và hiệu ứng, không gắn với ba tỉ lệ của Video Overlay. */
+export type SceneStyle = Pick<
+  OverlayConfig,
+  | 'background'
+  | 'font'
+  | 'text'
+  | 'stroke'
+  | 'shadow'
+  | 'box'
+  | 'position'
+  | 'align'
+  | 'maxWidthPct'
+  | 'sync'
+  | 'enter'
+  | 'wordEffect'
+  | 'exit'
+  | 'effectMs'
+  | 'intensity'
+  | 'highlightColor'
+  | 'shakeScope'
+> & {
+  /** khung chuẩn: bố cục (cách xuống dòng, vị trí) chỉ phụ thuộc khung này; mọi thông số điểm ảnh tính trên nó */
+  frame: { width: number; height: number };
+  /** hệ số từ khung chuẩn ra khung đích: nhân vào mọi thông số điểm ảnh khi vẽ */
+  k: number;
+};
+
+/** Cạnh ngắn của khung chuẩn cho video bất kỳ (research R2). */
+export const CANONICAL_SHORT_SIDE = 1080;
+
+/** Khung chuẩn giữ tỉ lệ video đích, kèm hệ số `k` để vẽ ra đúng kích thước đó. */
+export function canonicalFrame(width: number, height: number): Pick<SceneStyle, 'frame' | 'k'> {
+  const short = CANONICAL_SHORT_SIDE;
+  return width <= height
+    ? { frame: { width: short, height: (height * short) / width }, k: width / short }
+    : { frame: { width: (width * short) / height, height: short }, k: height / short };
+}
+
+/** Kích thước điểm ảnh của khung đích. */
+export const outputSize = (s: Pick<SceneStyle, 'frame' | 'k'>): { width: number; height: number } => ({
+  width: Math.round(s.frame.width * s.k),
+  height: Math.round(s.frame.height * s.k),
+});
+
+/** Cấu hình Video Overlay là một kiểu cảnh với khung chuẩn đúng bằng khung xuất (`k = 1`). */
+export const overlaySceneStyle = (c: OverlayConfig): SceneStyle => ({
+  background: c.background,
+  font: c.font,
+  text: c.text,
+  stroke: c.stroke,
+  shadow: c.shadow,
+  box: c.box,
+  position: c.position,
+  align: c.align,
+  maxWidthPct: c.maxWidthPct,
+  sync: c.sync,
+  enter: c.enter,
+  wordEffect: c.wordEffect,
+  exit: c.exit,
+  effectMs: c.effectMs,
+  intensity: c.intensity,
+  highlightColor: c.highlightColor,
+  shakeScope: c.shakeScope,
+  frame: sizeOf(c),
+  k: 1,
+});

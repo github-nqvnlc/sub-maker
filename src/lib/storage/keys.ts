@@ -18,6 +18,21 @@ export const storageKeys = {
   /** Tệp âm thanh gốc chờ chuẩn hóa: KHÔNG tính vào hạn mức */
   overlayAudioTemp: (userId: string, audioId: string, ext: string) => `users/${userId}/overlay-tmp/${audioId}/source.${ext}`,
   overlayTempPrefix: (userId: string) => `users/${userId}/overlay-tmp/`,
+  /** Dịch video (spec 006, data-model §5). Dưới `video/`: tính vào hạn mức video. */
+  videoPrefix: (userId: string) => `users/${userId}/video/`,
+  videoJobPrefix: (userId: string, jobId: string) => `users/${userId}/video/${jobId}/`,
+  videoSource: (userId: string, jobId: string, ext: string) => `users/${userId}/video/${jobId}/source.${ext}`,
+  videoExport: (userId: string, jobId: string, exportId: string, ext: string) => `users/${userId}/video/${jobId}/exports/${exportId}.${ext}`,
+  /** Dưới `video-tmp/`: tệp hệ thống dẫn xuất, không tính hạn mức người dùng (chỉ trần hệ thống). */
+  videoTempPrefix: (userId: string) => `users/${userId}/video-tmp/`,
+  videoJobTempPrefix: (userId: string, jobId: string) => `users/${userId}/video-tmp/${jobId}/`,
+  /** MP3 16 kHz tách từ video, dùng để gửi dịch và để nghe khi chưa phát được hình */
+  videoAudio: (userId: string, jobId: string) => `users/${userId}/video-tmp/${jobId}/audio.mp3`,
+  /** âm thanh do trình duyệt gửi (luồng nhanh), xóa sau khi chuyển MP3 */
+  videoClientAudio: (userId: string, jobId: string, ext: string) => `users/${userId}/video-tmp/${jobId}/audio-client.${ext}`,
+  videoPreview: (userId: string, jobId: string) => `users/${userId}/video-tmp/${jobId}/preview.mp4`,
+  /** token thô của nhà cung cấp theo lượt dịch */
+  videoTranscript: (userId: string, jobId: string, run: number) => `users/${userId}/video-tmp/${jobId}/transcript-${run}.json`,
 } as const;
 
 /** Chặn khóa thoát khỏi vùng của User (phòng thủ chiều sâu). */

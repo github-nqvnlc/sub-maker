@@ -19,6 +19,7 @@ export type AuthUser = {
   role: 'admin' | 'user';
   status: 'active' | 'banned' | 'deleting';
   canUseCustomAi: boolean;
+  canTranslateVideo: boolean;
   storageUsedBytes: number;
   avatarKey: string | null;
   lastActiveAt: Date | null;
@@ -42,6 +43,7 @@ async function loadSessionUser(headers: Headers): Promise<AuthUser | null> {
     role: row.role,
     status: row.status,
     canUseCustomAi: row.canUseCustomAi,
+    canTranslateVideo: row.canTranslateVideo,
     storageUsedBytes: row.storageUsedBytes,
     avatarKey: row.avatarKey,
     lastActiveAt: row.lastActiveAt,

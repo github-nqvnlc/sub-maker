@@ -9,6 +9,7 @@ const patchSchema = z
   .object({
     status: z.enum(['active', 'banned']).optional(),
     canUseCustomAi: z.boolean().optional(),
+    canTranslateVideo: z.boolean().optional(),
   })
   .strict();
 
@@ -16,7 +17,7 @@ export const PATCH = route(async (request: Request, ctx: RouteContext) => {
   await requireAdmin(request);
   const userId = await pathParam(ctx, 'userId');
   const body = patchSchema.parse(await readJson(request));
-  if (body.status === undefined && body.canUseCustomAi === undefined) throw validation({ _: 'Không có thay đổi nào' });
+  if (body.status === undefined && body.canUseCustomAi === undefined && body.canTranslateVideo === undefined) throw validation({ _: 'Không có thay đổi nào' });
   return Response.json(await updateUser(userId, body));
 });
 

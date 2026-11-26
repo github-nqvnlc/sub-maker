@@ -64,6 +64,13 @@
       "when": 1795336400000,
       "tag": "0008_overlay_video",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795676488750,
+      "tag": "0009_video_translate",
+      "breakpoints": true
     }
   ]
 }

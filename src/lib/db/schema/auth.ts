@@ -35,6 +35,10 @@ export const users = pgTable(
     status: userStatus('status').notNull().default('active'),
     canUseCustomAi: boolean('can_use_custom_ai').notNull().default(false),
     storageUsedBytes: bigint('storage_used_bytes', { mode: 'number' }).notNull().default(0),
+    /** Quyền dùng Dịch Video (spec 006, FR-008); Administrator luôn được phép */
+    canTranslateVideo: boolean('can_translate_video').notNull().default(false),
+    /** Hạn mức video riêng (spec 006, FR-053), tách khỏi `storage_used_bytes` */
+    videoUsedBytes: bigint('video_used_bytes', { mode: 'number' }).notNull().default(0),
     /** Ngôn ngữ giao diện (spec 003, FR-021): vi | en */
     locale: text('locale').notNull().default('vi'),
     /** Chế độ giao diện (spec 003, FR-016): light | dark | system */
@@ -48,6 +52,7 @@ export const users = pgTable(
     check('users_name_len', sql`char_length(${t.name}) between 1 and 60`),
     check('users_bio_len', sql`${t.bio} is null or char_length(${t.bio}) <= 500`),
     check('users_storage_nonneg', sql`${t.storageUsedBytes} >= 0`),
+    check('users_video_storage_nonneg', sql`${t.videoUsedBytes} >= 0`),
     check('users_locale_valid', sql`${t.locale} in ('vi','en')`),
     check('users_theme_valid', sql`${t.theme} in ('light','dark','system')`),
     index('users_status_idx').on(t.status),

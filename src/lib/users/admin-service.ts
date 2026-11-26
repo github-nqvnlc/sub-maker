@@ -5,6 +5,7 @@ import { HttpError, notFound } from '../api/errors';
 import { getAuth } from '../auth/auth';
 import { disablePersonalConfigs } from '../providers/config-service';
 import { stopAllForUser } from '../jobs/control';
+import { stopAllVideoForUser } from '../video/control';
 import { enqueueDeleteUser } from '../../worker/queues';
 import { toPage } from '../api/pagination';
 
@@ -20,6 +21,7 @@ export type AdminUserDto = {
   role: 'admin' | 'user';
   status: 'active' | 'banned' | 'deleting';
   canUseCustomAi: boolean;
+  canTranslateVideo: boolean;
   createdAt: string;
   lastActiveAt: string | null;
 };
@@ -34,6 +36,7 @@ export function toAdminUser(row: UserRow): AdminUserDto {
     role: row.role,
     status: row.status,
     canUseCustomAi: row.canUseCustomAi,
+    canTranslateVideo: row.canTranslateVideo,
     createdAt: row.createdAt.toISOString(),
     lastActiveAt: row.lastActiveAt?.toISOString() ?? null,
   };
@@ -89,7 +92,7 @@ async function revokeSessions(userId: string) {
 
 export async function updateUser(
   userId: string,
-  patch: { status?: 'active' | 'banned'; canUseCustomAi?: boolean },
+  patch: { status?: 'active' | 'banned'; canUseCustomAi?: boolean; canTranslateVideo?: boolean },
 ): Promise<AdminUserDto> {
   const target = await getTarget(userId);
   assertManageable(target);
@@ -98,6 +101,7 @@ export async function updateUser(
   const set: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
   if (patch.status !== undefined) set.status = patch.status;
   if (patch.canUseCustomAi !== undefined) set.canUseCustomAi = patch.canUseCustomAi;
+  if (patch.canTranslateVideo !== undefined) set.canTranslateVideo = patch.canTranslateVideo;
   await getDb().update(users).set(set).where(eq(users.id, userId));
 
   if (patch.status === 'banned') {
@@ -107,6 +111,8 @@ export async function updateUser(
   }
   // FR-044: không còn quyền dùng cấu hình riêng → vô hiệu (giữ lại) cấu hình riêng của User
   if (patch.canUseCustomAi === false) await disablePersonalConfigs(userId);
+  // Spec 006, FR-008: thu hồi quyền Dịch Video dừng tiến trình đang chạy để không phát sinh thêm chi phí (dữ liệu đã có giữ nguyên)
+  if (patch.canTranslateVideo === false && patch.status !== 'banned') await stopAllVideoForUser(userId);
 
   const [fresh] = await getDb().select().from(users).where(eq(users.id, userId));
   return toAdminUser(fresh!);

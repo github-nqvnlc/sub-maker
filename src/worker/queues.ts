@@ -8,6 +8,12 @@ export const QUEUES = {
   transcribeMedia: 'transcribe-media',
   renderOverlay: 'render-overlay',
   prepareOverlayAudio: 'prepare-overlay-audio',
+  /** Dịch video (spec 006, research R9): hàng đợi riêng để video lớn không chiếm chỗ của voice, phụ đề, overlay */
+  videoPrepare: 'video-prepare',
+  videoTranslate: 'video-translate',
+  videoPreview: 'video-preview',
+  videoRender: 'video-render',
+  videoRetention: 'video-retention',
 } as const;
 
 export type GenerateVoicePayload = { jobId: string };
@@ -16,6 +22,11 @@ export type ReconcileStoragePayload = Record<string, never>;
 export type TranscribeMediaPayload = { jobId: string };
 export type RenderOverlayPayload = { jobId: string };
 export type PrepareOverlayAudioPayload = { audioId: string };
+export type VideoPreparePayload = { jobId: string };
+export type VideoTranslatePayload = { jobId: string };
+export type VideoPreviewPayload = { jobId: string };
+export type VideoRenderPayload = { exportId: string };
+export type VideoRetentionPayload = Record<string, never>;
 
 type Role = 'web' | 'worker';
 
@@ -103,6 +114,12 @@ export async function ensureQueues(boss: PgBoss): Promise<void> {
     expireInSeconds: 3600,
     deleteAfterSeconds: 24 * 3600,
   });
+  // Dịch video (spec 006): không retry tự động; thử lại và tiếp tục do worker + sweeper điều khiển. pg-boss chặn thời hạn ở 24 giờ
+  // (việc quá hạn đó chỉ bị pg-boss đánh dấu, phục hồi vẫn do nhịp tim trong CSDL quyết định).
+  for (const name of [QUEUES.videoPrepare, QUEUES.videoTranslate, QUEUES.videoPreview, QUEUES.videoRender]) {
+    await boss.createQueue(name, { retryLimit: 0, expireInSeconds: 24 * 3600, deleteAfterSeconds: 3 * 24 * 3600 });
+  }
+  await boss.createQueue(QUEUES.videoRetention, { retryLimit: 1, expireInSeconds: 3600, deleteAfterSeconds: 24 * 3600 });
 }
 
 export async function enqueueGenerateVoice(jobId: string): Promise<string | null> {
@@ -129,4 +146,24 @@ export async function enqueueRenderOverlay(jobId: string): Promise<string | null
 export async function enqueuePrepareOverlayAudio(audioId: string): Promise<string | null> {
   const boss = await getBoss('web');
   return boss.send(QUEUES.prepareOverlayAudio, { audioId } satisfies PrepareOverlayAudioPayload);
+}
+
+export async function enqueueVideoPrepare(jobId: string): Promise<string | null> {
+  const boss = await getBoss('web');
+  return boss.send(QUEUES.videoPrepare, { jobId } satisfies VideoPreparePayload);
+}
+
+export async function enqueueVideoTranslate(jobId: string): Promise<string | null> {
+  const boss = await getBoss('web');
+  return boss.send(QUEUES.videoTranslate, { jobId } satisfies VideoTranslatePayload);
+}
+
+export async function enqueueVideoPreview(jobId: string): Promise<string | null> {
+  const boss = await getBoss('web');
+  return boss.send(QUEUES.videoPreview, { jobId } satisfies VideoPreviewPayload);
+}
+
+export async function enqueueVideoRender(exportId: string): Promise<string | null> {
+  const boss = await getBoss('web');
+  return boss.send(QUEUES.videoRender, { exportId } satisfies VideoRenderPayload);
 }

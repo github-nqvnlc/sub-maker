@@ -6,6 +6,8 @@ import { deleteByPrefix } from '../../lib/storage/client';
 import { storageKeys } from '../../lib/storage/keys';
 import { stopAllForUser } from '../../lib/jobs/control';
 import { collectSttCleanup, runSttCleanup } from '../../lib/stt/cleanup';
+import { collectVideoCleanup, runVideoCleanup } from '../../lib/video/cleanup';
+import { videoRunningCount } from '../../lib/video/control';
 import { QUEUES, type DeleteUserPayload } from '../queues';
 
 /**
@@ -44,14 +46,18 @@ export async function deleteUserData(userId: string): Promise<{ existed: boolean
       .select({ overlay: sql<number>`count(*)::int` })
       .from(overlayJobs)
       .where(and(eq(overlayJobs.ownerId, userId), eq(overlayJobs.status, 'running')));
-    if (running + overlay > 0) throw new JobsStillRunningError(running + overlay);
+    const video = await videoRunningCount(userId);
+    if (running + overlay + video > 0) throw new JobsStillRunningError(running + overlay + video);
   }
 
   // STT (spec 004, FR-021): lấy id dữ liệu trên Soniox trước khi xóa bản ghi (file tạm nằm dưới tiền tố User)
   const sttItems = user ? await collectSttCleanup({ ownerId: userId }) : [];
+  // Dịch video (spec 006, FR-057): phiên multipart chỉ hủy được theo bản ghi nên phải thu thập trước khi xóa
+  const videoItems = user ? await collectVideoCleanup(userId) : null;
   let objectsDeleted = await deleteByPrefix(storageKeys.userPrefix(userId));
   if (user) await db.delete(users).where(eq(users.id, userId));
   await runSttCleanup(sttItems.map((i) => ({ ...i, key: null })));
+  if (videoItems) await runVideoCleanup(videoItems);
   objectsDeleted += await deleteByPrefix(storageKeys.userPrefix(userId));
   return { existed: !!user, objectsDeleted };
 }

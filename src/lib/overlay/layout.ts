@@ -1,4 +1,4 @@
-import { sizeOf, type OverlayConfig } from './config';
+import { overlaySceneStyle, type OverlayConfig, type SceneStyle } from './config';
 import { fontString } from './fonts';
 import { splitWords } from './words';
 
@@ -63,7 +63,8 @@ function breakWord(word: string, index: number, max: number, width: (t: string) 
   return out;
 }
 
-function wrap(words: readonly string[], max: number, width: (t: string) => number): Wrapped[] {
+/** `first` là chỉ số của từ đầu tiên trong cả câu (câu có ngắt dòng bắt buộc được xếp từng đoạn). */
+function wrap(words: readonly string[], max: number, width: (t: string) => number, first: number): Wrapped[] {
   const space = width(' ');
   const lines: Wrapped[] = [];
   let cur: Wrapped = { pieces: [], width: 0 };
@@ -71,7 +72,8 @@ function wrap(words: readonly string[], max: number, width: (t: string) => numbe
     if (cur.pieces.length > 0) lines.push(cur);
     cur = { pieces: [], width: 0 };
   };
-  words.forEach((word, index) => {
+  words.forEach((word, at) => {
+    const index = first + at;
     const w = width(word);
     if (w > max) {
       for (const p of breakWord(word, index, max, width)) {
@@ -92,9 +94,34 @@ function wrap(words: readonly string[], max: number, width: (t: string) => numbe
   return lines;
 }
 
-export function layoutCue(text: string, c: OverlayConfig, measure: Measure): CueLayout {
-  const { width: W, height: H } = sizeOf(c);
-  const words = splitWords(text);
+/** Đổi bố cục tính trên khung chuẩn ra khung đích: nhân mọi tọa độ với `k`. */
+function scaleLayout(l: CueLayout, k: number, font: string): CueLayout {
+  return {
+    ...l,
+    font,
+    fontSize: l.fontSize * k,
+    lineHeight: l.lineHeight * k,
+    lines: l.lines.map((line) => ({
+      x: line.x * k,
+      width: line.width * k,
+      baseline: line.baseline * k,
+      segments: line.segments.map((s) => ({ ...s, x: s.x * k, width: s.width * k })),
+    })),
+    box: { x: l.box.x * k, y: l.box.y * k, width: l.box.width * k, height: l.box.height * k },
+    bleed: l.bleed * k,
+    center: { x: l.center.x * k, y: l.center.y * k },
+  };
+}
+
+/**
+ * `\n` trong câu là ngắt dòng bắt buộc. Bố cục luôn tính trên khung chuẩn (nên cách xuống dòng không phụ thuộc kích thước vẽ ra) rồi
+ * mới nhân hệ số `k` của kiểu cảnh.
+ */
+export function layoutCue(text: string, input: OverlayConfig | SceneStyle, measure: Measure): CueLayout {
+  const c = 'frame' in input ? input : overlaySceneStyle(input);
+  const { width: W, height: H } = c.frame;
+  const paragraphs = text.split('\n').map(splitWords).filter((p) => p.length > 0);
+  const wordCount = paragraphs.reduce((n, p) => n + p.length, 0);
   const stroke = c.stroke.enabled ? c.stroke.width : 0;
   const blur = c.shadow.enabled ? c.shadow.blur : 0;
 
@@ -114,7 +141,12 @@ export function layoutCue(text: string, c: OverlayConfig, measure: Measure): Cue
     const drop = c.shadow.enabled ? Math.round(size * SHADOW_DROP) : 0;
     const bleed = Math.ceil(stroke + blur + drop);
     const avail = Math.max(1, Math.min((W * c.maxWidthPct) / 100, W - 2 * (padX + bleed)));
-    const lines = wrap(words, avail, width);
+    let first = 0;
+    const lines = paragraphs.flatMap((words) => {
+      const wrapped = wrap(words, avail, width, first);
+      first += words.length;
+      return wrapped;
+    });
     const lineHeight = size * LINE_HEIGHT;
     const textHeight = lines.length * lineHeight;
     const fits = textHeight + 2 * (padY + bleed) <= H && lines.every((l) => l.width <= avail + 0.01);
@@ -157,7 +189,7 @@ export function layoutCue(text: string, c: OverlayConfig, measure: Measure): Cue
   });
 
   const boxX = lineX(blockW) - a.padX;
-  return {
+  const layout: CueLayout = {
     fontSize: a.size,
     font: a.font,
     lineHeight: a.lineHeight,
@@ -165,7 +197,8 @@ export function layoutCue(text: string, c: OverlayConfig, measure: Measure): Cue
     box: { x: boxX, y: top - a.padY, width: blockW + 2 * a.padX, height: a.textHeight + 2 * a.padY },
     bleed: a.bleed,
     center: { x: boxX + a.padX + blockW / 2, y: cy },
-    wordCount: words.length,
+    wordCount,
     shrunk: a.size < c.font.size,
   };
+  return c.k === 1 ? layout : scaleLayout(layout, c.k, fontString(c.font.family, c.font.weight, a.size * c.k));
 }

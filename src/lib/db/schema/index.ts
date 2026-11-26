@@ -5,3 +5,4 @@ export * from './jobs';
 export * from './usage';
 export * from './stt-jobs';
 export * from './overlay';
+export * from './video';

@@ -1,13 +1,14 @@
-import { BACKGROUND_COLOR, isTransparent, sizeOf, type OverlayConfig } from './config';
-import { cueEffect, wordStates, type WordState } from './effects';
+import { BACKGROUND_COLOR, isTransparent, outputSize, overlaySceneStyle, type OverlayConfig, type SceneStyle } from './config';
+import { BOUNCE_PEAK, cueEffect, DROP_Y, POP_PEAK, shakeAmplitude, SLIDE_Y, wordStates, type WordState } from './effects';
 import { graphemes, layoutCue, SHADOW_DROP, type CueLayout, type Measure, type Segment } from './layout';
 import { activeCueIndex } from './timing';
 import type { AppliedCue, WordSpan } from './types';
 import { wordSpans } from './words';
 
 /**
- * Bộ vẽ khung của video overlay (overlay-engine §5): cùng mã cho khung xem trước (canvas của trình duyệt) và tiến trình dựng hình
- * (@napi-rs/canvas). Luôn vẽ ở KÍCH THƯỚC XUẤT; không nhập DOM, Node hay CSDL. Chữ chỉ đi vào fillText/strokeText (FR-046).
+ * Bộ vẽ khung của video overlay (overlay-engine §5) và của dịch video (spec 006, contracts/render-and-media.md §1): cùng mã cho khung
+ * xem trước (canvas của trình duyệt) và tiến trình dựng hình (@napi-rs/canvas). Luôn vẽ ở KÍCH THƯỚC ĐÍCH của cảnh; không nhập DOM,
+ * Node hay CSDL. Chữ chỉ đi vào fillText/strokeText (FR-046).
  */
 
 /** Phần API Canvas 2D mà bộ vẽ dùng; cả hai môi trường đều có. */
@@ -51,7 +52,10 @@ export type CreateLayer = (width: number, height: number) => Layer;
 type Block = { layer: Layer; x: number; y: number; w: number; h: number };
 
 export type Scene = {
-  config: OverlayConfig;
+  /** kiểu cảnh trên khung chuẩn: bố cục tính từ đây */
+  style: SceneStyle;
+  /** cùng kiểu với mọi thông số điểm ảnh đã nhân `k`: dùng khi vẽ */
+  config: SceneStyle;
   width: number;
   height: number;
   cues: readonly AppliedCue[];
@@ -65,8 +69,22 @@ export type Scene = {
 /** Giới hạn bộ nhớ đệm bố cục (video dài có hàng nghìn câu). */
 const LAYOUT_CACHE = 64;
 
-export function createScene(opts: { config: OverlayConfig; cues: readonly AppliedCue[]; measure: Measure; createLayer: CreateLayer }): Scene {
-  const { config, cues, measure, createLayer } = opts;
+/** Thông số điểm ảnh của chữ ở khung đích. */
+function paintStyle(s: SceneStyle): SceneStyle {
+  if (s.k === 1) return s;
+  return {
+    ...s,
+    stroke: { ...s.stroke, width: s.stroke.width * s.k },
+    shadow: { ...s.shadow, blur: s.shadow.blur * s.k },
+    box: { ...s.box, radius: s.box.radius * s.k },
+  };
+}
+
+type SceneOptions = { cues: readonly AppliedCue[]; measure: Measure; createLayer: CreateLayer } & ({ style: SceneStyle; config?: never } | { config: OverlayConfig; style?: never });
+
+export function createScene(opts: SceneOptions): Scene {
+  const { cues, measure, createLayer } = opts;
+  const style = opts.style ?? overlaySceneStyle(opts.config!);
   const layouts = new Map<number, CueLayout>();
   const spans = new Map<number, WordSpan[]>();
   const remember = <T>(map: Map<number, T>, i: number, make: () => T): T => {
@@ -78,10 +96,11 @@ export function createScene(opts: { config: OverlayConfig; cues: readonly Applie
     return v;
   };
   return {
-    config,
-    ...sizeOf(config),
+    style,
+    config: paintStyle(style),
+    ...outputSize(style),
     cues,
-    layoutOf: (i) => remember(layouts, i, () => layoutCue(cues[i]!.text, config, measure)),
+    layoutOf: (i) => remember(layouts, i, () => layoutCue(cues[i]!.text, style, measure)),
     spansOf: (i) => remember(spans, i, () => wordSpans(cues[i]!)),
     createLayer,
     scratch: { main: null, tintA: null, tintB: null, tintKey: '', glow: null },
@@ -212,15 +231,22 @@ function composeText(ctx: Ctx2D, scene: Scene, layout: CueLayout, states: readon
   }
 }
 
+/** Hình chữ nhật của lớp chữ một câu: mọi điểm ảnh của câu (chưa tính chuyển động) nằm trong đó. */
+function blockRect(scene: Scene, layout: CueLayout): { x: number; y: number; w: number; h: number } {
+  // từ đang phóng to (tối đa 120%) vượt khối mỗi bên 10% bề rộng của nó
+  const grow = scene.config.sync === 'cue' ? 0 : layout.lines.reduce((m, l) => l.segments.reduce((n, s) => Math.max(n, s.width), m), 0) * 0.1;
+  const margin = Math.ceil(layout.bleed + layout.fontSize * 0.4 + grow + Math.max(2, 4 * scene.style.k));
+  return {
+    x: Math.floor(layout.box.x - margin),
+    y: Math.floor(layout.box.y - margin),
+    w: Math.ceil(layout.box.width + 2 * margin),
+    h: Math.ceil(layout.box.height + 2 * margin),
+  };
+}
+
 function composeBlock(scene: Scene, layout: CueLayout, states: readonly WordState[], reuse: Block | null, tint: Tint): Block {
   const c = scene.config;
-  // từ đang phóng to (tối đa 120%) vượt khối mỗi bên 10% bề rộng của nó
-  const grow = c.sync === 'cue' ? 0 : layout.lines.reduce((m, l) => l.segments.reduce((n, s) => Math.max(n, s.width), m), 0) * 0.1;
-  const margin = Math.ceil(layout.bleed + layout.fontSize * 0.4 + grow + 4);
-  const x = Math.floor(layout.box.x - margin);
-  const y = Math.floor(layout.box.y - margin);
-  const w = Math.ceil(layout.box.width + 2 * margin);
-  const h = Math.ceil(layout.box.height + 2 * margin);
+  const { x, y, w, h } = blockRect(scene, layout);
   // Lớp phải đúng kích thước khối: lớp lớn hơn làm kết quả thu nhỏ (nhòe, lật) phụ thuộc câu đã vẽ trước đó, tức là phụ thuộc thứ tự vẽ
   const layer = reuse && reuse.layer.width === w && reuse.layer.height === h ? reuse.layer : scene.createLayer(w, h);
   const ctx = layer.ctx;
@@ -251,6 +277,9 @@ const GLOW_PX = 48;
 const TINT_A = '#FF0040';
 const TINT_B = '#00A0FF';
 
+/** Lề quanh khối chữ của quầng phát sáng. */
+const glowPad = (scene: Scene): number => Math.ceil(GLOW_PX * 2 * scene.style.k);
+
 /**
  * Quầng sáng của một câu ở mức mạnh nhất, tính MỘT lần mỗi câu rồi mờ dần bằng độ đục: tính bóng mờ lớn cho từng khung quá chậm
  * (đo được khoảng 87 ms/khung trong ảnh worker).
@@ -259,11 +288,11 @@ function composeGlow(scene: Scene, i: number, layout: CueLayout, plain: readonly
   const hit = scene.scratch.glow;
   if (hit?.cue === i) return hit.block;
   const text = composeBlock(scene, layout, plain, null, null);
-  const pad = GLOW_PX * 2;
+  const pad = glowPad(scene);
   const layer = scene.createLayer(text.w + 2 * pad, text.h + 2 * pad);
   const g = layer.ctx;
   g.shadowColor = scene.config.highlightColor;
-  g.shadowBlur = GLOW_PX;
+  g.shadowBlur = GLOW_PX * scene.style.k;
   for (let k = 0; k < 2; k++) g.drawImage(text.layer.canvas, 0, 0, text.w, text.h, pad, pad, text.w, text.h);
   clearShadow(g);
   const block: Block = { layer, x: text.x - pad, y: text.y - pad, w: layer.width, h: layer.height };
@@ -271,8 +300,8 @@ function composeGlow(scene: Scene, i: number, layout: CueLayout, plain: readonly
   return block;
 }
 
-function paintBackground(ctx: Ctx2D, scene: Scene): void {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+function paintBackground(ctx: Ctx2D, scene: Scene, origin: Origin): void {
+  ctx.setTransform(1, 0, 0, 1, -origin.x, -origin.y);
   ctx.globalAlpha = 1;
   clearShadow(ctx);
   ctx.clearRect(0, 0, scene.width, scene.height);
@@ -283,11 +312,14 @@ function paintBackground(ctx: Ctx2D, scene: Scene): void {
   }
 }
 
+/** Điểm của khung đích nằm ở góc trên trái canvas (dựng hình dịch video chỉ vẽ dải chữ). */
+export type Origin = { x: number; y: number };
+
 /**
  * Vẽ một khung tại thời điểm `tMs`. Trả khóa khung: hai khung cùng khóa khác `null` thì giống hệt nhau; `null` khi đang chuyển động.
  */
-export function drawFrame(ctx: Ctx2D, tMs: number, scene: Scene): string | null {
-  paintBackground(ctx, scene);
+export function drawFrame(ctx: Ctx2D, tMs: number, scene: Scene, origin: Origin = { x: 0, y: 0 }): string | null {
+  paintBackground(ctx, scene, origin);
   const i = activeCueIndex(scene.cues, tMs);
   if (i < 0) return 'bg';
 
@@ -352,4 +384,60 @@ export function drawFrame(ctx: Ctx2D, tMs: number, scene: Scene): string | null 
   ctx.restore();
 
   return fx.settled && blockKey !== null ? blockKey : null;
+}
+
+// ---- Dải chữ (dịch video) ------------------------------------------------------------------------
+
+/** Dải cao hơn phần này của khung thì vẽ cả khung (research R1). */
+const BAND_MAX_SHARE = 0.6;
+
+/** Quãng dọc mà một câu có thể chiếm trong suốt thời gian hiện, kể cả chuyển động của hiệu ứng. */
+function verticalExtent(scene: Scene, layout: CueLayout): [number, number] {
+  const c = scene.config;
+  const rect = blockRect(scene, layout);
+  let top = rect.y;
+  let bottom = rect.y + rect.h;
+  const fs = layout.fontSize;
+  if (c.sync !== 'word') {
+    if (c.enter === 'pop' || c.enter === 'bounce') {
+      const peak = (c.enter === 'pop' ? POP_PEAK : BOUNCE_PEAK)[c.intensity];
+      const cy = layout.center.y;
+      top = Math.min(top, cy - (cy - rect.y) * peak);
+      bottom = Math.max(bottom, cy + (rect.y + rect.h - cy) * peak);
+    }
+    if (c.enter === 'slideUp') bottom += SLIDE_Y * fs;
+    if (c.enter === 'dropDown') top -= DROP_Y * fs;
+    if (c.enter === 'glow') {
+      top -= glowPad(scene);
+      bottom += glowPad(scene);
+    }
+  }
+  if (c.enter === 'shake') {
+    top -= shakeAmplitude(c.intensity, fs);
+    bottom += shakeAmplitude(c.intensity, fs);
+  }
+  if (c.exit === 'slideDown') bottom += SLIDE_Y * fs;
+  // 2 px cho phần làm mịn khi vẽ ở tọa độ lẻ
+  return [top - 2, bottom + 2];
+}
+
+/**
+ * Dải ngang (tọa độ và chiều cao chẵn) chứa mọi điểm ảnh của mọi câu trong cảnh: tiến trình dựng hình chỉ vẽ và ghép dải này.
+ * Dải lớn hơn 60% khung thì trả cả khung; không có câu nào thì trả dải tối thiểu.
+ */
+export function sceneBand(scene: Scene): { y: number; height: number } {
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < scene.cues.length; i++) {
+    const layout = scene.layoutOf(i);
+    if (layout.lines.length === 0) continue;
+    const [a, b] = verticalExtent(scene, layout);
+    top = Math.min(top, a);
+    bottom = Math.max(bottom, b);
+  }
+  if (bottom <= top) return { y: 0, height: 2 };
+  const y = Math.max(0, Math.floor(top / 2) * 2);
+  const end = Math.min(scene.height, Math.ceil(bottom / 2) * 2);
+  if (end - y > scene.height * BAND_MAX_SHARE) return { y: 0, height: scene.height };
+  return { y, height: end - y };
 }

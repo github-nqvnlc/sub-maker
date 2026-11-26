@@ -1,5 +1,11 @@
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
   CreateBucketCommand,
+  CreateMultipartUploadCommand,
+  ListMultipartUploadsCommand,
+  ListPartsCommand,
+  UploadPartCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -85,8 +91,17 @@ export async function getObjectBuffer(key: string): Promise<Buffer> {
   return Buffer.from(bytes);
 }
 
-export async function getObjectRange(key: string, range?: string): Promise<GetObjectCommandOutput> {
-  return s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key, Range: range }));
+/** Đọc đối tượng (hoặc một dải). `signal` hủy cả yêu cầu lẫn luồng thân đang đọc (trình duyệt ngắt thì kho cũng ngừng gửi). */
+export async function getObjectRange(key: string, range?: string, signal?: AbortSignal): Promise<GetObjectCommandOutput> {
+  signal?.throwIfAborted();
+  const res = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key, Range: range }), { abortSignal: signal });
+  if (signal && res.Body) {
+    const body = res.Body as unknown as import('node:stream').Readable;
+    const stop = () => body.destroy(new Error('aborted'));
+    signal.addEventListener('abort', stop, { once: true });
+    body.once?.('close', () => signal.removeEventListener('abort', stop));
+  }
+  return res;
 }
 
 export async function headObject(key: string): Promise<{ size: number; contentType?: string } | null> {
@@ -178,4 +193,95 @@ export async function downloadObjectToFile(key: string, filePath: string): Promi
   const { pipeline } = await import('node:stream/promises');
   const res = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
   await pipeline(res.Body as NodeJS.ReadableStream, createWriteStream(filePath));
+}
+
+// ---- Multipart (spec 006: video lớn) ------------------------------------------------------------
+
+export async function createMultipart(key: string, contentType = 'application/octet-stream'): Promise<string> {
+  const res = await s3().send(new CreateMultipartUploadCommand({ Bucket: bucket(), Key: key, ContentType: contentType }));
+  return res.UploadId!;
+}
+
+/** Gửi một phần (1…10.000); gửi lại cùng số thì phần mới thay phần cũ. Mọi phần trừ phần cuối phải từ 5 MB. */
+export async function uploadPart(key: string, uploadId: string, n: number, body: Buffer, signal?: AbortSignal): Promise<{ etag: string }> {
+  const res = await s3().send(new UploadPartCommand({ Bucket: bucket(), Key: key, UploadId: uploadId, PartNumber: n, Body: body, ContentLength: body.length }), { abortSignal: signal });
+  return { etag: res.ETag! };
+}
+
+export async function listParts(key: string, uploadId: string): Promise<Array<{ n: number; etag: string; size: number }>> {
+  const out: Array<{ n: number; etag: string; size: number }> = [];
+  let marker: string | undefined;
+  do {
+    const res = await s3().send(new ListPartsCommand({ Bucket: bucket(), Key: key, UploadId: uploadId, PartNumberMarker: marker }));
+    for (const p of res.Parts ?? []) out.push({ n: p.PartNumber!, etag: p.ETag!, size: p.Size ?? 0 });
+    marker = res.IsTruncated ? res.NextPartNumberMarker : undefined;
+  } while (marker);
+  return out;
+}
+
+export async function completeMultipart(key: string, uploadId: string, parts: ReadonlyArray<{ n: number; etag: string }>): Promise<void> {
+  const Parts = [...parts].sort((a, b) => a.n - b.n).map((p) => ({ PartNumber: p.n, ETag: p.etag }));
+  await s3().send(new CompleteMultipartUploadCommand({ Bucket: bucket(), Key: key, UploadId: uploadId, MultipartUpload: { Parts } }));
+}
+
+/** Hủy phiên và giải phóng các phần đã gửi. Phiên không còn thì coi như xong. */
+export async function abortMultipart(key: string, uploadId: string): Promise<void> {
+  try {
+    await s3().send(new AbortMultipartUploadCommand({ Bucket: bucket(), Key: key, UploadId: uploadId }));
+  } catch (e) {
+    const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+    if (err.name !== 'NoSuchUpload' && err.$metadata?.httpStatusCode !== 404) throw e;
+  }
+}
+
+/** Id các phiên multipart còn mở của ĐÚNG khóa này (MinIO chỉ liệt kê theo khóa đầy đủ). */
+export async function listMultipartUploads(key: string): Promise<string[]> {
+  const res = await s3().send(new ListMultipartUploadsCommand({ Bucket: bucket(), Prefix: key }));
+  return (res.Uploads ?? []).filter((u) => u.Key === key).map((u) => u.UploadId!);
+}
+
+/** Kích thước phần khi worker tải thành phẩm lên: 64 MB × 10.000 phần đủ cho mọi video của hạn mức. */
+export const FILE_PART_SIZE = 64 * 1024 * 1024;
+
+/** Tải một tệp trên đĩa lên kho theo multipart (thành phẩm có thể lớn hơn giới hạn 5 GB của một lần ghi). */
+export async function uploadFileMultipart(
+  key: string,
+  filePath: string,
+  contentType = 'application/octet-stream',
+  opts: { partSize?: number; signal?: AbortSignal; onProgress?: (sent: number, total: number) => void } = {},
+): Promise<{ size: number }> {
+  const { open } = await import('node:fs/promises');
+  const partSize = opts.partSize ?? FILE_PART_SIZE;
+  const file = await open(filePath, 'r');
+  try {
+    const { size } = await file.stat();
+    if (size <= 0) throw new Error('Tệp rỗng, không tải lên');
+    const uploadId = await createMultipart(key, contentType);
+    try {
+      const parts: Array<{ n: number; etag: string }> = [];
+      const buffer = Buffer.allocUnsafe(Math.min(partSize, size));
+      let sent = 0;
+      for (let n = 1; sent < size; n++) {
+        const want = Math.min(partSize, size - sent);
+        let got = 0;
+        while (got < want) {
+          const { bytesRead } = await file.read(buffer, got, want - got, sent + got);
+          if (bytesRead === 0) throw new Error('Tệp bị cắt trong lúc tải lên');
+          got += bytesRead;
+        }
+        opts.signal?.throwIfAborted();
+        parts.push({ n, etag: (await uploadPart(key, uploadId, n, buffer.subarray(0, want), opts.signal)).etag });
+        sent += want;
+        opts.onProgress?.(sent, size);
+      }
+      opts.signal?.throwIfAborted();
+      await completeMultipart(key, uploadId, parts);
+      return { size };
+    } catch (e) {
+      await abortMultipart(key, uploadId).catch(() => undefined);
+      throw e;
+    }
+  } finally {
+    await file.close();
+  }
 }

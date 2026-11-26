@@ -35,8 +35,44 @@ export type ServeOptions = {
   downloadName?: string;
   rangeHeader?: string | null;
   cacheControl?: string;
+  /** trình duyệt ngắt thì hủy luôn lệnh đọc kho */
   signal?: AbortSignal;
+  /** Dải mở (`bytes=N-`) chỉ trả tối đa từng này byte; trình duyệt tự hỏi tiếp (video lớn, spec 006). */
+  maxOpenRange?: number;
+  /** Gọi khi bắt đầu phát rồi mỗi 60 giây trong lúc luồng còn chạy: gia hạn thẻ giữ lượt tải (spec 006). */
+  onStreaming?: () => Promise<unknown>;
 };
+
+export const LEASE_RENEW_MS = 60_000;
+
+/** Bọc luồng để biết khi nào nó kết thúc (xong, hủy hoặc lỗi) và giữ nhịp gia hạn trong khoảng đó. */
+function leased(source: ReadableStream<Uint8Array>, beat: () => Promise<unknown>, signal?: AbortSignal): ReadableStream<Uint8Array> {
+  const run = () => void beat().catch(() => undefined);
+  run();
+  const timer = setInterval(run, LEASE_RENEW_MS);
+  (timer as { unref?: () => void }).unref?.();
+  const stop = () => clearInterval(timer);
+  signal?.addEventListener('abort', stop, { once: true });
+  const reader = source.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          stop();
+          controller.close();
+        } else controller.enqueue(value);
+      } catch (e) {
+        stop();
+        controller.error(e);
+      }
+    },
+    async cancel(reason) {
+      stop();
+      await reader.cancel(reason).catch(() => undefined);
+    },
+  });
+}
 
 function contentDisposition(name: string): string {
   const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
@@ -62,21 +98,26 @@ export async function serveObject(key: string, opts: ServeOptions): Promise<Resp
     return new Response(null, { status: 416, headers: { ...baseHeaders, 'content-range': `bytes */${size}` } });
   }
 
+  const body = async (header?: string) => {
+    const res = await getObjectRange(key, header, opts.signal);
+    const stream = res.Body!.transformToWebStream() as ReadableStream<Uint8Array>;
+    return opts.onStreaming ? leased(stream, opts.onStreaming, opts.signal) : stream;
+  };
+
   if (range) {
-    const res = await getObjectRange(key, `bytes=${range.start}-${range.end}`);
-    const stream = res.Body!.transformToWebStream();
-    return new Response(stream, {
+    const open = /^bytes=\d+-$/.test(opts.rangeHeader!.trim());
+    const end = open && opts.maxOpenRange ? Math.min(range.end, range.start + opts.maxOpenRange - 1) : range.end;
+    return new Response(await body(`bytes=${range.start}-${end}`), {
       status: 206,
       headers: {
         ...baseHeaders,
-        'content-range': `bytes ${range.start}-${range.end}/${size}`,
-        'content-length': String(range.end - range.start + 1),
+        'content-range': `bytes ${range.start}-${end}/${size}`,
+        'content-length': String(end - range.start + 1),
       },
     });
   }
 
-  const res = await getObjectRange(key);
-  return new Response(res.Body!.transformToWebStream(), {
+  return new Response(await body(), {
     status: 200,
     headers: { ...baseHeaders, 'content-length': String(size) },
   });

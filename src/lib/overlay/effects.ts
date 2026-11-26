@@ -64,6 +64,11 @@ export const BOUNCE_PEAK: Record<Intensity, number> = { low: 1.03, medium: 1.05,
 export const ACTIVE_SCALE: Record<Intensity, number> = { low: 1.15, medium: 1.18, high: 1.2 };
 const SHAKE_PX: Record<Intensity, number> = { low: 2, medium: 4, high: 7 };
 const REF_FONT = 72;
+/** Biên độ rung (px) của một câu ở cỡ chữ đang vẽ. */
+export const shakeAmplitude = (intensity: Intensity, fontSize: number): number => (SHAKE_PX[intensity] * fontSize) / REF_FONT;
+/** Quãng trượt của hiệu ứng trượt lên / trượt xuống và rơi xuống, theo cỡ chữ. */
+export const SLIDE_Y = 0.8;
+export const DROP_Y = 1.2;
 /** Giật tách màu chỉ kéo dài 0,1 giây (FR-021). */
 export const GLITCH_MS = 100;
 const STEP_MS = 1000 / 30;
@@ -97,7 +102,9 @@ export function effectDurations(c: Pick<OverlayConfig, 'enter' | 'exit' | 'effec
 
 // ---- Hiệu ứng câu -------------------------------------------------------------------------------
 
-export function cueEffect(c: OverlayConfig, cue: AppliedCue, layout: CueLayout, frame: { width: number; height: number }, tMs: number): EffectState {
+type CueEffectConfig = Pick<OverlayConfig, 'enter' | 'exit' | 'effectMs' | 'intensity' | 'shakeScope'>;
+
+export function cueEffect(c: CueEffectConfig, cue: AppliedCue, layout: CueLayout, frame: { width: number; height: number }, tMs: number): EffectState {
   const s: EffectState = { ...IDENTITY };
   const d = effectDurations(c, cue.endMs - cue.startMs);
   const el = tMs - cue.startMs;
@@ -117,7 +124,7 @@ export function cueEffect(c: OverlayConfig, cue: AppliedCue, layout: CueLayout, 
         s.scaleX = s.scaleY = elastic(p, 0.8, BOUNCE_PEAK[c.intensity]);
         break;
       case 'slideUp':
-        s.dy = 0.8 * fs * (1 - easeOutCubic(p));
+        s.dy = SLIDE_Y * fs * (1 - easeOutCubic(p));
         s.alpha = easeOutCubic(p);
         break;
       case 'slideLeft':
@@ -127,7 +134,7 @@ export function cueEffect(c: OverlayConfig, cue: AppliedCue, layout: CueLayout, 
         s.dx = (frame.width - layout.box.x + layout.bleed) * (1 - easeOutCubic(p));
         break;
       case 'dropDown':
-        s.dy = -1.2 * fs * (1 - easeOutBounce(p));
+        s.dy = -DROP_Y * fs * (1 - easeOutBounce(p));
         s.alpha = clamp01(p * 3);
         break;
       case 'blurIn':
@@ -154,7 +161,7 @@ export function cueEffect(c: OverlayConfig, cue: AppliedCue, layout: CueLayout, 
   if (c.enter === 'shake' && (c.shakeScope === 'all' || isExclaim(cue.text))) {
     s.settled = false;
     const step = Math.floor(el / STEP_MS);
-    const amp = (SHAKE_PX[c.intensity] * fs) / REF_FONT;
+    const amp = shakeAmplitude(c.intensity, fs);
     s.dx += noise(cue.i, step, 0) * amp;
     s.dy += noise(cue.i, step, 1) * amp;
   }
@@ -165,7 +172,7 @@ export function cueEffect(c: OverlayConfig, cue: AppliedCue, layout: CueLayout, 
     const q = clamp01(1 - left / d.exit);
     if (c.exit === 'fade') s.alpha *= 1 - q;
     if (c.exit === 'slideDown') {
-      s.dy += 0.8 * fs * q * q;
+      s.dy += SLIDE_Y * fs * q * q;
       s.alpha *= 1 - q;
     }
   }
@@ -189,7 +196,7 @@ const PLAIN: WordState = { visible: true, highlight: false, scale: 1, chars: nul
 const ACTIVE_RAMP_MS = 80;
 
 /** Trạng thái từng từ tại `tMs`; `key` = null khi đang chuyển động liên tục. */
-export function wordStates(c: OverlayConfig, cue: AppliedCue, spans: readonly WordSpan[], tMs: number): { states: WordState[]; key: string | null } {
+export function wordStates(c: Pick<OverlayConfig, 'sync' | 'wordEffect' | 'effectMs' | 'intensity'>, cue: AppliedCue, spans: readonly WordSpan[], tMs: number): { states: WordState[]; key: string | null } {
   if (c.sync === 'cue') return { states: spans.map(() => PLAIN), key: 'c' };
 
   if (c.sync === 'word') {
