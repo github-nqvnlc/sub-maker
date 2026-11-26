@@ -23,6 +23,7 @@ type AdminUser = {
   role: 'admin' | 'user';
   status: 'active' | 'banned' | 'deleting';
   canUseCustomAi: boolean;
+  canTranslateVideo: boolean;
   createdAt: string;
   lastActiveAt: string | null;
 };
@@ -48,6 +49,7 @@ export function UsersTable() {
   const [banTarget, setBanTarget] = useState<AdminUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -77,6 +79,15 @@ export function UsersTable() {
     onError: (e) => toast.error(e instanceof Error ? e.message : t.common.genericError),
   });
 
+  const setVideoPermission = useMutation({
+    mutationFn: (v: { id: string; allowed: boolean }) => apiPatch(`/api/admin/users/${v.id}`, { canTranslateVideo: v.allowed }),
+    onSuccess: () => {
+      toast.success(t.adminUsers.done);
+      void refresh();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : t.common.genericError),
+  });
+
   const columns: Column<AdminUser>[] = [
     {
       key: 'user',
@@ -98,6 +109,16 @@ export function UsersTable() {
       header: t.adminUsers.colStatus,
       cell: (u) => <Badge variant={u.status === 'active' ? 'outline' : 'destructive'}>{statusLabelOf(t)[u.status]}</Badge>,
     },
+    {
+      key: 'video',
+      header: t.adminUsers.colVideo,
+      // Administrator luôn được dùng (spec 006, FR-008)
+      cell: (u) => (
+        <Badge variant={u.role === 'admin' || u.canTranslateVideo ? 'secondary' : 'outline'}>
+          {u.role === 'admin' ? t.adminUsers.videoAlways : u.canTranslateVideo ? t.adminUsers.videoOn : t.adminUsers.videoOff}
+        </Badge>
+      ),
+    },
     { key: 'created', header: t.adminUsers.colCreated, cell: (u) => <span className="whitespace-nowrap text-sm">{u.createdAt ? fx.dateTime(u.createdAt) : t.adminUsers.never}</span>, className: 'hidden md:table-cell' },
     { key: 'active', header: t.adminUsers.colActive, cell: (u) => <span className="whitespace-nowrap text-sm">{u.lastActiveAt ? fx.dateTime(u.lastActiveAt) : t.adminUsers.never}</span>, className: 'hidden lg:table-cell' },
     {
@@ -115,6 +136,15 @@ export function UsersTable() {
             ) : (
               <Button size="sm" variant="outline" onClick={() => setBanTarget(u)}>
                 {t.adminUsers.ban}
+              </Button>
+            )}
+            {u.canTranslateVideo ? (
+              <Button size="sm" variant="outline" onClick={() => setRevokeTarget(u)}>
+                {t.adminUsers.videoDisable}
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" disabled={setVideoPermission.isPending} onClick={() => setVideoPermission.mutate({ id: u.id, allowed: true })}>
+                {t.adminUsers.videoEnable}
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={() => setResetTarget(u)}>
@@ -202,6 +232,22 @@ export function UsersTable() {
         confirmLabel={t.adminUsers.ban}
         onConfirm={async () => {
           if (banTarget) await setUserStatus.mutateAsync({ id: banTarget.id, status: 'banned' });
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!revokeTarget}
+        onOpenChange={(o) => !o && setRevokeTarget(null)}
+        title={t.adminUsers.videoDisableTitle}
+        description={
+          <>
+            <p className="font-medium text-foreground">{revokeTarget?.email}</p>
+            <p>{t.adminUsers.videoDisableDesc}</p>
+          </>
+        }
+        confirmLabel={t.adminUsers.videoDisable}
+        onConfirm={async () => {
+          if (revokeTarget) await setVideoPermission.mutateAsync({ id: revokeTarget.id, allowed: false });
         }}
       />
 

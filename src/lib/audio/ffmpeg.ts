@@ -8,6 +8,7 @@ import path from 'node:path';
  * 24 kHz, mono, 16-bit little-endian — mọi đoạn đều được đưa về dạng này trước khi ghép nên không bị
  * "lách tách" do khác tần số/kênh (docs/fpt-ai-voice-guide.md §10).
  */
+import type { VideoMedia } from '../video/types';
 import { BYTES_PER_SAMPLE, SAMPLE_RATE } from './pcm';
 export { BYTES_PER_SAMPLE, SAMPLE_RATE };
 
@@ -186,6 +187,26 @@ export class NoAudioStreamError extends Error {
   }
 }
 
+export type ExtractOptions = {
+  timeoutMs?: number;
+  /** chỉ số tuyệt đối của luồng tiếng cần tách (theo ffprobe); bỏ trống thì luồng tiếng đầu */
+  audioIndex?: number;
+  /** tệp không tin cậy: ép bộ tách theo đuôi và chỉ cho giao thức `file` */
+  demuxer?: Demuxer;
+};
+
+/** Tham số tách âm thanh; dùng chung cho tiến trình chạy có theo dõi của dịch video. */
+export function extractAudioArgs(inputPath: string, outPath: string, opts: Pick<ExtractOptions, 'audioIndex' | 'demuxer'> = {}): string[] {
+  return [
+    ...(opts.demuxer ? ['-protocol_whitelist', 'file', '-f', opts.demuxer] : []),
+    '-i', inputPath,
+    '-vn', '-map', opts.audioIndex === undefined ? '0:a:0' : `0:${opts.audioIndex}`,
+    '-af', 'aresample=async=1:first_pts=0',
+    '-acodec', 'libmp3lame', '-q:a', '4', '-ac', '1', '-ar', '16000',
+    '-y', outPath,
+  ];
+}
+
 /**
  * Tách luồng âm thanh thành MP3 mono 16 kHz (FR-002, research R2) từ tệp trên đĩa sang tệp trên đĩa.
  * Không có luồng âm thanh → NoAudioStreamError.
@@ -193,14 +214,181 @@ export class NoAudioStreamError extends Error {
  * Mốc phụ đề tính theo âm thanh này, nên nó phải cùng dòng thời gian với video: MP3 không lưu mốc, vì vậy khoảng lệch đầu luồng
  * và quãng hở giữa luồng được điền im lặng (`aresample=async=1:first_pts=0`).
  */
-export async function extractAudioToMp3File(inputPath: string, outPath: string, timeoutMs = 15 * 60_000): Promise<void> {
-  const probe = await probeMedia(inputPath);
-  if (!probe.hasAudio) throw new NoAudioStreamError();
-  await runFfmpeg(
-    ['-i', inputPath, '-vn', '-map', '0:a:0', '-af', 'aresample=async=1:first_pts=0', '-acodec', 'libmp3lame', '-q:a', '4', '-ac', '1', '-ar', '16000', '-y', outPath],
-    null,
-    timeoutMs,
-  );
+export async function extractAudioToMp3File(inputPath: string, outPath: string, options: number | ExtractOptions = {}): Promise<void> {
+  const opts = typeof options === 'number' ? { timeoutMs: options } : options;
+  // đã chỉ định luồng thì người gọi đã đo tệp (probeVideo)
+  if (opts.audioIndex === undefined) {
+    const probe = await probeMedia(inputPath);
+    if (!probe.hasAudio) throw new NoAudioStreamError();
+  }
+  await runFfmpeg(extractAudioArgs(inputPath, outPath, opts), null, opts.timeoutMs ?? 15 * 60_000);
+}
+
+// ---- Dịch video (spec 006): đo video nguồn ------------------------------------------------------
+
+export type Demuxer = 'mov' | 'matroska' | 'avi' | 'flv';
+
+const DEMUXERS: Record<string, Demuxer> = { mp4: 'mov', m4v: 'mov', mov: 'mov', mkv: 'matroska', webm: 'matroska', avi: 'avi', flv: 'flv' };
+
+/** Bộ tách bị ép theo đuôi tệp: tệp đổi đuôi hoặc danh sách phát giả dạng không được "đoán" thành định dạng khác. */
+export function demuxerOf(ext: string): Demuxer {
+  const d = DEMUXERS[ext.toLowerCase()];
+  if (!d) throw new Error(`Không hỗ trợ đuôi .${ext}`);
+  return d;
+}
+
+/** Giới hạn độ phân giải được nhận (4K DCI), tính trên kích thước hiển thị. */
+export const MAX_VIDEO_LONG_SIDE = 4096;
+export const MAX_VIDEO_SHORT_SIDE = 2304;
+
+export class NoVideoStreamError extends Error {
+  constructor() {
+    super('NO_VIDEO_STREAM');
+    this.name = 'NoVideoStreamError';
+  }
+}
+export class VideoResolutionError extends Error {
+  constructor(width: number, height: number) {
+    super(`Độ phân giải ${width}×${height} vượt mức hỗ trợ`);
+    this.name = 'VideoResolutionError';
+  }
+}
+export class VideoTooLongError extends Error {
+  constructor(durationMs: number) {
+    super(`Video dài ${Math.round(durationMs / 1000)} giây, vượt mức cho phép`);
+    this.name = 'VideoTooLongError';
+  }
+}
+
+type ProbeStream = {
+  index: number;
+  codec_type?: string;
+  codec_name?: string;
+  pix_fmt?: string;
+  width?: number;
+  height?: number;
+  sample_aspect_ratio?: string;
+  avg_frame_rate?: string;
+  r_frame_rate?: string;
+  bit_rate?: string;
+  start_time?: string;
+  duration?: string;
+  color_space?: string;
+  color_transfer?: string;
+  disposition?: { default?: number; attached_pic?: number };
+  tags?: Record<string, string>;
+  side_data_list?: Array<{ rotation?: number }>;
+};
+type ProbeOutput = { format?: { duration?: string; bit_rate?: string; start_time?: string; size?: string }; streams?: ProbeStream[] };
+
+const num = (v: string | number | undefined): number | null => {
+  const n = Number(v);
+  return v !== undefined && v !== '' && Number.isFinite(n) ? n : null;
+};
+
+function ratio(v: string | undefined): number | null {
+  const m = /^(\d+)[/:](\d+)$/.exec(v ?? '');
+  if (!m || Number(m[2]) === 0 || Number(m[1]) === 0) return null;
+  return Number(m[1]) / Number(m[2]);
+}
+
+/** Thời lượng riêng của một luồng; Matroska chỉ ghi ở thẻ `DURATION` (hh:mm:ss.f, tính từ mốc 0 của tệp). */
+function streamDuration(s: ProbeStream, startSec: number): number | null {
+  const direct = num(s.duration);
+  if (direct !== null) return direct;
+  const tag = /^(\d+):(\d{2}):(\d{2}(?:\.\d+)?)$/.exec(s.tags?.DURATION ?? s.tags?.['DURATION-eng'] ?? '');
+  return tag ? Number(tag[1]) * 3600 + Number(tag[2]) * 60 + Number(tag[3]) - startSec : null;
+}
+
+const PLAYABLE: Record<'mov' | 'matroska', { video: string[]; audio: string[] }> = {
+  mov: { video: ['h264'], audio: ['aac', 'mp3'] },
+  matroska: { video: ['vp8', 'vp9', 'av1'], audio: ['opus', 'vorbis'] },
+};
+
+export function runFfprobeJson(args: string[], timeoutMs = 60_000): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(FFPROBE(), ['-v', 'error', ...args, '-of', 'json'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+    child.stdout.on('data', (c: Buffer) => out.push(c));
+    child.stderr.on('data', (c: Buffer) => {
+      if (err.length < 32) err.push(c);
+    });
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      reject(new Error(`Không chạy được ffprobe: ${(e as NodeJS.ErrnoException).code ?? e.message}`));
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new MediaUnreadableError(Buffer.concat(err).toString('utf8').slice(0, 300)));
+      try {
+        resolve(JSON.parse(Buffer.concat(out).toString('utf8')));
+      } catch {
+        reject(new MediaUnreadableError('ffprobe trả kết quả không đọc được'));
+      }
+    });
+  });
+}
+
+/**
+ * Đo video nguồn (contracts/render-and-media.md §4) và từ chối tệp không đạt: không đọc được, không có hình, không có tiếng, quá
+ * 4096×2304 hoặc dài quá giới hạn. Tệp được coi là không tin cậy: chỉ giao thức `file`, bộ tách ép theo đuôi.
+ */
+export async function probeVideo(inputPath: string, opts: { demuxer: Demuxer; maxMinutes: number; timeoutMs?: number }): Promise<VideoMedia> {
+  const raw = (await runFfprobeJson(
+    ['-protocol_whitelist', 'file', '-f', opts.demuxer, '-show_format', '-show_streams', inputPath],
+    opts.timeoutMs,
+  )) as ProbeOutput;
+  const streams = raw.streams ?? [];
+  // ảnh bìa đính kèm tệp âm thanh không phải hình của video
+  const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic && (s.width ?? 0) > 0 && (s.height ?? 0) > 0);
+  const audios = streams.filter((s) => s.codec_type === 'audio');
+  if (!video && audios.length === 0) throw new MediaUnreadableError('không có luồng hình hay tiếng');
+  if (!video) throw new NoVideoStreamError();
+  if (audios.length === 0) throw new NoAudioStreamError();
+  const audio = audios.find((s) => s.disposition?.default) ?? audios[0]!;
+  if (!video.codec_name || !audio.codec_name) throw new MediaUnreadableError('bộ mã không đọc được');
+
+  const startSec = num(raw.format?.start_time) ?? 0;
+  const durationSec = num(raw.format?.duration) ?? streamDuration(video, startSec);
+  if (durationSec === null || durationSec <= 0) throw new MediaUnreadableError('không đo được thời lượng');
+
+  const sar = ratio(video.sample_aspect_ratio) ?? 1;
+  const squareWidth = Math.round(video.width! * sar);
+  const rotation = (((video.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ?? num(video.tags?.rotate) ?? 0) % 360) + 360) % 360;
+  const turned = rotation % 180 !== 0;
+  const width = turned ? video.height! : squareWidth;
+  const height = turned ? squareWidth : video.height!;
+  if (Math.max(width, height) > MAX_VIDEO_LONG_SIDE || Math.min(width, height) > MAX_VIDEO_SHORT_SIDE) throw new VideoResolutionError(width, height);
+  if (durationSec > opts.maxMinutes * 60) throw new VideoTooLongError(durationSec * 1000);
+
+  const audioStartSec = (num(audio.start_time) ?? startSec) - startSec;
+  const audioDurationSec = streamDuration(audio, num(audio.start_time) ?? startSec) ?? Math.max(0, durationSec - audioStartSec);
+  const size = num(raw.format?.size) ?? 0;
+  const videoBitrate = num(video.bit_rate) ?? Math.max(0, (num(raw.format?.bit_rate) ?? (size * 8) / durationSec) - (num(audio.bit_rate) ?? 0));
+  const fps = ratio(video.avg_frame_rate) ?? ratio(video.r_frame_rate) ?? 30;
+  const hdr = video.color_transfer === 'smpte2084' || video.color_transfer === 'arib-std-b67';
+  const matrix = video.color_space === 'bt709' ? 'bt709' : video.color_space === 'smpte170m' || video.color_space === 'bt470bg' ? 'bt601' : height >= 720 || width >= 1280 ? 'bt709' : 'bt601';
+  const family = opts.demuxer === 'mov' || opts.demuxer === 'matroska' ? PLAYABLE[opts.demuxer] : null;
+  const eightBit = !video.pix_fmt || video.pix_fmt === 'yuv420p' || video.pix_fmt === 'yuvj420p';
+  return {
+    durationMs: Math.round(durationSec * 1000),
+    width,
+    height,
+    fps: Math.round(fps * 1000) / 1000,
+    videoCodec: video.codec_name,
+    videoBitrate: Math.round(videoBitrate),
+    audioCodec: audio.codec_name,
+    audioIndex: audio.index,
+    audioStartMs: Math.round(audioStartSec * 1000),
+    audioDurationMs: Math.round(audioDurationSec * 1000),
+    audioStreams: audios.length,
+    rotation,
+    hdr,
+    matrix,
+    browserPlayable: !!family && eightBit && family.video.includes(video.codec_name) && family.audio.includes(audio.codec_name),
+  };
 }
 
 /** Bản dùng bộ nhớ (kiểm thử, tệp nhỏ): media → MP3 mono 16 kHz. */

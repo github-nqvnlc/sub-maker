@@ -5,6 +5,8 @@ import { registerPrepareOverlayAudio } from './jobs/prepare-overlay-audio';
 import { registerReconcileStorage } from './jobs/reconcile-storage';
 import { registerRenderOverlay } from './jobs/render-overlay';
 import { registerTranscribeMedia } from './jobs/transcribe-media';
+import { registerVideoPrepare } from './jobs/video-prepare';
+import { registerVideoTranslate } from './jobs/video-translate';
 
 /**
  * Đăng ký các trình xử lý hàng đợi. Mỗi user story thêm trình xử lý của mình tại đây:
@@ -13,10 +15,20 @@ import { registerTranscribeMedia } from './jobs/transcribe-media';
  *  - US8: reconcile-storage
  *  - spec 004: transcribe-media (STT Soniox, + sweeper)
  *  - spec 005: render-overlay, prepare-overlay-audio (video overlay, + sweeper)
+ *  - spec 006: video-prepare, video-translate, video-preview, video-render, video-retention (dịch video, + sweeper)
  */
 export type HandlerRegistrar = (boss: PgBoss) => Promise<void> | void;
 
-export const registrars: HandlerRegistrar[] = [registerDeleteUser, registerGenerateVoice, registerReconcileStorage, registerTranscribeMedia, registerRenderOverlay, registerPrepareOverlayAudio];
+export const registrars: HandlerRegistrar[] = [
+  registerDeleteUser,
+  registerGenerateVoice,
+  registerReconcileStorage,
+  registerTranscribeMedia,
+  registerRenderOverlay,
+  registerPrepareOverlayAudio,
+  registerVideoPrepare,
+  registerVideoTranslate,
+];
 
 export async function registerHandlers(boss: PgBoss): Promise<void> {
   for (const register of registrars) await register(boss);

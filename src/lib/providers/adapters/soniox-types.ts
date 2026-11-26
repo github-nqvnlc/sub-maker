@@ -42,6 +42,10 @@ export type StartTranscriptionOptions = {
   enableSpeakerDiarization?: boolean;
   enableLanguageIdentification?: boolean;
   clientReferenceId?: string;
+  /** Dịch một chiều (spec 006): token dịch đi theo cụm ngay sau cụm lời gốc và KHÔNG có mốc. */
+  translation?: { targetLanguage: string };
+  /** Từ điển thuật ngữ gửi trong ngữ cảnh (`context.translation_terms`); chỉ là chỉ dẫn cho máy dịch. */
+  translationTerms?: Array<{ source: string; target: string }>;
 };
 
 /** Model real-time không dùng được với API async (FR-010). */

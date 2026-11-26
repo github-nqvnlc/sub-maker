@@ -36,7 +36,14 @@ paths:
         "422": { description: VIDEO_UNSUPPORTED }
         "429": { description: VIDEO_TOO_MANY_JOBS }
   /api/video/uploads/{uploadId}:
-    get: { summary: "Phiên tải và danh sách số phần đã nhận (tải tiếp)" }
+    get:
+      summary: "Phiên tải và danh sách số phần đã nhận (tải tiếp)"
+      parameters:
+        - { name: size, in: query, schema: { type: integer, format: int64 }, description: "Dung lượng tệp đang chọn; khác thì 409 FILE_MISMATCH" }
+        - { name: fingerprint, in: query, schema: { type: string }, description: "Nhận diện tệp đang chọn; khác thì 409 FILE_MISMATCH" }
+      responses:
+        "200": { description: "{ id, jobId, kind, state, size, partSize, partCount, expiresAt, parts[] }" }
+        "409": { description: "UPLOAD_CLOSED, FILE_MISMATCH" }
     delete: { summary: "Hủy phiên; với video nguồn lần đầu thì xóa luôn việc chưa có cue" }
   /api/video/uploads/{uploadId}/parts/{n}:
     put:

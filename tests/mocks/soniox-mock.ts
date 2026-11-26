@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
@@ -18,6 +19,8 @@ import type { SonioxToken } from '@/lib/providers/adapters/soniox-types';
  *   slow-<n>  transcription ở `processing` trong n lần poll đầu
  *   delfail   DELETE trả 500
  *   nodur     không trả `audio_duration_ms`
+ *   onset     mốc lời nói dời tới đúng lúc âm thanh ĐÃ NHẬN bắt đầu có tiếng (spec 006)
+ * Yêu cầu có `translation` (spec 006) nhận kết quả song ngữ một chiều.
  */
 
 export type SonioxRequest = { method: string; path: string; scenario: string; auth: string | undefined; body: string; bytes: number };
@@ -57,9 +60,57 @@ export const SAMPLE_TOKENS: SonioxToken[] = [
   S('.', 5800, 5810, '2'),
 ];
 
-export async function startSonioxMock(): Promise<SonioxMock> {
+/**
+ * Kết quả dịch một chiều (spec 006): mỗi cụm lời gốc có mốc, theo sau là cụm lời dịch KHÔNG có mốc. Ba câu, hai người nói.
+ */
+type Phrase = { speaker: string; start: number; end: number; source: string; target: string };
+
+function translated(phrases: Phrase[], from: string, to: string): SonioxToken[] {
+  return phrases.flatMap((p) => {
+    const words = p.source.split(' ');
+    const step = (p.end - p.start) / words.length;
+    const original: SonioxToken[] = words.map((w, i) => ({ ...S(` ${w}`, Math.round(p.start + i * step), Math.round(p.start + (i + 1) * step - 20), p.speaker), language: from, translation_status: 'original' }));
+    const translation = p.target.split(' ').map((w) => ({ text: ` ${w}`, confidence: 0.95, language: to, speaker: p.speaker, translation_status: 'translation' }) as unknown as SonioxToken);
+    return [...original, ...translation];
+  });
+}
+
+const EN_PHRASES: Phrase[] = [
+  { speaker: '1', start: 120, end: 1200, source: 'Hello everyone.', target: 'Xin chào mọi người.' },
+  { speaker: '1', start: 1800, end: 3700, source: 'Today we learn something new.', target: 'Hôm nay chúng ta học điều mới.' },
+  { speaker: '2', start: 4500, end: 5800, source: 'Thank you, teacher.', target: 'Cảm ơn thầy.' },
+];
+
+export const TRANSLATED_TO_VI = translated(EN_PHRASES, 'en', 'vi');
+export const TRANSLATED_TO_EN = translated(
+  EN_PHRASES.map((p) => ({ ...p, source: p.target, target: p.source })),
+  'vi',
+  'en',
+);
+
+/** Thân tệp trong yêu cầu multipart tải âm thanh lên. */
+function filePart(raw: Buffer): Buffer {
+  const start = raw.indexOf('\r\n\r\n') + 4;
+  const end = raw.lastIndexOf('\r\n--');
+  return raw.subarray(start, end);
+}
+
+/** Mốc (ms) âm thanh đầu tiên có tiếng trong tệp đã nhận: kịch bản `onset` đặt mốc lời nói theo đúng âm thanh được gửi. */
+function onsetMs(audio: Buffer): number {
+  const r = spawnSync(process.env.FFMPEG_PATH || 'ffmpeg', ['-v', 'error', '-i', 'pipe:0', '-f', 's16le', '-ac', '1', '-ar', '16000', 'pipe:1'], { input: audio, maxBuffer: 64 * 1024 * 1024 });
+  for (let i = 0; i + 1 < r.stdout.length; i += 2) if (Math.abs(r.stdout.readInt16LE(i)) > 1000) return Math.round(i / 32);
+  return 0;
+}
+
+export type SonioxHandler = Pick<SonioxMock, 'requests' | 'deleted' | 'reset'> & {
+  /** Xử lý một yêu cầu có đường dẫn `/s/<kịch bản>/v1/...`. */
+  handle(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<void>;
+};
+
+/** Bộ xử lý dùng chung cho máy chủ Soniox giả của kiểm thử và của máy chủ nhà cung cấp giả (E2E). */
+export function createSonioxHandler(): SonioxHandler {
   const requests: SonioxRequest[] = [];
-  const files = new Map<string, number>();
+  const files = new Map<string, Buffer>();
   const transcriptions = new Map<string, { fileId: string; polls: number; scenario: string; body: Record<string, unknown> }>();
   const deleted = { files: new Set<string>(), transcriptions: new Set<string>() };
   let served429 = 0;
@@ -80,12 +131,11 @@ export async function startSonioxMock(): Promise<SonioxMock> {
   const err = (res: http.ServerResponse, status: number, type: string, headers: Record<string, string> = {}) =>
     send(res, status, { status_code: status, error_type: type, message: type, request_id: randomUUID() }, headers);
 
-  const server = http.createServer(async (req, res) => {
+  const handle = async (req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<unknown> => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
     const raw = Buffer.concat(chunks);
-    const url = new URL(req.url ?? '/', 'http://mock');
-    const m = /^\/s\/([^/]+)\/v1\/(.*)$/.exec(url.pathname);
+    const m = /^\/s\/([^/]+)\/v1\/(.*)$/.exec(pathname);
     if (!m) return err(res, 404, 'not_found');
     const scenario = decodeURIComponent(m[1]!);
     const rest = m[2]!;
@@ -131,7 +181,7 @@ export async function startSonioxMock(): Promise<SonioxMock> {
     if (method === 'POST' && rest === 'files') {
       if (!String(req.headers['content-type']).startsWith('multipart/form-data')) return err(res, 400, 'invalid_request');
       const id = randomUUID();
-      files.set(id, raw.length);
+      files.set(id, raw);
       return send(res, 201, { id, filename: 'audio.mp3', size: raw.length, created_at: new Date().toISOString() });
     }
     if (method === 'POST' && rest === 'transcriptions') {
@@ -164,21 +214,33 @@ export async function startSonioxMock(): Promise<SonioxMock> {
           error_message: status === 'error' ? 'Audio decode failed' : null,
         });
       }
-      const tokens = has('empty') ? [] : SAMPLE_TOKENS;
+      const translation = tr.body.translation as { target_language?: string } | undefined;
+      let tokens = has('empty') ? [] : translation ? (translation.target_language === 'en' ? TRANSLATED_TO_EN : TRANSLATED_TO_VI) : SAMPLE_TOKENS;
+      const audio = files.get(tr.fileId);
+      if (has('onset') && audio && tokens.length > 0) {
+        const shift = onsetMs(filePart(audio)) - tokens[0]!.start_ms;
+        tokens = tokens.map((x) => (x.translation_status === 'translation' ? x : { ...x, start_ms: x.start_ms + shift, end_ms: x.end_ms + shift }));
+      }
       return send(res, 200, { id: t[1], text: tokens.map((x) => x.text).join(''), tokens });
     }
     return err(res, 404, 'not_found');
-  });
+  };
 
+  return { requests, deleted, reset, handle: async (req, res, pathname) => void (await handle(req, res, pathname)) };
+}
+
+export async function startSonioxMock(): Promise<SonioxMock> {
+  const handler = createSonioxHandler();
+  const server = http.createServer((req, res) => void handler.handle(req, res, new URL(req.url ?? '/', 'http://mock').pathname));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
   const url = `http://127.0.0.1:${port}`;
   return {
     url,
     baseUrl: (scenario = 'ok') => `${url}/s/${encodeURIComponent(scenario)}`,
-    requests,
-    deleted,
-    reset,
+    requests: handler.requests,
+    deleted: handler.deleted,
+    reset: handler.reset,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }

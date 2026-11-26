@@ -3,11 +3,11 @@ import { getDb } from '../db';
 import { VIDEO_EXPORT_ACTIVE, VIDEO_PIPELINE_ACTIVE, VIDEO_PIPELINE_RUNNING, videoExports, videoJobs } from '../db/schema';
 import { recomputeSourceExpiry } from './expiry';
 import { appendVideoLog } from './log';
+import { providerSnapshot, releaseProviderData } from './provider-data';
 
 /**
  * Dừng tiến trình video (spec 006, FR-045, FR-057): đang chờ hoặc bị gián đoạn → `stopped` ngay; đang chạy → cờ hủy, worker dừng ở
  * nhịp tim kế tiếp. Dùng chung cho thao tác của người dùng, thu hồi quyền, khóa/xóa User và xóa Project.
- * Chỉ phụ thuộc CSDL.
  */
 export type VideoStopResult = { stopped: string[]; stopRequested: string[] };
 
@@ -34,6 +34,11 @@ export async function requestStopVideoJobs(ownerId: string, jobIds: string[]): P
   result.stopRequested = requested.map((j) => j.id);
   for (const id of result.stopped) await appendVideoLog(id, 'warn', 'stopped');
   for (const id of result.stopRequested) await appendVideoLog(id, 'warn', 'stopRequested');
+  // việc dừng khi không có worker giữ (đang chờ, gián đoạn) mà còn dữ liệu ở nhà cung cấp: lấy kết quả nếu có rồi xóa (FR-017)
+  if (result.stopped.length > 0) {
+    const rows = await db.select().from(videoJobs).where(inArray(videoJobs.id, result.stopped));
+    for (const row of rows) await releaseProviderData(providerSnapshot(row)).catch(() => false);
+  }
   return result;
 }
 

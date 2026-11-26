@@ -15,13 +15,16 @@ const STYLE: Record<JobStatus, string> = {
   interrupted: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
 };
 
-/** Huy hiệu trạng thái tiến trình (FR-020). */
-export function StatusBadge({ status, className }: { status: JobStatus; className?: string }) {
+/**
+ * Huy hiệu trạng thái tiến trình (FR-020). `status` chọn tông màu; `label` thay chữ mặc định cho trạng thái riêng của một tính năng
+ * (spec 006: "đang tải lên", "chờ duyệt", "hết hạn").
+ */
+export function StatusBadge({ status, label, className }: { status: JobStatus; label?: string; className?: string }) {
   const t = useT();
   return (
     <Badge variant="outline" className={cn('border-transparent font-medium', STYLE[status], className)}>
       {status === 'running' ? <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-current" aria-hidden /> : null}
-      {t.jobs.status[status]}
+      {label ?? t.jobs.status[status]}
     </Badge>
   );
 }

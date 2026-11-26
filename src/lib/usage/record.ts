@@ -67,11 +67,29 @@ export function estimateSttCostUsd(seconds: number | null, pricePerAudioHourUsd:
 }
 
 export async function recordSttUsage(input: SttUsageInput, db: Db = getDb()): Promise<void> {
+  await insertSonioxUsage({ sttJobId: input.sttJobId }, input, db);
+}
+
+/**
+ * Bản ghi sử dụng của dịch video (spec 006, FR-016): như spec 004, MỘT bản ghi tính phí khi dịch xong và một bản ghi `ok = false`
+ * (chi phí 0) cho mỗi lần gọi Soniox thất bại. `videoJobId = null` khi việc đã bị xóa trước lúc ghi.
+ */
+export type VideoUsageInput = Omit<SttUsageInput, 'sttJobId' | 'projectId' | 'userId'> & { userId: string | null; projectId: string | null; videoJobId: string | null };
+
+export async function recordVideoUsage(input: VideoUsageInput, db: Db = getDb()): Promise<void> {
+  await insertSonioxUsage({ videoJobId: input.videoJobId }, input, db);
+}
+
+async function insertSonioxUsage(
+  job: { sttJobId?: string; videoJobId?: string | null },
+  input: Omit<SttUsageInput, 'sttJobId' | 'projectId' | 'userId'> & { userId: string | null; projectId: string | null },
+  db: Db,
+): Promise<void> {
   const seconds = input.ok ? input.audioSeconds : 0;
   await db.insert(usageRecords).values({
     userId: input.userId,
     projectId: input.projectId,
-    sttJobId: input.sttJobId,
+    ...job,
     providerType: 'soniox',
     configScope: 'global',
     model: input.model,

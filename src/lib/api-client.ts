@@ -16,6 +16,16 @@ export class ApiError extends Error {
 
 type Init = Omit<RequestInit, 'body'> & { json?: unknown; body?: BodyInit | null };
 
+const loginHolds = new Set<() => boolean>();
+
+/**
+ * Trang đang giữ việc dở trong bộ nhớ (ví dụ đang tải video) thì 401 chỉ báo lỗi, không tự chuyển sang đăng nhập: chuyển trang sẽ
+ * làm mất việc đó. `busy` trả true khi còn việc dở.
+ */
+export function holdLoginRedirect(busy: () => boolean): void {
+  loginHolds.add(busy);
+}
+
 export async function api<T = unknown>(path: string, init: Init = {}): Promise<T> {
   const { json, headers, ...rest } = init;
   const h = new Headers(headers);
@@ -26,7 +36,7 @@ export async function api<T = unknown>(path: string, init: Init = {}): Promise<T
   }
   const res = await fetch(path, { ...rest, headers: h, body, credentials: 'same-origin' });
 
-  if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+  if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && ![...loginHolds].some((busy) => busy())) {
     // Tải lại toàn trang có chủ đích khi phiên hết hạn (không dùng được router ngoài component).
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;

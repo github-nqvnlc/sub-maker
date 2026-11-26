@@ -4,7 +4,7 @@ import { videoExports, videoJobs, videoUploads } from '../db/schema';
 import { abortMultipart, deleteByPrefix } from '../storage/client';
 import { storageKeys } from '../storage/keys';
 import { releaseBytes } from '../storage/quota';
-import { deleteSonioxData, type SonioxIds } from '../stt/cleanup';
+import { releaseProviderData, type ProviderSnapshot } from './provider-data';
 import { addVideoUsed, withVideoLock } from './quota';
 
 /**
@@ -16,8 +16,8 @@ export type VideoCleanup = {
   jobIds: string[];
   /** phiên tải chưa kết thúc: hủy theo bản ghi */
   uploads: Array<{ key: string; storageUploadId: string }>;
-  /** dữ liệu còn ở nhà cung cấp */
-  soniox: SonioxIds[];
+  /** việc còn dữ liệu ở nhà cung cấp */
+  provider: ProviderSnapshot[];
 };
 
 type Scope = { projectId?: string; jobIds?: string[] };
@@ -32,7 +32,16 @@ const scopeOf = (ownerId: string, scope: Scope) =>
 /** Thu thập những gì phải dọn ngoài CSDL. Gọi TRƯỚC khi xóa bản ghi. */
 export async function collectVideoCleanup(ownerId: string, scope: Scope = {}, db = getDb()): Promise<VideoCleanup> {
   const jobs = await db
-    .select({ id: videoJobs.id, fileId: videoJobs.sonioxFileId, transcriptionId: videoJobs.sonioxTranscriptionId })
+    .select({
+      id: videoJobs.id,
+      ownerId: videoJobs.ownerId,
+      projectId: videoJobs.projectId,
+      translationRun: videoJobs.translationRun,
+      billedRun: videoJobs.billedRun,
+      model: videoJobs.model,
+      sonioxFileId: videoJobs.sonioxFileId,
+      sonioxTranscriptionId: videoJobs.sonioxTranscriptionId,
+    })
     .from(videoJobs)
     .where(scopeOf(ownerId, scope));
   const jobIds = jobs.map((j) => j.id);
@@ -46,7 +55,7 @@ export async function collectVideoCleanup(ownerId: string, scope: Scope = {}, db
     ownerId,
     jobIds,
     uploads,
-    soniox: jobs.filter((j) => j.fileId || j.transcriptionId).map((j) => ({ fileId: j.fileId, transcriptionId: j.transcriptionId })),
+    provider: jobs.filter((j) => j.sonioxFileId || j.sonioxTranscriptionId),
   };
 }
 
@@ -57,8 +66,8 @@ export async function runVideoCleanup(c: VideoCleanup): Promise<void> {
     await deleteByPrefix(storageKeys.videoJobPrefix(c.ownerId, jobId)).catch(() => undefined);
     await deleteByPrefix(storageKeys.videoJobTempPrefix(c.ownerId, jobId)).catch(() => undefined);
   }
-  for (const ids of c.soniox) {
-    if (!(await deleteSonioxData(ids))) console.warn('[video-cleanup] chưa xóa được dữ liệu ở nhà cung cấp');
+  for (const job of c.provider) {
+    if (!(await releaseProviderData(job, { jobDeleted: true }).catch(() => false))) console.warn('[video-cleanup] chưa xóa được dữ liệu ở nhà cung cấp');
   }
 }
 

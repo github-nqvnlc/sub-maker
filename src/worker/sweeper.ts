@@ -1,10 +1,26 @@
-import { and, eq, inArray, lt, or, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt, notInArray, or, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../lib/db';
-import { overlayAudios, overlayJobs, STT_RUNNING_STATUSES, sttJobLogs, sttJobs, voiceJobs } from '../lib/db/schema';
+import {
+  overlayAudios,
+  overlayJobs,
+  STT_RUNNING_STATUSES,
+  sttJobLogs,
+  sttJobs,
+  VIDEO_PIPELINE_ACTIVE,
+  VIDEO_PIPELINE_RUNNING,
+  videoJobs,
+  videoUploads,
+  voiceJobs,
+} from '../lib/db/schema';
 import { deleteOverlayObject } from '../lib/overlay/control';
 import { appendOverlayLog } from '../lib/overlay/log';
+import { recomputeSourceExpiry } from '../lib/video/expiry';
+import { appendVideoLog } from '../lib/video/log';
+import { providerSnapshot, releaseProviderData } from '../lib/video/provider-data';
+import { expireUpload } from '../lib/video/uploads';
 import { appendLog } from './job-log';
-import { enqueueGenerateVoice, enqueuePrepareOverlayAudio, enqueueRenderOverlay, enqueueTranscribeMedia } from './queues';
+import { enqueueGenerateVoice, enqueuePrepareOverlayAudio, enqueueRenderOverlay, enqueueTranscribeMedia, enqueueVideoPrepare, enqueueVideoPreview, enqueueVideoTranslate } from './queues';
+import { MAX_VIDEO_INTERRUPTIONS } from './video/run';
 
 /**
  * Phục hồi sau sự cố (Nguyên tắc III): tiến trình `running` mà worker đã chết (heartbeat quá hạn) được đánh dấu
@@ -136,6 +152,128 @@ export async function sweepStaleOverlayJobs(
   return { interrupted: ids(interrupted), stopped: ids(stopped), failed: ids(failed) };
 }
 
+/** Việc video đang chờ mà không worker nào chạm tới quá mức này thì coi là mất khỏi hàng đợi. */
+export const VIDEO_QUEUE_LOST_MS = 5 * 60_000;
+
+export type VideoSweepOptions = {
+  staleMs?: number;
+  lostMs?: number;
+  prepare?: (jobId: string) => Promise<unknown>;
+  translate?: (jobId: string) => Promise<unknown>;
+  preview?: (jobId: string) => Promise<unknown>;
+};
+
+/**
+ * Dịch video (spec 006, FR-050): pipeline mất nhịp tim → đã yêu cầu dừng thì `stopped`, còn lượt thì `interrupted` rồi xếp lại (tiếp
+ * tục từ phần đã xong), quá 3 lần thì `failed`; việc chờ bị mất khỏi hàng đợi được xếp lại; kiểm video tải lại và bản xem trước mất
+ * nhịp tim được xếp lại (bản xem trước quá 3 lần thì `failed`); phiên tải quá hạn được dọn.
+ */
+export async function sweepStaleVideoJobs(opts: VideoSweepOptions = {}): Promise<{ interrupted: string[]; stopped: string[]; failed: string[]; requeued: string[] }> {
+  const db = getDb();
+  const staleMs = opts.staleMs ?? HEARTBEAT_STALE_MS;
+  const lostMs = opts.lostMs ?? VIDEO_QUEUE_LOST_MS;
+  const prepare = opts.prepare ?? enqueueVideoPrepare;
+  const translate = opts.translate ?? enqueueVideoTranslate;
+  const preview = opts.preview ?? enqueueVideoPreview;
+  const older = (column: unknown, ms: number) => sql`(${column} is null or ${column} < now() - (${ms} * interval '1 millisecond'))`;
+  const running = and(inArray(videoJobs.status, [...VIDEO_PIPELINE_RUNNING]), older(videoJobs.heartbeatAt, staleMs));
+  const back = { id: videoJobs.id, audioTempKey: videoJobs.audioTempKey, media: videoJobs.media, ownerId: videoJobs.ownerId };
+  const enqueue = (j: { id: string; audioTempKey: string | null; media: unknown }) => (j.audioTempKey && j.media ? translate(j.id) : prepare(j.id));
+
+  const stopped = await db
+    .update(videoJobs)
+    .set({ status: 'stopped', stageKey: 'stopped', cancelRequested: false, heartbeatAt: null, finishedAt: new Date(), updatedAt: new Date() })
+    .where(and(running, eq(videoJobs.cancelRequested, true)))
+    .returning(back);
+  const failed = await db
+    .update(videoJobs)
+    .set({ status: 'failed', stageKey: 'failed', errorCode: 'INTERRUPTED', interruptions: sql`${videoJobs.interruptions} + 1`, heartbeatAt: null, finishedAt: new Date(), updatedAt: new Date() })
+    .where(and(running, sql`${videoJobs.interruptions} >= ${MAX_VIDEO_INTERRUPTIONS}`))
+    .returning(back);
+  const interrupted = await db
+    .update(videoJobs)
+    .set({ status: 'interrupted', stageKey: 'interrupted', interruptions: sql`${videoJobs.interruptions} + 1`, heartbeatAt: null, updatedAt: new Date() })
+    .where(running)
+    .returning(back);
+  for (const j of [...stopped, ...failed]) {
+    await recomputeSourceExpiry(j.id, db);
+    const [row] = await db.select().from(videoJobs).where(eq(videoJobs.id, j.id));
+    // dừng hoặc lỗi vĩnh viễn: lấy kết quả đã có rồi xóa dữ liệu ở nhà cung cấp (FR-017)
+    if (row) await releaseProviderData(providerSnapshot(row)).catch(() => false);
+  }
+  for (const j of stopped) await appendVideoLog(j.id, 'warn', 'stopped');
+  for (const j of failed) await appendVideoLog(j.id, 'error', 'failed', { reason: 'INTERRUPTED' });
+  for (const j of interrupted) {
+    await appendVideoLog(j.id, 'warn', 'interrupted');
+    await enqueue(j);
+  }
+
+  // chờ quá lâu mà không ai chạm tới (mất việc trong hàng đợi, web chết trước khi xếp). Bước nhận việc là nguyên tử nên xếp trùng vô hại.
+  const lost = await db
+    .update(videoJobs)
+    .set({ updatedAt: new Date() })
+    .where(
+      and(
+        inArray(videoJobs.status, ['queued', 'interrupted']),
+        older(videoJobs.heartbeatAt, lostMs),
+        sql`${videoJobs.updatedAt} < now() - (${lostMs} * interval '1 millisecond')`,
+      ),
+    )
+    .returning(back);
+  for (const j of lost) await enqueue(j);
+
+  const checks = await db
+    .update(videoJobs)
+    .set({ updatedAt: new Date() })
+    .where(
+      and(
+        eq(videoJobs.sourceState, 'checking'),
+        notInArray(videoJobs.status, [...VIDEO_PIPELINE_ACTIVE]),
+        older(videoJobs.heartbeatAt, staleMs),
+        sql`${videoJobs.updatedAt} < now() - (${staleMs} * interval '1 millisecond')`,
+      ),
+    )
+    .returning({ id: videoJobs.id });
+  for (const j of checks) await prepare(j.id);
+
+  // bản xem trước mất nhịp tim (hoặc chưa ai nhận)
+  const previewStale = and(
+    eq(videoJobs.previewState, 'pending'),
+    sql`case when ${videoJobs.previewHeartbeatAt} is null then ${videoJobs.updatedAt} < now() - (${lostMs} * interval '1 millisecond')
+      else ${videoJobs.previewHeartbeatAt} < now() - (${staleMs} * interval '1 millisecond') end`,
+  );
+  const dead = await db
+    .update(videoJobs)
+    .set({ previewState: 'failed', previewHeartbeatAt: null })
+    .where(and(previewStale, sql`${videoJobs.previewAttempt} > ${MAX_VIDEO_INTERRUPTIONS}`))
+    .returning({ id: videoJobs.id });
+  for (const j of dead) await appendVideoLog(j.id, 'warn', 'previewFailed');
+  const again = await db
+    .update(videoJobs)
+    .set({ previewHeartbeatAt: null, updatedAt: new Date() })
+    .where(previewStale)
+    .returning({ id: videoJobs.id });
+  for (const j of again) await preview(j.id);
+
+  const ids = (rows: Array<{ id: string }>) => rows.map((r) => r.id);
+  return { interrupted: ids(interrupted), stopped: ids(stopped), failed: ids(failed), requeued: [...ids(lost), ...ids(checks), ...ids(again)] };
+}
+
+/** Phiên tải video quá 48 giờ không hoạt động: dọn phiên (và việc chưa có kịch bản). */
+export async function sweepExpiredVideoUploads(): Promise<{ expired: string[] }> {
+  const rows = await getDb()
+    .select()
+    .from(videoUploads)
+    .where(and(inArray(videoUploads.state, ['active', 'completing']), lt(videoUploads.expiresAt, new Date())));
+  const expired: string[] = [];
+  for (const u of rows) {
+    await expireUpload(u)
+      .then(() => expired.push(u.id))
+      .catch((e) => console.error('[sweeper] không dọn được phiên tải:', e instanceof Error ? e.message : e));
+  }
+  return { expired };
+}
+
 /** Tệp âm thanh chờ quá lâu mà chưa worker nào nhận (mất việc trong hàng đợi, web chết giữa lúc nhận tệp). */
 const AUDIO_LOST_MS = 15 * 60_000;
 
@@ -164,14 +302,18 @@ export async function sweepStaleOverlayAudios(
 /** Quét ngay khi khởi động rồi định kỳ. Trả hàm dừng. */
 export function startSweeper(): () => void {
   const run = () =>
-    Promise.all([sweepStaleJobs(), sweepStaleSttJobs(), sweepStaleOverlayJobs(), sweepStaleOverlayAudios()])
-      .then(([r, s, o, a]) => {
+    Promise.all([sweepStaleJobs(), sweepStaleSttJobs(), sweepStaleOverlayJobs(), sweepStaleOverlayAudios(), sweepStaleVideoJobs(), sweepExpiredVideoUploads()])
+      .then(([r, s, o, a, v, u]) => {
         if (r.interrupted.length || r.stopped.length) console.log(`[sweeper] gián đoạn: ${r.interrupted.length}, dừng: ${r.stopped.length}`);
         if (s.interrupted.length) console.log(`[sweeper] STT gián đoạn: ${s.interrupted.length}`);
         if (o.interrupted.length || o.stopped.length || o.failed.length) {
           console.log(`[sweeper] overlay gián đoạn: ${o.interrupted.length}, dừng: ${o.stopped.length}, lỗi: ${o.failed.length}`);
         }
         if (a.requeued.length) console.log(`[sweeper] âm thanh overlay xếp lại: ${a.requeued.length}`);
+        if (v.interrupted.length || v.stopped.length || v.failed.length || v.requeued.length) {
+          console.log(`[sweeper] video gián đoạn: ${v.interrupted.length}, dừng: ${v.stopped.length}, lỗi: ${v.failed.length}, xếp lại: ${v.requeued.length}`);
+        }
+        if (u.expired.length) console.log(`[sweeper] phiên tải video quá hạn: ${u.expired.length}`);
       })
       .catch((e) => console.error('[sweeper] lỗi:', e instanceof Error ? e.message : e));
   void run();

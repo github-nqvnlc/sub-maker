@@ -84,6 +84,8 @@ export class SonioxSttClient {
     };
     if (opts.languageHints?.length) payload.language_hints = opts.languageHints;
     if (opts.clientReferenceId) payload.client_reference_id = opts.clientReferenceId.slice(0, 256);
+    if (opts.translation) payload.translation = { type: 'one_way', target_language: opts.translation.targetLanguage };
+    if (opts.translationTerms?.length) payload.context = { translation_terms: opts.translationTerms.map(({ source, target }) => ({ source, target })) };
     const res = await this.call('transcriptions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

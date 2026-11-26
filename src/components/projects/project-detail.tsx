@@ -22,9 +22,11 @@ import { MediaTab } from '@/components/projects/media-tab';
 import { ScriptEditor } from '@/components/projects/script-editor';
 import { SttActiveBanner, SttJobList } from '@/components/projects/stt-dialog';
 import { UploadDropzone } from '@/components/projects/upload-dropzone';
+import { VideoTab } from '@/components/video/video-tab';
 import { ApiError, api, apiDelete } from '@/lib/api-client';
 import { OVERLAY_ACTIVE, useOverlayJobs } from '@/lib/hooks/use-overlay';
 import { STT_ACTIVE, useSttJobs } from '@/lib/hooks/use-stt-jobs';
+import { isVideoActive, useVideoJobs } from '@/lib/hooks/use-video';
 import { fmtBytes, fmtDuration } from '@/lib/format';
 import { fmt } from '@/lib/i18n/fmt';
 import { useFormat, useT } from '@/lib/i18n/client';
@@ -63,6 +65,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const activeSttJobs = (sttJobs.data ?? []).filter((j) => STT_ACTIVE.has(j.status)).length;
   const overlayJobs = useOverlayJobs(projectId);
   const activeOverlayJobs = (overlayJobs.data ?? []).filter((j) => OVERLAY_ACTIVE.has(j.status)).length;
+  const videoJobs = useVideoJobs(projectId);
+  const activeVideoJobs = (videoJobs.data ?? []).filter(isVideoActive).length;
 
   const q = useQuery({
     queryKey: ['project', projectId],
@@ -73,13 +77,15 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   });
 
   if (q.isPending) return <LoadingList rows={4} />;
-  if (q.isError) {
-    return <ErrorState message={q.error instanceof ApiError && q.error.status === 404 ? t.projects.notFound : q.error.message} onRetry={() => void q.refetch()} />;
+  // hỏi lại bị lỗi (ví dụ hết phiên giữa lúc đang tải video) thì giữ trang đang có; Project đã bị xóa thì báo không tìm thấy
+  const gone = q.error instanceof ApiError && q.error.status === 404;
+  if (!q.data || gone) {
+    return <ErrorState message={gone ? t.projects.notFound : q.error?.message} onRetry={() => void q.refetch()} />;
   }
   const p = q.data;
   const fileNames = new Map(p.files.map((f) => [f.id, f.originalName]));
   const activeJobs = p.jobs.filter((j) => ACTIVE.has(j.status)).length;
-  const totalActive = activeJobs + activeSttJobs + activeOverlayJobs;
+  const totalActive = activeJobs + activeSttJobs + activeOverlayJobs + activeVideoJobs;
 
   return (
     <div className="space-y-5">
@@ -121,6 +127,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           <TabsTrigger value="overlay">
             {t.overlay.tab} ({overlayJobs.data?.length ?? 0})
             {activeOverlayJobs > 0 ? <Badge variant="secondary">{fmt(t.overlay.runningCount, { n: activeOverlayJobs })}</Badge> : null}
+          </TabsTrigger>
+          <TabsTrigger value="video">
+            {t.video.tab} ({videoJobs.data?.length ?? 0})
+            {activeVideoJobs > 0 ? <Badge variant="secondary">{fmt(t.video.runningCount, { n: activeVideoJobs })}</Badge> : null}
           </TabsTrigger>
         </TabsList>
 
@@ -291,6 +301,9 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               if (file) setStartFileId(file.id);
             }}
           />
+        </TabsContent>
+        <TabsContent value="video">
+          <VideoTab projectId={p.id} />
         </TabsContent>
       </Tabs>
 

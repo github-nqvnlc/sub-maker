@@ -55,9 +55,11 @@ export const PUT = route(async (request: Request) => {
   const admin = await requireAdmin(request);
   const patch = patchSchema.parse(await readJson(request));
   if (patch.videoMaxMinutes !== undefined || patch.videoProviderMaxMinutes !== undefined) {
-    const merged = { ...(await getSettings()), ...patch };
+    const current = await getSettings();
+    const merged = { ...current, ...patch };
     if (merged.videoMaxMinutes > merged.videoProviderMaxMinutes) {
-      const field = patch.videoMaxMinutes !== undefined ? 'videoMaxMinutes' : 'videoProviderMaxMinutes';
+      // form gửi mọi ô: gắn lỗi vào ô vừa được đổi
+      const field = merged.videoMaxMinutes !== current.videoMaxMinutes ? 'videoMaxMinutes' : 'videoProviderMaxMinutes';
       throw validation({ [field]: 'Thời lượng video tối đa không được vượt giới hạn của nhà cung cấp' });
     }
   }

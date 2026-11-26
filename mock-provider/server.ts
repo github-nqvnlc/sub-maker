@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
+import { createSonioxHandler } from '../tests/mocks/soniox-mock';
 
 /**
  * Máy chủ nhà cung cấp TTS giả dùng cho kiểm thử (Nguyên tắc V): mô phỏng FPT Marketplace và ShopAIKey (OpenAI TTS, MiniMax).
@@ -25,6 +26,8 @@ import type { AddressInfo } from 'node:net';
  *   - `pad-<n>`: thêm n ms im lặng ở đầu VÀ cuối WAV (để thử bước cắt lặng).
  *   - `429-<k>`: k yêu cầu POST đầu trả 429 (`retry-after: 0`), sau đó bình thường.
  *   - `blocked-<từ khóa>`: văn bản chứa từ khóa bị chặn (400 content policy).
+ *
+ * Soniox giả (spec 004, spec 006): baseUrl = `${url}/soniox/s/<kịch bản>`; kịch bản như ở tests/mocks/soniox-mock.ts.
  */
 
 export type RecordedRequest = {
@@ -109,11 +112,14 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
 
   const hash = (s: string) => createHash('sha1').update(s).digest('hex').slice(0, 12);
 
+  const soniox = createSonioxHandler();
+
   const server = http.createServer(async (req, res) => {
+    const rawUrl = new URL(req.url ?? '/', 'http://mock');
+    if (rawUrl.pathname.startsWith('/soniox/')) return soniox.handle(req, res, rawUrl.pathname.slice('/soniox'.length));
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
     const body = Buffer.concat(chunks).toString('utf8');
-    const rawUrl = new URL(req.url ?? '/', 'http://mock');
 
     if (rawUrl.pathname === '/__requests') return json(res, 200, requests);
     if (rawUrl.pathname === '/__reset' && req.method === 'POST') {

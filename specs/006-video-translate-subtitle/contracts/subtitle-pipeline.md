@@ -21,7 +21,7 @@ Mọi hàm trong tài liệu này là **hàm thuần** ở `src/lib/video/`, kh�
 - Câu vượt giới hạn: cắt tại ranh giới cụm gần nhất với dấu ngắt nhịp (`, ; :`) → `timing = measured`. Một cụm tự vượt giới hạn: cắt phần dịch tại dấu câu hoặc giữa, chia thời gian theo trọng số chữ (`wordWeight`), hút mốc cắt về ranh giới từ gốc gần nhất; phần gốc chia theo mốc đó → `timing = estimated`.
 - Cue có hơn 12 từ được chèn một `\n` cân hai dòng (ưu tiên sau dấu câu), mỗi dòng ≤ 12 từ (42 ký tự với chuỗi không khoảng trắng).
 - Thời lượng tối thiểu 700 ms: kéo dài cuối cue vào khoảng trống, không chồng cue sau, không vượt thời lượng video.
-- Chồng mốc (người nói chen nhau): cắt cue trước tại đầu cue sau; cue còn dưới 100 ms thì gộp vào cue sau.
+- Chồng mốc (người nói chen nhau): cắt cue trước tại đầu cue sau; cue còn dưới 100 ms thì gộp vào cue sau. Nếu gộp sẽ vượt giới hạn chữ thì giữ cue trước ở 100 ms và lùi đầu cue sau (làm rõ khi cài đặt T042).
 - `flags.fast` khi tốc độ đọc câu dịch > 21 ký tự mỗi giây.
 
 **Bất biến kiểm thử**: nối phần dịch của mọi cue (bỏ khoảng trắng) bằng nối mọi token dịch và `none`; tương tự phần gốc; cue tăng dần, không chồng, `end − start ≥ 100`; cùng đầu vào cho cùng đầu ra.
