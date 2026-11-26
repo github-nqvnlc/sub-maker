@@ -28,9 +28,9 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 
 **Purpose**: mốc ban đầu và cổng kiểm chứng trong ảnh worker
 
-- [ ] T001 Chạy `npm run lint`, `npm run check:i18n`, `npm test`, `npm run test:isolation`; ghi ca trượt có sẵn vào mục Notes của `specs/006-video-translate-subtitle/tasks.md`.
-- [ ] T002 Viết `scripts/video-bench.ts`: vẽ chữ bằng bộ vẽ hiện có (khung 16:9), chỉ đẩy dải chữ RGBA nhân sẵn alpha vào ffmpeg theo tham số ở `specs/006-video-translate-subtitle/contracts/render-and-media.md` §3; in tốc độ so với thời gian thực cho 1080p và 4K, và kiểm ffmpeg có `zscale`, `tonemap`, `overlay`, bộ tách `mov`, `matroska`, `avi`, `flv`, bộ mã `libx264`, `aac`, `libmp3lame`.
-- [ ] T003 **CỔNG**: dựng lại ảnh worker (`docker/Dockerfile`), chạy `scripts/video-bench.ts` trong ảnh (ffmpeg 5.1), ghi số đo vào `specs/006-video-translate-subtitle/research.md` R1. Đạt khi 1080p ≥ 0,5 lần thời gian thực (SC-010) và đủ bộ lọc, bộ tách, bộ mã. Không đạt thì xem lại R1/R3 với người dùng trước Phase 2.
+- [X] T001 Chạy `npm run lint`, `npm run check:i18n`, `npm test`, `npm run test:isolation`; ghi ca trượt có sẵn vào mục Notes của `specs/006-video-translate-subtitle/tasks.md`.
+- [X] T002 Viết `scripts/video-bench.ts`: vẽ chữ bằng bộ vẽ hiện có (khung 16:9), chỉ đẩy dải chữ RGBA nhân sẵn alpha vào ffmpeg theo tham số ở `specs/006-video-translate-subtitle/contracts/render-and-media.md` §3; in tốc độ so với thời gian thực cho 1080p và 4K, và kiểm ffmpeg có `zscale`, `tonemap`, `overlay`, bộ tách `mov`, `matroska`, `avi`, `flv`, bộ mã `libx264`, `aac`, `libmp3lame`.
+- [X] T003 **CỔNG** (ĐẠT 2026-11-26: 1080p 4,05–4,85×, 4K 1,18–1,33×; số đo ở research R1): dựng lại ảnh worker (`docker/Dockerfile`), chạy `scripts/video-bench.ts` trong ảnh (ffmpeg 5.1), ghi số đo vào `specs/006-video-translate-subtitle/research.md` R1. Đạt khi 1080p ≥ 0,5 lần thời gian thực (SC-010) và đủ bộ lọc, bộ tách, bộ mã. Không đạt thì xem lại R1/R3 với người dùng trước Phase 2.
 
 ---
 
@@ -420,5 +420,6 @@ Kiểm thử (thấy trượt) → hàm thuần → dịch vụ → API → work
 
 ## Notes
 
+- **Mốc ban đầu (T001, 2026-11-26, commit `a12afa1`)**: `npm run lint` đạt; `npm run check:i18n` đạt; `npm test` 1083 đạt, 6 bỏ qua (1 tệp `real-providers` bỏ qua), 380 giây; `npm run test:isolation` 115 đạt. Không có ca trượt sẵn.
 - Đề xuất giao diện trong plan: bảng kiểu chữ viết riêng, không tách mã của overlay (mặc định, T099); `StatusBadge` nhận thêm prop `label` tùy chọn (người dùng đồng ý sửa lỗi I3 ngày 2026-11-26, T050).
 - Chỉ làm trên nhánh `main`. `[P]` không áp dụng cho task sửa i18n.

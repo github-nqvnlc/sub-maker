@@ -18,6 +18,16 @@ Số đo trong tài liệu này lấy trên máy dev: Windows 10, Intel i3-12100
   | `overlay` dải 30%, đổi mọi khung | 10,5 s (5,7×) | 14,7 s (1,4×) |
 
   Bảng **chưa gồm thời gian vẽ chữ** (máy dev chưa cài `@napi-rs/canvas`, xem R15). Spec 005 đo vẽ + đọc khung + mã hóa 1080×1920 nhanh hơn thời gian thực 2,1–3,9 lần cho cả khung, nên với dải chữ, SC-010 (10 phút 1080p trong 20 phút, tức 0,5×) còn dư địa lớn. Video 4K dài 180 phút có thể mất vài giờ; giao diện phải hiện thời gian ước tính.
+- **Đo lại trong ảnh worker (T003, 2026-11-26)** bằng `scripts/video-bench.ts`: gồm **cả vẽ chữ** (bộ vẽ của spec 005, `@napi-rs/canvas`), ffmpeg 5.1.9 (Debian bookworm), cùng máy i3-12100, ffmpeg dùng 6 luồng, tham số đúng contracts/render-and-media.md §3. Có đủ `zscale`, `tonemap`, `overlay=alpha=premultiplied`, bộ tách `mov`, `matroska`, `avi`, `flv`, bộ mã `libx264`, `aac`, `libmp3lame`. **Cổng ĐẠT** (cần 1080p ≥ 0,5×).
+
+  | Khung | Cảnh | Tốc độ | Trong đó vẽ chữ | Dải chữ |
+  | --- | --- | --- | --- | --- |
+  | 1080p30, 60 s | chữ đứng yên | 4,85× | 2,2 s / 12,4 s | 1920×272 |
+  | 1080p30, 60 s | karaoke (đổi mọi khung) | 4,05× | 6,9 s / 14,8 s | 1920×272 |
+  | 4K30, 20 s | chữ đứng yên | 1,33× | 1,1 s / 15,0 s | 3840×544 |
+  | 4K30, 20 s | karaoke | 1,18× | 7,6 s / 16,9 s | 3840×544 |
+
+  Ở 4K bài đo vẽ chữ ở 1080p rồi phóng dải lên (bộ vẽ lúc đo chưa vẽ thẳng ở cỡ đích); nguồn giả `testsrc2` dễ nén hơn video thật nên SC-010 vẫn phải đo lại trên video thật (T139).
 - **Alternatives considered**: libass (`.ass`): nhanh hơn khoảng 1,2–1,7 lần nhưng xem trước phải chạy libass bản WebAssembly, và hộp nền bo góc, karaoke phóng từ, phát sáng khó làm giống; phải viết lại mọi hiệu ứng. Dựng ở trình duyệt bằng WebCodecs: trái FR-047 (chạy nền). Vẽ cả khung: chậm hơn 2–3 lần.
 
 ## R2. Bố cục theo khung chuẩn và phần mở rộng của bộ vẽ
