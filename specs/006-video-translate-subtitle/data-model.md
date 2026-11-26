@@ -2,7 +2,7 @@
 
 **Date**: 2026-11-26 | Migration `0009_video_translate` | Mã: `src/lib/db/schema/video.ts`
 
-Mọi bảng có chủ đều mang `owner_id`; mọi truy vấn của người dùng lọc theo `owner_id`, sai thì 404. Dung lượng dùng `bigint`. Khóa ngoại `on delete cascade` theo `projects` và `users`.
+Mọi bảng có chủ đều mang `owner_id`; mọi truy vấn của người dùng lọc theo `owner_id`, sai thì 404. Dung lượng dùng `bigint`; 1 MB = 1.024² byte, 1 GB = 1.024³ byte. Khóa ngoại `on delete cascade` theo `projects` và `users`.
 
 ## 1. Bảng mới
 
@@ -13,7 +13,7 @@ Mọi bảng có chủ đều mang `owner_id`; mọi truy vấn của người d
 | `project_id` | uuid | khóa chính, → `projects` |
 | `owner_id` | uuid | → `users` |
 | `direction` | text | `to_vi` (mặc định) \| `vi_to_en` |
-| `glossary` | jsonb | `[{ source, target, keep }]`; ≤ 200 cặp, tổng chữ ≤ 8.000; `source` không trùng (so không phân biệt hoa/thường, NFC) |
+| `glossary` | jsonb | `[{ source, target, keep }]`; ≤ `videoGlossaryMaxPairs` cặp (mặc định 200), tổng chữ ≤ `videoGlossaryMaxChars` (mặc định 8.000); `source` không trùng (so không phân biệt hoa/thường, NFC) |
 | `style` | jsonb | kiểu gần nhất (§2.1) |
 | `updated_at` | timestamptz | |
 
@@ -38,6 +38,7 @@ Mọi bảng có chủ đều mang `owner_id`; mọi truy vấn của người d
 | `audio_temp_key` | text \| null | MP3 16 kHz |
 | `preview_state` | text | `none\|pending\|ready\|failed` |
 | `preview_key`, `preview_bytes` | text, bigint \| null | |
+| `preview_heartbeat_at`, `preview_attempt` | timestamptz \| null, int | bản xem trước chạy song song với dịch nên có nhịp tim và số lần chạy riêng; quá 3 lần gián đoạn thì `failed` |
 | `status` | enum `video_job_status` | `waiting_media`, `queued`, `preparing`, `translating`, `segmenting`, `review_ready`, `failed`, `stopped`, `interrupted` |
 | `progress_percent` | int | 0–50 cho pipeline dịch (FR-049) |
 | `stage_key`, `error_code` | text \| null | khóa i18n |
@@ -57,7 +58,7 @@ Chỉ mục: `(project_id, created_at)`, `(owner_id, status)`, `(status, heartbe
 
 ### 1.3 `video_uploads` và `video_upload_parts`
 
-`video_uploads`: `id`, `job_id`, `owner_id`, `kind` (`source` \| `client_audio`), `storage_upload_id`, `key`, `size_bytes`, `part_size` (16 MiB), `part_count`, `fingerprint`, `state` (`active` → `completing` → `completed`; `aborted`), `expires_at` (48 giờ sau phần gần nhất), `created_at`. Mỗi `(job_id, kind)` có nhiều nhất một phiên `active|completing`.
+`video_uploads`: `id`, `job_id`, `owner_id`, `kind` (`source` \| `client_audio`), `storage_upload_id`, `key`, `size_bytes`, `part_size` (16 MB), `part_count`, `fingerprint`, `state` (`active` → `completing` → `completed`; `aborted`), `expires_at` (48 giờ sau phần gần nhất), `created_at`. Mỗi `(job_id, kind)` có nhiều nhất một phiên `active|completing`.
 
 `video_upload_parts`: khóa chính `(upload_id, n)`; `size`, `etag`, `sha256`. Gửi lại cùng phần thì ghi đè.
 
@@ -141,7 +142,9 @@ queued|preparing|translating|segmenting ─ dừng → stopped ─ chạy lại 
 review_ready ─ dịch lại (đã xác nhận) → queued
 ```
 
-Chạy lại: có tệp token thô của lượt hiện tại thì gom cue từ đó; có `soniox_transcription_id` thì chỉ hỏi kết quả; đã có cue của lượt hiện tại thì không dịch lại (FR-016, SC-011). "Dịch lại" tăng `translation_run`, xóa id Soniox, thay toàn bộ cue.
+Chạy lại: có tệp token thô của lượt hiện tại thì gom cue từ đó; có `soniox_transcription_id` thì chỉ hỏi kết quả; đã có cue của lượt hiện tại thì không dịch lại (FR-016, SC-011). "Dịch lại" tăng `translation_run`, xóa id Soniox; cue cũ giữ nguyên tới khi lượt mới lưu xong rồi được thay trong một giao dịch; lượt mới lỗi thì giữ cue cũ.
+
+Dừng hoặc lỗi vĩnh viễn (FR-017): nhà cung cấp đã có kết quả thì lưu tệp token trước, rồi xóa dữ liệu và id Soniox; chưa có thì xóa, chạy lại sẽ gọi mới. Gián đoạn do khởi động lại thì giữ id để tiếp tục.
 
 ### 3.2 Trạng thái hiển thị (FR-048), xét theo thứ tự
 
@@ -156,6 +159,8 @@ Chạy lại: có tệp token thô của lượt hiện tại thì gom cue từ 
 | `review_ready` và bản xuất gần nhất `failed` hoặc `stopped` | lỗi / đã dừng (kịch bản vẫn sửa và xuất lại được) |
 | `review_ready` | chờ duyệt (kèm tiến độ tải nếu nguồn chưa xong) |
 
+Xét trước mọi dòng trên: `source_state = rejected` (video không đạt sau khi đã dịch ở luồng nhanh, FR-003) → lỗi kèm nguyên nhân; phụ đề vẫn tải được, không xuất video.
+
 "Việc đang chạy" (giới hạn mỗi User, FR-008): phiên tải `active|completing`, pipeline `queued|preparing|translating|segmenting|interrupted`, hoặc bản xuất `queued|running|interrupted`. Đếm và tạo trong một giao dịch có khóa tư vấn.
 
 ## 4. Thay đổi bảng và cài đặt có sẵn
@@ -166,15 +171,19 @@ Chạy lại: có tệp token thô của lượt hiện tại thì gom cue từ 
 
 | Khóa | Mặc định | Khoảng |
 | --- | --- | --- |
-| `userVideoQuotaBytes` | 30 GiB | 1 GiB – 1 TiB |
-| `videoSystemCapBytes` | 100 GiB | 1 GiB – 10 TiB |
-| `videoMaxBytes` | 10 GiB | 100 MiB – 10 GiB |
-| `videoMaxMinutes` | 180 | 1 – 300 |
+| `userVideoQuotaBytes` | 30 GB | 1 GB – 1 TB |
+| `videoSystemCapBytes` | 100 GB | 1 GB – 10 TB |
+| `videoMaxBytes` | 10 GB | 100 MB – 10 GB |
+| `videoMaxMinutes` | 180 | 1 – `videoProviderMaxMinutes` |
 | `videoMaxJobsPerUser` | 1 | 1 – 10 |
 | `maxConcurrentVideoRenders` | 1 | 1 – 4 |
+| `maxConcurrentVideoTranslations` | 2 | 1 – 10 |
 | `videoSourceRetainHours` | 48 | 1 – 720 |
 | `videoIdleRetainDays` | 7 | 1 – 90 |
 | `videoOutputRetainDays` | 7 | 1 – 90 |
+| `videoProviderMaxMinutes` | 300 | 1 – 1000; giới hạn thời lượng mỗi tệp của nhà cung cấp |
+| `videoGlossaryMaxPairs` | 200 | 1 – 1000 |
+| `videoGlossaryMaxChars` | 8.000 | 500 – 10.000; theo giới hạn ngữ cảnh của nhà cung cấp |
 
 ## 5. Khóa đối tượng, hạn mức, thời hạn
 
@@ -187,6 +196,6 @@ Chạy lại: có tệp token thô của lượt hiện tại thì gom cue từ 
 | token thô của Soniox | `users/{u}/video-tmp/{job}/transcript-{lượt}.json` | chỉ trần hệ thống | sau khi lưu cue; còn sót thì theo `last_activity_at` + `videoIdleRetainDays` |
 | chữ phụ đề (trong CSDL) | — | 500 MB (`script_bytes`) | xóa việc, Project, User |
 
-`source_expires_at`: đã có bản xuất thành công → `finished_at` gần nhất + `videoSourceRetainHours`; chưa có → `last_activity_at` + `videoIdleRetainDays`; đang tải → theo `expires_at` của phiên. Tính lại ở mỗi sự kiện làm đổi một trong các giá trị đó. Đến hạn mà còn tiến trình hoặc thẻ giữ lượt tải thì để lượt quét sau.
+`source_expires_at`: đã có bản xuất thành công → `finished_at` gần nhất + `videoSourceRetainHours`; chưa có → `last_activity_at` + `videoIdleRetainDays`; đang tải → theo `expires_at` của phiên. Chỉ một hàm được ghi cột này: `recomputeSourceExpiry(jobId, tx)` trong `src/lib/video/expiry.ts`, gọi trong cùng giao dịch ở mỗi sự kiện làm đổi một trong các giá trị đó (tạo và hoàn tất tải lên; dừng, lỗi, chạy lại, chờ duyệt; sửa cue; đổi kiểu; tạo, hoàn tất, lỗi bản xuất). Việc dọn dẹp chỉ đọc. Đến hạn mà còn tiến trình hoặc thẻ giữ lượt tải thì để lượt quét sau.
 
 `script_bytes` đổi thì cập nhật `users.storage_used_bytes` cùng giao dịch ở chế độ mềm (không bao giờ chặn lưu).

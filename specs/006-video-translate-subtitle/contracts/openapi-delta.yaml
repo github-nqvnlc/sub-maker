@@ -65,6 +65,8 @@ paths:
     post: { summary: "Dừng pipeline đang chạy" }
   /api/video/jobs/{jobId}/rerun:
     post: { summary: "Chạy lại việc lỗi hoặc đã dừng, dùng lại phần đã xong" }
+  /api/video/jobs/{jobId}/retranslate/estimate:
+    post: { summary: "{ durationMs, costEstimateUsd }; costEstimateUsd là null khi chưa cấu hình đơn giá" }
   /api/video/jobs/{jobId}/retranslate:
     post:
       summary: "Dịch lại; thay toàn bộ cue và phát sinh phí"
@@ -110,7 +112,7 @@ paths:
       parameters:
         - { name: kind, in: query, required: true, schema: { enum: [source, preview, audio] } }
   /api/video/jobs/{jobId}/exports/estimate:
-    post: { summary: "Dung lượng, thời gian ước tính, cảnh báo (HDR, ký tự thiếu, chữ lấn vùng che), có đủ chỗ không" }
+    post: { summary: "Dung lượng, thời gian ước tính, cảnh báo (HDR, làm tròn kích thước, ký tự thiếu), có đủ chỗ không" }
   /api/video/jobs/{jobId}/exports:
     post:
       summary: Chốt nội dung và kiểu rồi tạo bản xuất
@@ -141,6 +143,6 @@ paths:
   /api/admin/users/{userId}:
     patch: { summary: "Thêm trường `canTranslateVideo`; tắt thì dừng tiến trình đang chạy" }
   /api/admin/settings:
-    put: { summary: "Thêm 9 khóa video (data-model §4)" }
+    put: { summary: "Thêm 13 khóa video (data-model §4)" }
   /api/admin/stats:
     get: { summary: "Thêm dung lượng video đã dùng theo User và toàn hệ thống" }

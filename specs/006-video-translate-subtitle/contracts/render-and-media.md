@@ -51,6 +51,6 @@ Không có chữ do người dùng nhập trong tham số. Tên tệp trên đĩ
 ## 5. Trình duyệt
 
 - **Tải lên** (`upload-client.ts`): trạng thái `idle → uploading ⇄ paused → completing → done`; 3 phần song song; lỗi mạng, 429, 5xx thử lại với 1, 2, 4, 8, 16 giây rồi chuyển `paused`; 401 → `paused` kèm yêu cầu đăng nhập; 403/404/409 → dừng và báo. Tốc độ lấy trung bình 10 giây gần nhất.
-- **Lấy âm thanh** (`extract-audio.worker.ts`): vào `File`; ra `{ ok: true, blob, mime, startMs, durationMs }` hoặc `{ ok: false, reason }`. Mọi `ok: false` được bỏ qua trong im lặng và gọi `client-audio/skip`.
+- **Lấy âm thanh** (`extract-audio.worker.ts`): vào `File`; ra `{ ok: true, blob, mime, startMs, durationMs }` hoặc `{ ok: false, reason }`. Mọi `ok: false` được bỏ qua trong im lặng và gọi `client-audio/skip`. Trả `ok: false` ngay khi tệp không có luồng hình hoặc vượt 4096×2304 (FR-003).
 - **Xem trước**: `<video>` (hoặc `<audio>` khi chưa có hình) + `<canvas>` phủ lên, vẽ lại theo `requestVideoFrameCallback` (không có thì `requestAnimationFrame`), chỉ vẽ khi khóa khung đổi; `k` theo kích thước hiển thị. Khung vùng an toàn là lớp DOM riêng, không bao giờ vào bộ vẽ.
 - Vùng an toàn (`safe-zones.ts`): hình chữ nhật theo phần trăm khung 9:16 cho TikTok, Shorts, Reels; là **mô phỏng gần đúng** và giao diện ghi rõ.

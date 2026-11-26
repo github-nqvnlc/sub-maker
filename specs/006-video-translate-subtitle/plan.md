@@ -10,7 +10,7 @@ Thêm tab "Dịch Video" trong Project: tải video tới 10 GB theo từng ph�
 
 Hướng kỹ thuật ([research.md](./research.md)):
 
-1. **Tải lên** S3 multipart qua ứng dụng, phần 16 MiB, tiếp tục được, kiểm quyền từng phần (R7).
+1. **Tải lên** S3 multipart qua ứng dụng, phần 16 MB, tiếp tục được, kiểm quyền từng phần (R7).
 2. **Dịch**: mở rộng client Soniox với dịch một chiều và từ điển; chữ dịch không có mốc nên cue lấy mốc từ lời gốc theo cụm (R5, R6).
 3. **Một bộ vẽ** của spec 005 cho xem trước và gắn cứng; chỉ vẽ dải chữ rồi ffmpeg ghép lên video nguồn. Đo phần ffmpeg: 1080p nhanh hơn thời gian thực khoảng 5,7 lần, 4K khoảng 1,2–1,4 lần (chưa gồm vẽ chữ) (R1, R2, R3).
 4. **Âm thanh** giữ đúng độ lệch đầu luồng; luồng nhanh tách ngay trong trình duyệt bằng `mediabunny` (R4, R8).
@@ -22,7 +22,7 @@ Hướng kỹ thuật ([research.md](./research.md)):
 
 **Primary Dependencies**: Next.js 16 (App Router), React 19, Tailwind CSS 4, shadcn/ui, TanStack Query, Drizzle ORM, pg-boss, `@napi-rs/canvas`, `@aws-sdk/client-s3`, ffmpeg/ffprobe (ảnh worker). **Mới**: `mediabunny` (MPL-2.0, chỉ trình duyệt), `@tanstack/react-virtual` (MIT). **Tệp phông mới** (OFL): Oswald, Open Sans và độ đậm 600 (R2; tải về cần người dùng đồng ý)
 
-**Storage**: PostgreSQL 16, 7 bảng mới, 2 cột trên `users`, 1 cột trên `usage_records`, 9 cài đặt, migration `0009_video_translate` ([data-model.md](./data-model.md)); MinIO cho video nguồn, thành phẩm và tệp tạm dẫn xuất
+**Storage**: PostgreSQL 16, 7 bảng mới, 2 cột trên `users`, 1 cột trên `usage_records`, 13 cài đặt, migration `0009_video_translate` ([data-model.md](./data-model.md)); MinIO cho video nguồn, thành phẩm và tệp tạm dẫn xuất
 
 **Testing**: Vitest (unit, integration, isolation), Playwright (desktop và 375 px); video thử ≤ 10 giây; Soniox giả ([quickstart.md](./quickstart.md))
 
@@ -34,7 +34,7 @@ Hướng kỹ thuật ([research.md](./research.md)):
 
 **Constraints**: ảnh `web` không có ffmpeg; CSP `connect-src`, `media-src`, `font-src` chỉ cùng nguồn; thân yêu cầu qua đường hầm ≤ 100 MB; một lần `PutObject` ≤ 5 GB; thời hạn công việc pg-boss ≤ 24 giờ; ngữ cảnh Soniox khoảng 10.000 ký tự, mỗi tệp ≤ 300 phút
 
-**Scale/Scope**: video ≤ 10 GiB và ≤ 180 phút, tối đa 20.000 cue; 1 bản xuất chạy cùng lúc mặc định; 1 tab mới, 1 trang mới (trình biên tập), 2 trang quản trị sửa; 33 thao tác API trên 30 đường dẫn (gồm 3 đường dẫn quản trị được mở rộng)
+**Scale/Scope**: video ≤ 10 GB và ≤ 180 phút, tối đa 20.000 cue; 1 bản xuất chạy cùng lúc mặc định; 1 tab mới, 1 trang mới (trình biên tập), 2 trang quản trị sửa; 34 thao tác API trên 31 đường dẫn (gồm 3 đường dẫn quản trị được mở rộng)
 
 Không còn điểm NEEDS CLARIFICATION. Những điều chưa đo được ghi ở research R15, mỗi điều có bước kiểm và hướng xử lý.
 
@@ -47,7 +47,7 @@ Không còn điểm NEEDS CLARIFICATION. Những điều chưa đo được ghi 
 | I. Bảo mật và cô lập | ✅ FR-008, FR-056, FR-057 | ✅ Mọi bảng có chủ mang `owner_id`, sai trả 404; quyền kiểm ở máy chủ cho cả từng phần tải; phát và tải qua proxy; Administrator không đọc nội dung; tệp độc hại chỉ được ffmpeg đọc từ đĩa |
 | II. Bí mật | ✅ Dùng cấu hình Soniox đã mã hóa | ✅ Khóa không xuống trình duyệt, không vào tiến trình dựng hình; nhật ký lưu khóa i18n và qua `redactDeep` |
 | III. Tiến trình nền | ✅ FR-047 đến FR-052 | ✅ pg-boss, nhịp tim, sweeper, dừng, chạy lại, nhật ký, SSE ≤ 2 giây, giới hạn đồng thời, tối đa 3 lần thử lại |
-| IV. Chi phí và dùng lại | ✅ FR-016, FR-053 đến FR-055 | ✅ Một bản ghi sử dụng mỗi lần dịch; tiếp tục theo id Soniox; hạn mức kiểm nguyên tử; thời hạn tự xóa và thẻ giữ lượt tải; xem Complexity Tracking mục 1 |
+| IV. Chi phí và dùng lại | ✅ FR-016, FR-053 đến FR-055 | ✅ Một bản ghi tính phí mỗi lần dịch thành công và một bản ghi lỗi mỗi lần gọi thất bại; giới hạn nhà cung cấp nằm trong cài đặt; tiếp tục theo id Soniox; hạn mức kiểm nguyên tử; thời hạn tự xóa và thẻ giữ lượt tải; xem Complexity Tracking mục 1 |
 | V. Kiểm thử | ✅ FR-061 | ✅ Quickstart §1–§7 phủ từng user story và FR-061; Soniox giả trong tự động |
 | VI. Giao diện | ✅ FR-059 | ✅ vi/en, thành phần dùng chung, đủ trạng thái, xác nhận xóa, tìm không dấu, dùng được ở 375 px (xem "Giao diện") |
 | Lưu trữ file; dịch vụ nội bộ không mở | ✅ FR-004 | ✅ Không mở cổng mới, kho không công khai |
@@ -56,10 +56,10 @@ Không còn điểm NEEDS CLARIFICATION. Những điều chưa đo được ghi 
 | Mốc từng từ; mốc phụ đề dịch | ✅ FR-015, FR-034 | ✅ Mốc từ suy ra từ cue, không lưu; cue có cột `timing` ghi mốc ước lượng |
 | Định dạng phụ đề | ✅ FR-039 | ✅ `.srt` chuẩn, `.vtt` chỉ xuất |
 | Phạm vi giai đoạn | ✅ Có từ 1.4.0 | ✅ Sửa và xuất phụ đề chỉ trong tính năng này; không thêm tính phí, chia sẻ |
-| Quy trình: đổi hành vi cập nhật spec trước | ⚠️ | ⚠️ Một điểm FR-011 cần sửa spec **trước** `/speckit-implement` (Complexity Tracking mục 2) |
+| Quy trình: đổi hành vi cập nhật spec trước | ⚠️ FR-011 so sai mốc | ✅ FR-011 đã sửa trong spec ngày 2026-11-26 |
 | Hoàn tất triển khai trên `main` | ✅ | ✅ Ghi nhận thay đổi có sẵn trước task đầu; task cuối commit, push, thông báo |
 
-**Kết quả cổng**: ĐẠT trước và sau thiết kế, kèm một việc bắt buộc trước khi triển khai (sửa FR-011).
+**Kết quả cổng**: ĐẠT trước và sau thiết kế.
 
 ## Project Structure
 
@@ -87,6 +87,7 @@ src/
 │   ├── video/                         # MỚI
 │   │   ├── segmentation.ts, cue-ops.ts, find-replace.ts, glossary.ts,
 │   │   │   subtitle-files.ts, style.ts, safe-zones.ts, estimate.ts     # thuần
+│   │   ├── expiry.ts                                                   # máy chủ: hạn xóa video nguồn
 │   │   ├── upload-client.ts, extract-audio.worker.ts                   # trình duyệt
 │   │   └── service.ts, uploads.ts, cues.ts, exports.ts, quota.ts,
 │   │       permission.ts, retention.ts, cleanup.ts, log.ts             # máy chủ
@@ -130,13 +131,13 @@ tests/
 
 | Bước | Nội dung | User Story |
 | --- | --- | --- |
-| 0 | `npm install`; trong ảnh worker kiểm bộ lọc và bộ tách của ffmpeg 5.1, đo lại R1 gồm vẽ chữ; sửa FR-011 trong spec. **Cổng**: không đạt thì xem lại R1/R3 | nền |
+| 0 | Trong ảnh worker kiểm bộ lọc và bộ tách của ffmpeg 5.1, đo lại R1 gồm vẽ chữ. **Cổng**: không đạt thì xem lại R1/R3 | nền |
 | 1 | Migration, cài đặt, quyền, khóa đối tượng, hạn mức video và trần hệ thống, multipart, sửa đối soát | nền |
 | 2 | Tải lên: dịch vụ, API, phần trình duyệt, tab và danh sách việc; dừng, xóa, dọn phiên dở | US1, US7 |
 | 3 | Đo video, tách âm thanh giữ độ lệch | US1 |
 | 4 | Dịch Soniox, gom cue, bản ghi sử dụng, phục hồi (cần một lần gọi thật đã được đồng ý) | US1 |
 | 5 | API cue, trang biên tập, trình phát, bản xem trước | US2 |
-| 6 | Mở rộng bộ vẽ, gắn cứng, tải `.mp4`/`.srt`/`.vtt`; tự xóa theo hạn; xóa Project/User. **Mốc MVP** | US3, US7 |
+| 6 | Mở rộng bộ vẽ, gắn cứng, tải `.mp4`/`.srt`/`.vtt`; tải lại video nguồn; tự xóa theo hạn; xóa Project/User. **Mốc MVP** | US3, US7 |
 | 7 | Kiểu, song ngữ, vùng an toàn, phông mới | US4 |
 | 8 | Từ điển; tìm và thay thế; phần quản lý còn lại | US5, US6, US7 |
 | 9 | Hiệu ứng | US8 |
@@ -159,7 +160,7 @@ Tab của Project (xác định bởi `TabsContent` trong `project-detail.tsx`),
 - [ ] bố cục nhập + danh sách: `grid grid-cols-1 gap-6 lg:grid-cols-12` — 3/3 tab có cả hai phần
 - [ ] chọn tệp: `shared/file-dropzone.tsx` — thành phần chung, 3 tệp dùng
 - [ ] đang tải, lỗi, rỗng: `LoadingList`, `ErrorState` (có thử lại), `EmptyState` — rỗng 5/5
-- [ ] danh sách việc: `shared/data-table.tsx` có chọn nhiều, `jobs/status-badge.tsx`, `Progress` `h-1.5` kèm phần trăm `tabular-nums` — 2/2 danh sách dùng bảng chung
+- [ ] danh sách việc: `shared/data-table.tsx` có chọn nhiều, `jobs/status-badge.tsx` (thêm `label`), `Progress` `h-1.5` kèm phần trăm `tabular-nums` — 2/2 danh sách dùng bảng chung
 - [ ] nhật ký: `shared/event-log.tsx` trong `Dialog` `max-h-[90dvh] overflow-y-auto sm:max-w-2xl`
 - [ ] xóa: `shared/confirm-dialog.tsx` nêu số lượng, dung lượng, hậu quả
 - [ ] phản hồi: `toast` của `sonner`; lỗi trong dòng có `role="alert"` `text-xs text-destructive`
@@ -184,12 +185,12 @@ Thành phần chưa có trong dự án, đã được spec nêu tên và vị tr
 
 ### Quản trị (sửa một vùng, dùng `ui-consistency:adjusting`)
 
-Cột và nút bật tắt quyền Dịch Video trong `users-table.tsx` (theo cặp nút khóa/mở khóa; thu hồi có `ConfirmDialog`); 9 ô cài đặt trong `system-settings-form.tsx`; dung lượng video trong `admin-stats-view.tsx`.
+Cột và nút bật tắt quyền Dịch Video trong `users-table.tsx` (theo cặp nút khóa/mở khóa; thu hồi có `ConfirmDialog`); 13 ô cài đặt trong `system-settings-form.tsx`; dung lượng video trong `admin-stats-view.tsx`.
 
-### Hai đề xuất chờ người dùng trả lời trước `/speckit-tasks`
+### Hai đề xuất giao diện (đã chốt ngày 2026-11-26)
 
-1. **Tách bảng điều khiển kiểu chữ** của overlay thành phần chung cho cả hai tính năng? Mặc định nếu không đồng ý: viết bảng riêng, chỉ import các hàng điều khiển có sẵn.
-2. **`StatusBadge` nhận thêm nhãn tùy chọn** (thành phần chung, 3 tệp dùng) để hiện "đang dịch", "chờ duyệt"? Mặc định nếu không đồng ý: giữ nguyên, thêm dòng chữ giai đoạn bên cạnh.
+1. **Không tách** bảng điều khiển kiểu chữ của overlay: viết bảng riêng, chỉ import các hàng điều khiển có sẵn (mặc định, người dùng không đổi).
+2. **`StatusBadge` nhận thêm prop `label` tùy chọn** (thành phần chung, 3 tệp dùng, hành vi cũ không đổi) để hiện "đang tải lên", "chờ duyệt", "hết hạn"; người dùng đồng ý khi cho sửa lỗi I3.
 
 ## Rủi ro
 
@@ -202,7 +203,7 @@ Cột và nút bật tắt quyền Dịch Video trong `users-table.tsx` (theo c�
 | Sửa bộ vẽ làm đổi video overlay | Mặc định giữ hành vi cũ; kiểm thử khung hình spec 005 chạy ở mọi bước |
 | Sửa đối soát sai làm lệch hạn mức 500 MB | Kiểm thử đối soát trước khi lưu tệp video đầu tiên |
 | `mediabunny` không đạt trên một số trình duyệt | Luồng máy chủ luôn dùng được; luồng nhanh làm sau MVP |
-| Lỗi lệch âm thanh sẵn có ở spec 004 | Ngoài phạm vi; tính năng này dùng hàm tách riêng đã sửa; sửa spec 004 là việc riêng |
+| Âm thanh tách ra lệch so với hình | Đã sửa ở `extractAudioToMp3File` (commit `b417ce0`); tính năng này dùng lại và giữ kiểm thử tiếng bắt đầu muộn |
 | Thay đổi chưa commit lẫn vào commit cuối | Ghi nhận trước task đầu; không tách được thì hỏi |
 
 ## Complexity Tracking
@@ -210,4 +211,3 @@ Cột và nút bật tắt quyền Dịch Video trong `users-table.tsx` (theo c�
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
 | 1. Bản xem trước 720p và âm thanh tách được coi là **tệp tạm** (không tính hạn mức video, nguyên tắc IV) dù sống cùng video nguồn tới 7 ngày | Là tệp hệ thống tự dẫn xuất để phát và dịch, người dùng không tải; vẫn bị chặn bởi trần hệ thống và xóa cùng nguồn | Tính vào hạn mức khiến người dùng bị trừ dung lượng cho tệp họ không tạo và không xóa riêng được; không tạo bản xem trước thì không xem trước được `.avi`, `.mkv`, nguồn bitrate cao (US2) |
-| 2. FR-011 ghi so âm thanh của trình duyệt với "thời lượng video"; thiết kế so với **luồng tiếng của video nguồn** | Tiếng có thể ngắn hơn hình một cách hợp lệ; so với hình sẽ bắt người dùng dịch lại và trả phí vô ích | Làm đúng câu chữ hiện tại gây báo sai; phải sửa spec trước khi triển khai |

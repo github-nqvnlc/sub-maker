@@ -150,7 +150,7 @@ Người dùng khai báo cặp từ trước khi dịch để tên riêng, thư�
 1. **Given** màn hình từ điển, **When** thêm từng dòng hoặc dán nhiều dòng dạng `gốc -> dịch` hoặc `gốc, dịch`, **Then** các cặp hợp lệ được thêm; dòng lỗi và từ gốc trùng được liệt kê để sửa.
 2. **Given** một cặp đánh dấu "Giữ nguyên không dịch", **When** dịch, **Then** từ đó được yêu cầu giữ nguyên trong bản dịch.
 3. **Given** từ điển đã lưu, **When** tạo việc dịch mới trong Project, **Then** từ điển được áp dụng, người dùng xem và sửa được trước khi bắt đầu.
-4. **Given** đã dịch xong, **When** sửa từ điển rồi bấm "Dịch lại", **Then** hệ thống nêu chi phí phát sinh và việc các chỉnh sửa tay sẽ bị thay, chỉ chạy sau khi xác nhận.
+4. **Given** đã dịch xong, **When** sửa từ điển rồi bấm "Dịch lại", **Then** hệ thống nêu chi phí ước tính và việc các chỉnh sửa tay sẽ bị thay, chỉ chạy sau khi xác nhận.
 
 ---
 
@@ -237,7 +237,7 @@ Người dựng phim xuất video chỉ có phụ đề trên phông xanh (`.mp4
 
 ### Edge Cases
 
-- **Tệp đổi đuôi, hỏng hoặc bộ mã không đọc được**: từ chối ngay khi kiểm tra được, trước khi phát sinh phí dịch.
+- **Tệp đổi đuôi, hỏng hoặc bộ mã không đọc được**: từ chối ngay khi kiểm tra được; ở luồng thường là trước khi phát sinh phí dịch (luồng nhanh theo FR-003).
 - **Video không có tiếng hoặc không có lời nói**: báo rõ; không có tiếng thì không gọi dịch.
 - **Nhiều luồng tiếng**: dùng luồng mặc định của tệp và nêu cho người dùng biết.
 - **Video quay dọc có cờ xoay, kích thước lẻ, tốc độ khung hình thay đổi, HDR**: thành phẩm đúng chiều người xem thấy, tiếng không lệch; nếu phải đổi dải màu hay làm tròn kích thước thì báo trước khi xuất.
@@ -270,18 +270,18 @@ Người dựng phim xuất video chỉ có phụ đề trên phông xanh (`.mp4
 
 - **FR-001**: Mỗi Project MUST có tab "Dịch Video" để tạo và quản lý việc dịch video.
 - **FR-002**: Hệ thống MUST nhận `.mp4`, `.mov`, `.mkv`, `.webm`, `.avi`, `.flv`, `.m4v`, tối đa 10 GB (Administrator chỉnh được), mọi tỉ lệ khung hình, tối thiểu 16:9, 9:16, 1:1, 4:5, 21:9, độ phân giải tới 4K.
-- **FR-003**: Hệ thống MUST kiểm tra ở máy chủ nội dung thật của tệp (đọc được, có hình, có tiếng, thời lượng, độ phân giải) trước khi gọi dịch.
+- **FR-003**: Trước mỗi lần gọi dịch, hệ thống MUST kiểm tra ở máy chủ tệp làm đầu vào (đọc được, có tiếng, thời lượng không quá giới hạn). Video MUST được kiểm đầy đủ (đọc được, có hình, có tiếng, thời lượng, độ phân giải) ngay khi tải xong; ở luồng thường, việc này diễn ra trước khi gọi dịch. Ở luồng nhanh (FR-010), video không đạt thì việc bị từ chối kèm nguyên nhân, phụ đề đã dịch vẫn tải được.
 - **FR-004**: Video MUST được tải lên theo từng phần 10–20 MB qua ứng dụng (có kiểm tra đăng nhập và quyền sở hữu ở mỗi phần) và chuyển thẳng vào kho lưu tệp; không bước nào được giữ cả tệp trong bộ nhớ hay trong một yêu cầu duy nhất; kho lưu tệp MUST NOT mở ra Internet.
 - **FR-005**: Người dùng MUST tạm dừng, tiếp tục, hủy được; phần lỗi MUST được tự thử lại có giới hạn với thời gian chờ tăng dần; tải lại trang hoặc đóng trình duyệt rồi chọn lại đúng tệp MUST tiếp tục được trong 48 giờ.
 - **FR-006**: Giao diện MUST hiện phần trăm, tốc độ (MB/s), thời gian còn lại ước tính.
 - **FR-007**: Hệ thống MUST kiểm tra đủ chỗ (theo quy tắc ở FR-053 và dung lượng máy chủ) trước khi cho bắt đầu tải.
-- **FR-008**: Chỉ Administrator và User được Administrator cấp quyền MUST tạo việc, tải lên, dịch và xuất được; quyền mặc định tắt, bật tắt theo từng User và kiểm tra ở máy chủ. Video MUST dài tối đa 180 phút (Administrator chỉnh được, không quá 300 phút). Mỗi User MUST có tối đa 1 việc đang chạy (đang tải lên, đang chờ, chuẩn bị âm thanh, dịch, xuất hoặc bị gián đoạn; Administrator chỉnh được); việc chờ duyệt, hoàn tất, đã dừng hoặc lỗi không tính.
+- **FR-008**: Chỉ Administrator và User được Administrator cấp quyền MUST tạo việc, tải lên, dịch và xuất được; quyền mặc định tắt, bật tắt theo từng User và kiểm tra ở máy chủ. Video MUST dài tối đa 180 phút (Administrator chỉnh được, không quá giới hạn của nhà cung cấp trong cài đặt, mặc định 300 phút). Mỗi User MUST có tối đa 1 việc đang chạy (đang tải lên, đang chờ, chuẩn bị âm thanh, dịch, xuất hoặc bị gián đoạn; Administrator chỉnh được); việc chờ duyệt, hoàn tất, đã dừng hoặc lỗi không tính.
 
 **Chuẩn bị âm thanh**
 
 - **FR-009**: Hệ thống MUST tự lấy âm thanh từ video ở máy chủ và chỉ gửi âm thanh cho nhà cung cấp, không gửi hình.
 - **FR-010**: Khi thiết bị đủ khả năng, hệ thống SHOULD lấy âm thanh ngay trong trình duyệt và bắt đầu dịch song song với tải video; mọi trường hợp thiếu khả năng hoặc lỗi MUST tự chuyển về FR-009 mà không cần người dùng thao tác.
-- **FR-011**: Âm thanh do trình duyệt gửi MUST được kiểm tra như dữ liệu không tin cậy và đối chiếu thời lượng với video sau khi tải xong; lệch quá 1 giây thì lấy lại ở máy chủ và báo người dùng trước khi phát sinh phí dịch lần hai.
+- **FR-011**: Âm thanh do trình duyệt gửi MUST được kiểm tra như dữ liệu không tin cậy. Sau khi video tải xong, hệ thống MUST đối chiếu thời lượng và mốc bắt đầu của nó với **luồng tiếng của video nguồn** (không với thời lượng hình, vì tiếng có thể ngắn hơn hình một cách hợp lệ). Mốc bắt đầu lệch quá 100 ms thì dời mọi cue cho khớp, không phát sinh phí; thời lượng lệch quá 1 giây thì lấy lại âm thanh ở máy chủ, báo người dùng và chỉ dịch lại sau khi người dùng xác nhận.
 
 **Nhận dạng và dịch**
 
@@ -289,9 +289,9 @@ Người dựng phim xuất video chỉ có phụ đề trên phông xanh (`.mp4
 - **FR-013**: Nhận dạng và dịch MUST dùng cấu hình Soniox dùng chung do Administrator quản lý, có tự nhận diện ngôn ngữ và phân biệt người nói; chưa cấu hình thì chặn trước khi tải lên.
 - **FR-014**: Hệ thống MUST lưu cả câu gốc và câu dịch; câu đã ở ngôn ngữ đích dùng làm câu dịch.
 - **FR-015**: Mốc của cue MUST lấy từ mốc lời gốc. Vì chữ dịch không có mốc riêng, cue được tách nhỏ trong một đoạn lời gốc MUST có mốc ước lượng nằm trong khoảng của đoạn đó và được lưu kèm dấu hiệu là ước lượng.
-- **FR-016**: Mỗi lần gọi nhà cung cấp MUST ghi bản ghi sử dụng (User, Project, thời lượng, chi phí ước tính). Kết quả đã có MUST được dùng lại khi sửa chữ, đổi kiểu, xuất lại, chạy lại sau lỗi; chỉ "Dịch lại" (đổi từ điển hoặc hướng dịch) mới gọi lại và MUST xác nhận trước.
-- **FR-017**: Dữ liệu gửi sang nhà cung cấp MUST được xóa sau khi lấy được kết quả hoặc khi việc bị xóa, dừng, lỗi vĩnh viễn.
-- **FR-018**: Cue MUST được tạo tự động: mỗi dòng chữ dịch tối đa 12 từ và ưu tiên không dưới 5 từ khi câu đủ dài (ngôn ngữ không có khoảng trắng: tối đa 42 ký tự), tối đa 2 dòng; ngắt ưu tiên tại dấu câu, tại quãng nghỉ trên 300 ms và khi đổi người nói; không cắt giữa từ; cue không chồng lấn và hiện ít nhất 0,7 giây khi khoảng trống cho phép.
+- **FR-016**: Mỗi lần gọi nhà cung cấp MUST ghi bản ghi sử dụng (User, Project, thời lượng, chi phí ước tính). Kết quả đã có MUST được dùng lại khi sửa chữ, đổi kiểu, xuất lại, chạy lại sau lỗi; chỉ "Dịch lại" (đổi từ điển hoặc hướng dịch) mới gọi lại và MUST xác nhận trước, nêu thời lượng và chi phí ước tính (chưa có đơn giá thì nêu thời lượng và nói rõ chưa ước tính được chi phí).
+- **FR-017**: Dữ liệu gửi sang nhà cung cấp MUST được xóa sau khi lấy được kết quả hoặc khi việc bị xóa, dừng, lỗi vĩnh viễn. Khi dừng hoặc lỗi mà nhà cung cấp đã có kết quả thì MUST lấy và lưu kết quả trước khi xóa; chưa có thì giao diện MUST nói rõ trước khi dừng rằng chạy lại sẽ phát sinh phí mới.
+- **FR-018**: Cue MUST được tạo tự động: mỗi dòng chữ dịch tối đa 12 từ và ưu tiên không dưới 5 từ khi câu đủ dài (ngôn ngữ không có khoảng trắng: tối đa 42 ký tự), tối đa 2 dòng khi chia chữ thành cue (khung hẹp hoặc cỡ chữ lớn có thể làm chữ hiển thị xuống thêm dòng nhưng vẫn nằm trọn trong khung, FR-029); ngắt ưu tiên tại dấu câu, tại quãng nghỉ trên 300 ms và khi đổi người nói; không cắt giữa từ; cue không chồng lấn và hiện ít nhất 0,7 giây khi khoảng trống cho phép.
 
 **Từ điển thuật ngữ**
 
@@ -394,6 +394,7 @@ Người dựng phim xuất video chỉ có phụ đề trên phông xanh (`.mp4
 
 ## Assumptions
 
+- **Đơn vị dung lượng**: trong mọi tài liệu và trên giao diện, 1 MB = 1.024 × 1.024 byte và 1 GB = 1.024 MB.
 - **Phạm vi phiên bản này**: toàn bộ nhóm tính năng của REQ-006, triển khai theo thứ tự P1 → P2 → P3.
 - **Khi REQ-006 khác spec 005** (cỡ chữ, viền, vị trí nhanh, thời lượng hiệu ứng, phông chữ, độ đậm), tab Dịch Video theo REQ-006; hành vi vẽ chữ dùng lại spec 005; tab Video Overlay hiện có không đổi.
 - **Một kiểu cho cả video**; chỉnh kiểu riêng từng cue nằm ngoài phạm vi.

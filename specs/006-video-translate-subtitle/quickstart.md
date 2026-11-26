@@ -79,7 +79,7 @@ Dán 10 dòng gồm dòng lỗi và dòng trùng; tạo việc mới trong Proje
 
 ## 6. Phục hồi, dung lượng, xóa (US7)
 
-1. Tắt worker ở từng giai đoạn (chuẩn bị, đang chờ Soniox, đang xuất) rồi bật lại: không mất, **đúng một** bản ghi sử dụng cho mỗi lần dịch.
+1. Tắt worker ở từng giai đoạn (chuẩn bị, đang chờ Soniox, đang xuất) rồi bật lại: không mất, **đúng một** bản ghi tính phí (`ok = true`) cho mỗi lần dịch thành công, và một bản ghi `ok = false` cho mỗi lần gọi lỗi.
 2. Gửi nhiều yêu cầu cùng lúc sát hạn mức: không lần nào vượt (SC-015).
 3. Đặt thời hạn nhỏ trong cài đặt (hoặc lùi mốc trong CSDL kiểm thử), chạy việc dọn: tệp quá hạn bị xóa, tệp đang tải/đang dùng được giữ.
 4. Xóa Project và User khi đang tải dở và đang xuất: không còn đối tượng hay phiên multipart; bộ đếm đúng.
@@ -89,7 +89,7 @@ Tự động: `video-recovery.test.ts`, `video-quota.test.ts`, `video-retention.
 
 ## 7. Luồng nhanh (US9)
 
-Chrome máy đủ mạnh: phụ đề sẵn sàng trước khi tải xong. Giả lập thiếu bộ nhớ, tệp `.avi`, lỗi giữa chừng: chuyển về luồng máy chủ, một bản ghi sử dụng. Gửi âm thanh ngắn hơn luồng tiếng nguồn > 1 giây: được hỏi trước khi dịch lại. Lập bảng kết quả theo trình duyệt và định dạng.
+Chrome máy đủ mạnh: phụ đề sẵn sàng trước khi tải xong. Giả lập thiếu bộ nhớ, tệp `.avi`, lỗi giữa chừng: chuyển về luồng máy chủ, một bản ghi tính phí. Gửi âm thanh ngắn hơn luồng tiếng nguồn > 1 giây: được hỏi trước khi dịch lại. Lập bảng kết quả theo trình duyệt và định dạng.
 
 ## 8. Việc cần người dùng hoặc máy triển khai
 

@@ -54,7 +54,7 @@ type CueBatch = { baseRevision: number; ops: CueOp[] };   // 1–20.000 thao tá
 
 - Dán hàng loạt: mỗi dòng một cặp; dòng có `->` thì tách tại `->` đầu tiên, không thì tại dấu phẩy đầu tiên. `target` bằng `source` hoặc để chọn "giữ nguyên" → `keep`.
 - Lỗi theo dòng: thiếu vế, quá 100 ký tự mỗi vế, trùng `source`. Dòng hợp lệ vẫn được thêm.
-- Giới hạn: ≤ 200 cặp, tổng ký tự hai vế ≤ 8.000 (hằng số, xem lại sau lần gọi thật).
+- Giới hạn lấy từ cài đặt, truyền vào hàm, không viết cứng: `videoGlossaryMaxPairs` (mặc định 200), `videoGlossaryMaxChars` (tổng ký tự hai vế, mặc định 8.000). Xem lại mặc định sau lần gọi thật.
 - Gửi Soniox: `context.translation_terms = [{ source, target }]`.
 
 ## 6. Xuất `.srt`, `.vtt` (`subtitle-files.ts`)
