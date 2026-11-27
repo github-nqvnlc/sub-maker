@@ -226,6 +226,18 @@ test('khung xem trước khớp video xuất ra tại 20 thời điểm, đổi 
     const tallInked = await compare(page, tallFile, { width: 360, height: 640 }, [8, 20, 28, 35, 48, 60, 80, 110, 120, 140], '9:16', notes);
 
     expect(wideInked + tallInked, 'đa số thời điểm có chữ').toBeGreaterThanOrEqual(14);
+
+    // ---- hiệu ứng: karaoke và nảy vào, so cả lúc đang chuyển động (T122; FR-036) ----
+    const moving = makeVideoFile('hieu-ung.webm', { size: '640x360', color: '0x008000' });
+    const movingJob = await openEditor(page, p.id, moving);
+    const effects: VideoStyle = { ...DEFAULT_VIDEO_STYLE, font: { family: 'be-vietnam-pro', size: 64, weight: 800 }, sync: 'karaoke', wordEffect: 'active', enter: 'bounce', effectMs: 500, highlightColor: '#FF0000' };
+    const saved = await page.request.put(`/api/video/jobs/${movingJob}/style`, { data: effects, headers: hdr });
+    expect(saved.ok(), await saved.text()).toBeTruthy();
+    await page.reload();
+    await expect(page.getByTestId('video-preview-canvas')).toHaveAttribute('data-fonts', 'ready');
+    const movingFile = await exportVideo(page, movingJob, dir, 'hieu-ung.mp4');
+    const movingInked = await compare(page, movingFile, { width: 640, height: 360 }, [4, 6, 9, 14, 22, 47, 52, 70, 114, 135], 'hiệu ứng', notes);
+    expect(movingInked, 'đa số thời điểm hiệu ứng có chữ').toBeGreaterThanOrEqual(8);
   } finally {
     await rm(dir, { recursive: true, force: true });
     console.log(`[video parity ${browserName}] ${notes.join('; ')}`);

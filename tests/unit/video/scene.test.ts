@@ -2,7 +2,9 @@ import { createCanvas } from '@napi-rs/canvas';
 import { describe, expect, it } from 'vitest';
 import { canonicalFrame, DEFAULT_CONFIG, outputSize, overlaySceneStyle, type SceneStyle } from '@/lib/overlay/config';
 import { createScene, drawFrame, sceneBand, type Scene } from '@/lib/overlay/draw';
+import { effectDurations, wordStates } from '@/lib/overlay/effects';
 import type { AppliedCue } from '@/lib/overlay/types';
+import { DEFAULT_VIDEO_STYLE, STYLE_ENTERS, toSceneStyle, videoStyleSchema, type VideoStyle } from '@/lib/video/style';
 import { asCtx, createLayer, cue, measure } from '../overlay/helpers';
 import { GOLDEN_CONFIGS, goldenHashes, readGolden } from './overlay-golden';
 
@@ -266,6 +268,87 @@ describe('bóng: khoảng cách và độ đậm (FR-028)', () => {
     expect(lowest).toBeLessThan(150);
     expect(boundsOf(frameOf(shadowed(20, 0)), 1920, 1080, isShadow)).toBeNull();
   });
+});
+
+describe('hiệu ứng của dịch video (T119; FR-032 đến FR-035)', () => {
+  const video = (over: Partial<VideoStyle> = {}): VideoStyle => ({ ...structuredClone(DEFAULT_VIDEO_STYLE), ...over });
+  const text = 'một hai ba bốn năm sáu bảy tám';
+  const cues = [cue({ i: 0, startMs: 1000, endMs: 3000, readEndMs: 3000, text })];
+  const sceneFor = (s: VideoStyle, list: AppliedCue[] = cues) => createScene({ style: toSceneStyle(s, 640, 360), cues: list, measure: measure(), createLayer });
+
+  it.each(STYLE_ENTERS.filter((e) => e !== 'cut'))('hiệu ứng vào %s: khác khung đứng yên lúc đầu, đứng yên sau đúng thời lượng', (enter) => {
+    const sc = sceneFor(video({ enter, effectMs: 300 }));
+    const still = draw(sceneFor(video()), 2000);
+    expect(draw(sc, 1030).equals(still)).toBe(false);
+    expect(draw(sc, 1301).equals(still)).toBe(true);
+  });
+
+  it('hiện tức thì: đứng yên ngay từ khung đầu', () => {
+    const sc = sceneFor(video({ enter: 'cut' }));
+    expect(draw(sc, 1000).equals(draw(sc, 2500))).toBe(true);
+  });
+
+  it('thời lượng chỉnh được 100–500 ms và tự rút ngắn khi đoạn ngắn hơn', () => {
+    for (const [effectMs, ok] of [[99, false], [100, true], [500, true], [501, false]] as const) expect(videoStyleSchema.safeParse(video({ effectMs })).success).toBe(ok);
+    expect(effectDurations(toSceneStyle(video({ enter: 'fade', effectMs: 500 }), 640, 360), 200).enter).toBe(200);
+    const short = [cue({ i: 0, startMs: 1000, endMs: 1200, readEndMs: 1200, text })];
+    // đoạn 200 ms: gần cuối đoạn đã hiện gần như hoàn toàn dù đặt 500 ms
+    const late = draw(sceneFor(video({ enter: 'fade', effectMs: 500 }), short), 1199);
+    const still = draw(sceneFor(video(), short), 1199);
+    expect(maxAlpha(late, 640, { x0: 0, y0: 0, x1: 639, y1: 359 })).toBeGreaterThan(maxAlpha(still, 640, { x0: 0, y0: 0, x1: 639, y1: 359 }) * 0.9);
+  });
+
+  it('mốc từng từ là ước lượng liền nhau trong khoảng của đoạn', () => {
+    const spans = sceneFor(video({ sync: 'karaoke' })).spansOf(0);
+    expect(spans.map((s) => s.text).join(' ')).toBe(text);
+    expect(spans[0]!.startMs).toBe(1000);
+    expect(spans.at(-1)!.endMs).toBe(3000);
+    for (let i = 1; i < spans.length; i++) expect(spans[i]!.startMs).toBe(spans[i - 1]!.endMs);
+  });
+
+  it('karaoke: từ đang đọc đổi màu và phóng đúng 115%', () => {
+    const s = toSceneStyle(video({ sync: 'karaoke' }), 640, 360);
+    const sc = sceneFor(video({ sync: 'karaoke', highlightColor: '#00FF00' }));
+    const spans = sc.spansOf(0);
+    const mid = Math.round((spans[3]!.startMs + spans[3]!.endMs) / 2);
+    const { states } = wordStates(s, cues[0]!, spans, mid);
+    expect(states.map((x) => x.highlight)).toEqual(spans.map((_x, i) => i === 3));
+    expect(states[3]!.scale).toBeCloseTo(1.15, 6);
+    expect(boundsOf(draw(sc, mid), 640, 360, (r, g, b, a) => a > 200 && g > 200 && r < 80 && b < 80)).not.toBeNull();
+  });
+
+  const variants: Array<[string, Partial<VideoStyle>]> = [
+    ...STYLE_ENTERS.map((enter): [string, Partial<VideoStyle>] => [`vào ${enter}`, { enter, effectMs: 500 }]),
+    ['từ hiện dần', { sync: 'word', wordEffect: 'none' }],
+    ['từ bung ra', { sync: 'word', wordEffect: 'pop', effectMs: 500 }],
+    ['máy đánh chữ', { sync: 'word', wordEffect: 'typewriter' }],
+    ['karaoke', { sync: 'karaoke', wordEffect: 'active' }],
+    ['karaoke song ngữ có hiệu ứng vào', { sync: 'karaoke', wordEffect: 'active', display: 'bilingual', enter: 'slideUp', effectMs: 500 }],
+  ];
+
+  it.each(variants)('dải chữ bao hết chuyển động (%s), trang trí đầy đủ ở sát đáy', async (_name, over) => {
+    const style = video({
+      ...over,
+      stroke: { enabled: true, color: '#000000', width: 10 },
+      shadow: { enabled: true, color: '#FF00FF', blur: 40, distance: 20, opacity: 100 },
+      box: { enabled: true, color: '#0000FF', radius: 40, opacity: 70 },
+      position: { anchor: 'bottom', y: 100 },
+    });
+    const list = [cue({ i: 0, startMs: 100, endMs: 1300, readEndMs: 1300, text: 'Cảm ơn bạn rất nhiều nhé!', secondary: 'Thank you so much!' })];
+    const sc = sceneFor(style, list);
+    const band = sceneBand(sc);
+    const canvas = createCanvas(sc.width, sc.height);
+    const g = canvas.getContext('2d');
+    for (let t = 100; t < 1300; t += 33) {
+      drawFrame(asCtx(g), t, sc);
+      const rows = rowsOf(Buffer.from(canvas.data()), sc);
+      if (rows) {
+        expect(rows.y0, `t=${t}`).toBeGreaterThanOrEqual(band.y);
+        expect(rows.y1, `t=${t}`).toBeLessThan(band.y + band.height);
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }, 30_000);
 });
 
 describe('Video Overlay không đổi (spec 005)', () => {

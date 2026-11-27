@@ -11,7 +11,20 @@ import { ColorField } from '@/components/shared/color-field';
 import { useT } from '@/lib/i18n/client';
 import { FONT_FAMILIES, FONT_LABELS, hasWeight } from '@/lib/overlay/fonts';
 import type { StyleSaveStatus } from '@/lib/video/style-store';
-import { DEFAULT_VIDEO_STYLE, DISPLAYS, STYLE_ALIGNS, STYLE_ANCHOR_Y, STYLE_ANCHORS, STYLE_LIMITS, STYLE_WEIGHTS, type VideoStyle } from '@/lib/video/style';
+import {
+  DEFAULT_VIDEO_STYLE,
+  DISPLAYS,
+  normalizeStyle,
+  STYLE_ALIGNS,
+  STYLE_ANCHOR_Y,
+  STYLE_ANCHORS,
+  STYLE_ENTERS,
+  STYLE_LIMITS,
+  STYLE_SYNCS,
+  STYLE_WEIGHTS,
+  STYLE_WORD_EFFECTS_OF,
+  type VideoStyle,
+} from '@/lib/video/style';
 
 type WeightKey = '400' | '600' | '700' | '800';
 
@@ -28,6 +41,21 @@ export function StylePanel({ style, status, onChange }: { style: VideoStyle; sta
     { value: '#000000', label: o.swatches.black },
   ];
   const saveText = { saved: e.save.saved, pending: e.save.dirty, saving: e.save.saving, error: null }[status];
+  const highlights = [
+    { value: '#FFE600', label: o.swatches.yellow },
+    { value: '#00FF66', label: o.swatches.neonGreen },
+    { value: '#FF4500', label: o.swatches.orange },
+    { value: '#FF8AC4', label: o.swatches.pink },
+  ];
+  /** Đổi chế độ hoặc hiệu ứng: tổ hợp không hợp được đưa về mặc định của chế độ; báo khi hiệu ứng người dùng đã chọn bị thay. */
+  const applyEffects = (next: VideoStyle) => {
+    const r = normalizeStyle(next);
+    // hiệu ứng từ luôn đổi theo chế độ; chỉ báo khi một lựa chọn người dùng đã đặt bị thay
+    if (r.changed.includes('enter') || (r.changed.includes('wordEffect') && style.wordEffect !== 'none')) toast.info(o.configAdjusted);
+    onChange(r.style);
+  };
+  const usesDuration = (style.sync !== 'word' && style.enter !== 'cut') || style.wordEffect === 'pop';
+  const usesHighlight = style.sync === 'karaoke' || (style.sync !== 'word' && style.enter === 'glow');
   /** Đè cả kiểu của việc và kiểu gần nhất của Project nên phải hoàn tác được. */
   const reset = () => {
     const before = style;
@@ -119,6 +147,38 @@ export function StylePanel({ style, status, onChange }: { style: VideoStyle; sta
               <SliderField id="vs-box-opacity" label={o.boxOpacity} value={box.opacity} {...STYLE_LIMITS.opacity} unit="%" onChange={(opacity) => onChange({ ...style, box: { ...box, opacity } })} />
               <SliderField id="vs-box-radius" label={o.boxRadius} value={box.radius} {...STYLE_LIMITS.boxRadius} unit=" px" onChange={(radius) => onChange({ ...style, box: { ...box, radius } })} />
             </div>
+          ) : null}
+
+          <Separator />
+          <h3 className="text-sm font-medium">{o.effectsTitle}</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SelectField label={o.sync} value={style.sync} onChange={(sync) => applyEffects({ ...style, sync })} options={STYLE_SYNCS.map((x) => ({ value: x, label: s.syncs[x] }))} />
+            {STYLE_WORD_EFFECTS_OF[style.sync].length > 1 ? (
+              <SelectField
+                label={o.wordEffect}
+                value={style.wordEffect}
+                onChange={(wordEffect) => applyEffects({ ...style, wordEffect })}
+                options={STYLE_WORD_EFFECTS_OF[style.sync].map((w) => ({ value: w, label: s.wordEffects[w] }))}
+              />
+            ) : null}
+            {style.sync !== 'word' ? (
+              <SelectField label={o.enter} value={style.enter} onChange={(enter) => applyEffects({ ...style, enter })} options={STYLE_ENTERS.map((x) => ({ value: x, label: s.enters[x] }))} />
+            ) : null}
+            {usesDuration ? (
+              <div className="space-y-2">
+                <SliderField id="vs-effect-ms" label={o.effectMs} value={style.effectMs} {...STYLE_LIMITS.effectMs} step={10} unit=" ms" onChange={(effectMs) => onChange({ ...style, effectMs })} />
+                <p className="text-xs text-muted-foreground">{s.effectHint}</p>
+              </div>
+            ) : null}
+            {usesHighlight ? (
+              <ColorField id="vs-highlight" label={o.highlightColor} value={style.highlightColor} swatches={highlights} onChange={(highlightColor) => onChange({ ...style, highlightColor })} />
+            ) : null}
+          </div>
+          {style.sync !== 'cue' ? (
+            <p className="text-xs text-muted-foreground">
+              {s.wordNote}
+              {style.display === 'bilingual' ? ` ${s.bilingualNote}` : null}
+            </p>
           ) : null}
 
           <Separator />

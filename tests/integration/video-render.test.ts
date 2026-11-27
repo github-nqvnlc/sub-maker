@@ -8,6 +8,7 @@ import { getDb } from '@/lib/db';
 import { systemSettings, users, videoExports, videoJobs } from '@/lib/db/schema';
 import { headObject, uploadFileMultipart } from '@/lib/storage/client';
 import { storageKeys } from '@/lib/storage/keys';
+import { DEFAULT_VIDEO_STYLE } from '@/lib/video/style';
 import { stopBoss } from '@/worker/queues';
 import { sweepStaleVideoExports } from '@/worker/sweeper';
 import { runGenerateVoice } from '@/worker/jobs/generate-voice';
@@ -213,6 +214,53 @@ describe('thành phẩm', () => {
       expect(flashes).toHaveLength(2);
       expect(beeps).toHaveLength(2);
       for (const [i, t] of flashes.entries()) expect(Math.abs(t - beeps[i]!)).toBeLessThanOrEqual(0.05);
+    });
+  }, 90_000);
+});
+
+describe('hiệu ứng trong thành phẩm (T122; FR-032, FR-033)', () => {
+  /** Hộp bao các điểm ảnh thỏa điều kiện ở một thời điểm của thành phẩm. */
+  function boxAt(file: string, seconds: number, pred: (r: number, g: number, b: number) => boolean) {
+    const data = execFileSync(process.env.FFMPEG_PATH || 'ffmpeg', ['-v', 'error', '-ss', String(seconds), '-i', file, '-frames:v', '1', '-vf', 'format=rgb24', '-f', 'rawvideo', '-'], { maxBuffer: 64 * 1024 * 1024 });
+    let x0 = SIZE.width;
+    let x1 = -1;
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < SIZE.width * SIZE.height; i++) {
+      if (!pred(data[i * 3]!, data[i * 3 + 1]!, data[i * 3 + 2]!)) continue;
+      const x = i % SIZE.width;
+      x0 = Math.min(x0, x);
+      x1 = Math.max(x1, x);
+      sum += x;
+      count++;
+    }
+    return count === 0 ? null : { width: x1 - x0 + 1, centre: sum / count, count };
+  }
+  const red = (r: number, g: number, b: number) => r > 170 && g < 90 && b < 90;
+  const white = (r: number, g: number, b: number) => r > 200 && g > 200 && b > 200;
+
+  it('karaoke tô từ đang đọc chạy từ trái sang phải; hiệu ứng nảy phóng dần lúc đoạn mới hiện', async () => {
+    const source = await custom('mp4', ['-f', 'lavfi', '-i', `color=c=0x008000:s=${SIZE.width}x${SIZE.height}:r=25:d=6`, '-f', 'lavfi', '-i', 'sine=frequency=600:duration=6', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac']);
+    const job = await reviewJob(user, projectId, source);
+    const style = { ...DEFAULT_VIDEO_STYLE, font: { family: 'be-vietnam-pro', size: 64, weight: 800 }, sync: 'karaoke', wordEffect: 'active', enter: 'bounce', effectMs: 500, highlightColor: '#FF0000', stroke: { enabled: false, color: '#000000', width: 4 } };
+    expect((await user.client.put(`/api/video/jobs/${job.id}/style`, { json: style })).status).toBe(200);
+    const dto = await createExportApi(user, job.id);
+    await runExport(dto.id);
+    const row = (await exportRow(dto.id))!;
+    expect(row.status).toBe('completed');
+    await withObject(row.outputKey!, async (out) => {
+      // đoạn đầu 0,12–1,2 giây: từ được tô dịch sang phải
+      const early = boxAt(out, 0.24, red)!;
+      const late = boxAt(out, 1.04, red)!;
+      expect(early.count).toBeGreaterThan(50);
+      expect(late.centre).toBeGreaterThan(early.centre + SIZE.width * 0.1);
+      // lúc mới hiện cả khối chữ (gồm từ đang tô) còn nhỏ hơn lúc đã đứng yên
+      const text = (r: number, g: number, b: number) => red(r, g, b) || white(r, g, b);
+      const entering = boxAt(out, 0.12, text)!;
+      const settled = boxAt(out, 0.96, text)!;
+      expect(entering.width).toBeLessThan(settled.width * 0.95);
+      // khoảng trống giữa hai đoạn không có chữ
+      expect(boxAt(out, 1.5, (r, g, b) => red(r, g, b) || white(r, g, b))).toBeNull();
     });
   }, 90_000);
 });
