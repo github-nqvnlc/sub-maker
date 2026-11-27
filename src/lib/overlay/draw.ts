@@ -1,5 +1,5 @@
 import { BACKGROUND_COLOR, isTransparent, outputSize, overlaySceneStyle, type OverlayConfig, type SceneStyle } from './config';
-import { BOUNCE_PEAK, cueEffect, DROP_Y, POP_PEAK, shakeAmplitude, SLIDE_Y, wordStates, type WordState } from './effects';
+import { BOUNCE_PEAK, cueEffect, DROP_Y, PLAIN, POP_PEAK, shakeAmplitude, SLIDE_Y, wordStates, type WordState } from './effects';
 import { graphemes, layoutCue, SHADOW_DROP, type CueLayout, type Measure, type Segment } from './layout';
 import { activeCueIndex } from './timing';
 import type { AppliedCue, WordSpan } from './types';
@@ -62,8 +62,8 @@ export type Scene = {
   layoutOf(i: number): CueLayout;
   spansOf(i: number): WordSpan[];
   createLayer: CreateLayer;
-  /** lớp tạm dùng lại giữa các khung; `key` là nội dung đang có */
-  scratch: { main: { block: Block; key: string } | null; tintA: Block | null; tintB: Block | null; tintKey: string; glow: { block: Block; cue: number } | null };
+  /** lớp tạm dùng lại giữa các khung; `key` là nội dung đang có; `faded` vẽ riêng dòng thứ hai khi nó trong suốt một phần */
+  scratch: { main: { block: Block; key: string } | null; tintA: Block | null; tintB: Block | null; tintKey: string; glow: { block: Block; cue: number } | null; faded: Layer | null };
 };
 
 /** Giới hạn bộ nhớ đệm bố cục (video dài có hàng nghìn câu). */
@@ -75,8 +75,9 @@ function paintStyle(s: SceneStyle): SceneStyle {
   return {
     ...s,
     stroke: { ...s.stroke, width: s.stroke.width * s.k },
-    shadow: { ...s.shadow, blur: s.shadow.blur * s.k },
+    shadow: { ...s.shadow, blur: s.shadow.blur * s.k, ...(s.shadow.distance === undefined ? {} : { distance: s.shadow.distance * s.k }) },
     box: { ...s.box, radius: s.box.radius * s.k },
+    ...(s.secondary ? { secondary: { ...s.secondary, size: s.secondary.size * s.k } } : {}),
   };
 }
 
@@ -100,10 +101,10 @@ export function createScene(opts: SceneOptions): Scene {
     config: paintStyle(style),
     ...outputSize(style),
     cues,
-    layoutOf: (i) => remember(layouts, i, () => layoutCue(cues[i]!.text, style, measure)),
+    layoutOf: (i) => remember(layouts, i, () => layoutCue(cues[i]!.text, style, measure, cues[i]!.secondary)),
     spansOf: (i) => remember(spans, i, () => wordSpans(cues[i]!)),
     createLayer,
-    scratch: { main: null, tintA: null, tintB: null, tintKey: '', glow: null },
+    scratch: { main: null, tintA: null, tintB: null, tintKey: '', glow: null, faded: null },
   };
 }
 
@@ -134,15 +135,19 @@ function visibleText(seg: Segment, st: WordState, before: number): string {
   return g.slice(0, Math.max(0, st.chars - before)).join('');
 }
 
-function composeText(ctx: Ctx2D, scene: Scene, layout: CueLayout, states: readonly WordState[], tint: Tint): void {
-  const c = scene.config;
+/** `#RRGGBB` kèm độ đục 0–1. */
+const withAlpha = (hex: string, alpha: number): string => `rgba(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',')},${alpha})`;
+
+function composeText(ctx: Ctx2D, c: SceneStyle, layout: Pick<CueLayout, 'font' | 'fontSize' | 'lines'>, states: readonly WordState[], tint: Tint): void {
   ctx.font = layout.font;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.lineJoin = 'round';
   ctx.miterLimit = 2;
   const strokeOn = c.stroke.enabled;
-  const drop = Math.round(layout.fontSize * SHADOW_DROP);
+  const drop = c.shadow.distance ?? Math.round(layout.fontSize * SHADOW_DROP);
+  const opacity = c.shadow.opacity ?? 100;
+  const shadowColor = opacity >= 100 ? c.shadow.color : withAlpha(c.shadow.color, opacity / 100);
 
   type Item = { seg: Segment; y: number; text: string; st: WordState; wipeFrom: number; wipeTo: number };
   const items: Item[] = [];
@@ -180,10 +185,10 @@ function composeText(ctx: Ctx2D, scene: Scene, layout: CueLayout, states: readon
   const fillOf = (it: Item) => tint?.color ?? (it.st.highlight ? c.highlightColor : c.text.color);
   const strokeColor = tint?.color ?? c.stroke.color;
 
-  if (c.shadow.enabled && !tint) {
+  if (c.shadow.enabled && opacity > 0 && !tint) {
     for (const it of items) {
       ctx.save();
-      ctx.shadowColor = c.shadow.color;
+      ctx.shadowColor = shadowColor;
       ctx.shadowBlur = c.shadow.blur;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = drop;
@@ -233,7 +238,7 @@ function composeText(ctx: Ctx2D, scene: Scene, layout: CueLayout, states: readon
 
 /** Hình chữ nhật của lớp chữ một câu: mọi điểm ảnh của câu (chưa tính chuyển động) nằm trong đó. */
 function blockRect(scene: Scene, layout: CueLayout): { x: number; y: number; w: number; h: number } {
-  // từ đang phóng to (tối đa 120%) vượt khối mỗi bên 10% bề rộng của nó
+  // từ đang phóng to (tối đa 120%) vượt khối mỗi bên 10% bề rộng của nó; chỉ khối chính có từ phóng to
   const grow = scene.config.sync === 'cue' ? 0 : layout.lines.reduce((m, l) => l.segments.reduce((n, s) => Math.max(n, s.width), m), 0) * 0.1;
   const margin = Math.ceil(layout.bleed + layout.fontSize * 0.4 + grow + Math.max(2, 4 * scene.style.k));
   return {
@@ -265,9 +270,39 @@ function composeBlock(scene: Scene, layout: CueLayout, states: readonly WordStat
     ctx.fill();
     ctx.globalAlpha = 1;
   }
-  composeText(ctx, scene, layout, states, tint);
+  if (layout.secondary) composeSecondary(ctx, scene, layout.secondary, { x, y, w, h }, tint);
+  composeText(ctx, c, layout, states, tint);
   ctx.restore();
   return { layer, x, y, w, h };
+}
+
+/**
+ * Dòng thứ hai của cue song ngữ: màu và độ đục riêng, không có hiệu ứng theo từ. Trong suốt một phần thì vẽ đặc lên lớp riêng rồi mới
+ * ghép, để viền không hiện xuyên qua thân chữ.
+ */
+function composeSecondary(ctx: Ctx2D, scene: Scene, sub: NonNullable<CueLayout['secondary']>, at: { x: number; y: number; w: number; h: number }, tint: Tint): void {
+  const c = scene.config;
+  const { color, opacity } = c.secondary!;
+  if (opacity <= 0) return;
+  const style: SceneStyle = { ...c, text: { color }, sync: 'cue' };
+  const states = Array.from({ length: sub.wordCount }, () => PLAIN);
+  if (opacity >= 100) return composeText(ctx, style, sub, states, tint);
+  const reuse = scene.scratch.faded;
+  const layer = reuse && reuse.width === at.w && reuse.height === at.h ? reuse : scene.createLayer(at.w, at.h);
+  scene.scratch.faded = layer;
+  const g = layer.ctx;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  clearShadow(g);
+  g.clearRect(0, 0, at.w, at.h);
+  g.save();
+  g.translate(-at.x, -at.y);
+  composeText(g, style, sub, states, tint);
+  g.restore();
+  ctx.save();
+  ctx.globalAlpha = opacity / 100;
+  ctx.drawImage(layer.canvas, 0, 0, at.w, at.h, at.x, at.y, at.w, at.h);
+  ctx.restore();
 }
 
 // ---- Vẽ khung ------------------------------------------------------------------------------------

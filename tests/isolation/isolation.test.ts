@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { DEFAULT_VIDEO_STYLE } from '@/lib/video/style';
 import { stopBoss } from '@/worker/queues';
 import { getDb } from '@/lib/db';
 import { aiProviderConfigs } from '@/lib/db/schema';
@@ -122,6 +123,8 @@ const VIDEO_CASES: Record<string, Case> = {
   'POST /video/exports/{exportId}/stop': onExport(),
   'POST /video/exports/{exportId}/rerun': onExport(),
   'DELETE /video/exports/{exportId}': onExport(),
+  'PUT /projects/{projectId}/video/settings': onProject({ json: { direction: 'vi_to_en' } }),
+  'PUT /video/jobs/{jobId}/style': onJob({ json: DEFAULT_VIDEO_STYLE }),
 };
 
 // ----- Các ca kiểm thử theo từng story (mỗi story bổ sung vào đây) -----

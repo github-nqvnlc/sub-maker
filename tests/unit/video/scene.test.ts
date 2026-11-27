@@ -112,6 +112,7 @@ describe('sceneBand', () => {
     ['từ nảy', { sync: 'word', wordEffect: 'pop', intensity: 'high' }],
     ['trên cùng', { ...decorated, position: { anchor: 'top', y: 0 } }],
     ['dưới cùng', { ...decorated, position: { anchor: 'bottom', y: 100 }, enter: 'slideUp', effectMs: 400 }],
+    ['bóng xa', { shadow: { enabled: true, color: '#FF00FF', blur: 40, distance: 20, opacity: 100 }, position: { anchor: 'bottom', y: 100 } }],
   ];
 
   it.each(variants)('không điểm ảnh nào ngoài dải (%s)', async (_name, over) => {
@@ -161,6 +162,112 @@ describe('sceneBand', () => {
   });
 });
 
+describe('song ngữ (FR-026, FR-028, FR-029)', () => {
+  const secondary = { size: 32, color: '#FF0000', opacity: 100 };
+  const plain: Partial<SceneStyle> = { secondary, stroke: { enabled: false, color: '#000000', width: 1 } };
+  const duo = (text: string, source: string, over: Partial<AppliedCue> = {}) => cue({ text, secondary: source, ...over });
+  const secondWords = (sc: Scene, i: number) => sc.layoutOf(i).secondary!.lines.map((l) => l.segments.map((s) => s.text).join(' '));
+
+  it('câu gốc nằm trên, bản dịch nằm dưới, cùng canh lề; cả cụm có tâm ở độ cao đã chọn', () => {
+    for (const align of ['left', 'center', 'right'] as const) {
+      const sc = scene(style(1920, 1080, { ...plain, align, position: { anchor: 'center', y: 50 } }), [duo('Xin chào các bạn', 'Hello everyone, nice to see you')]);
+      const l = sc.layoutOf(0);
+      const sec = l.secondary!;
+      expect(sec.fontSize).toBe(32);
+      expect(Math.max(...sec.lines.map((x) => x.baseline))).toBeLessThan(l.lines[0]!.baseline - l.fontSize * 0.5);
+      expect(l.box.y + l.box.height / 2).toBeCloseTo(540, 0);
+      const edge = (line: { x: number; width: number }) => (align === 'left' ? line.x : align === 'right' ? line.x + line.width : line.x + line.width / 2);
+      expect(edge(sec.lines[0]!)).toBeCloseTo(edge(l.lines[0]!), 6);
+      expect(l.box.width).toBeCloseTo(Math.max(sec.lines[0]!.width, l.lines[0]!.width), 6);
+    }
+  });
+
+  it('không có câu thứ hai hoặc kiểu không khai báo dòng thứ hai: bố cục như một khối', () => {
+    const one = scene(style(1920, 1080), [cue({ text: 'Xin chào' })]).layoutOf(0);
+    expect(scene(style(1920, 1080, { secondary }), [cue({ text: 'Xin chào' })]).layoutOf(0)).toEqual(one);
+    expect(scene(style(1920, 1080), [duo('Xin chào', 'Hello')]).layoutOf(0)).toEqual(one);
+  });
+
+  it.each([
+    ['đáy', 100],
+    ['đỉnh', 0],
+  ])('cụm dài và cỡ lớn vẫn nằm trọn trong khung ở %s, hai khối thu nhỏ cùng tỉ lệ', (_name, y) => {
+    const s = style(1920, 1080, { ...plain, font: { family: 'be-vietnam-pro', size: 96, weight: 700 }, secondary: { ...secondary, size: 96 }, position: { anchor: 'bottom', y } });
+    const sc = scene(s, [duo(`${LONG} ${LONG} ${LONG}`, `${LONG} ${LONG} ${LONG}`)]);
+    const l = sc.layoutOf(0);
+    expect(l.shrunk).toBe(true);
+    expect(l.secondary!.fontSize / l.fontSize).toBeCloseTo(1, 1);
+    expect(l.box.y - l.bleed).toBeGreaterThanOrEqual(-0.5);
+    expect(l.box.y + l.box.height + l.bleed).toBeLessThanOrEqual(1080.5);
+    for (const line of [...l.lines, ...l.secondary!.lines]) {
+      expect(line.x).toBeGreaterThanOrEqual(-0.5);
+      expect(line.x + line.width).toBeLessThanOrEqual(1920.5);
+    }
+  });
+
+  it('cách xuống dòng của cả hai khối không đổi theo k', () => {
+    const cues = [duo(LONG, `${LONG} in the original language of the video`)];
+    const base = scene(style(1920, 1080, plain), cues);
+    for (const k of [0.25, 1 / 3, 0.5, 2]) {
+      const other = scene(style(Math.round(1920 * k), Math.round(1080 * k), { ...plain, frame: base.style.frame, k }), cues);
+      expect(lineWords(other, 0)).toEqual(lineWords(base, 0));
+      expect(secondWords(other, 0)).toEqual(secondWords(base, 0));
+      expect(other.layoutOf(0).secondary!.fontSize).toBeCloseTo(32 * k, 6);
+    }
+  });
+
+  it('dòng gốc có màu và độ mờ riêng, vẽ phía trên bản dịch', () => {
+    const cues = [duo('Xin chào các bạn', 'Hello everyone')];
+    const full = draw(scene(style(960, 540, plain), cues), 2000);
+    const red = boundsOf(full, 960, 540, (r, g, b, a) => a > 200 && r > 200 && g < 60 && b < 60)!;
+    const white = boundsOf(full, 960, 540, (r, g, b, a) => a > 200 && r > 200 && g > 200 && b > 200)!;
+    expect(red.y1).toBeLessThan(white.y0);
+    const faded = draw(scene(style(960, 540, { ...plain, secondary: { ...secondary, opacity: 50 } }), cues), 2000);
+    const alpha = maxAlpha(faded, 960, red);
+    expect(alpha).toBeGreaterThan(110);
+    expect(alpha).toBeLessThan(145);
+    // bản dịch không bị mờ theo
+    expect(maxAlpha(faded, 960, white)).toBeGreaterThan(240);
+    expect(boundsOf(draw(scene(style(960, 540, { ...plain, secondary: { ...secondary, opacity: 0 } }), cues), 2000), 960, 540, (r, g, b, a) => a > 0 && r > 200 && g < 60 && b < 60)).toBeNull();
+  });
+
+  it('hiệu ứng theo từ chỉ áp cho khối chính', () => {
+    const cues = [duo('một hai ba bốn năm sáu', 'one two three four five six', { startMs: 1000, endMs: 4000, readEndMs: 4000 })];
+    const sc = scene(style(960, 540, { ...plain, sync: 'word', wordEffect: 'cut' }), cues);
+    const isRed = (r: number, g: number, b: number, a: number) => a > 200 && r > 200 && g < 60 && b < 60;
+    const isWhitePx = (r: number, g: number, b: number, a: number) => a > 200 && r > 200 && g > 200 && b > 200;
+    const early = draw(sc, 1001);
+    const late = draw(sc, 3999);
+    expect(boundsOf(early, 960, 540, isRed)).toEqual(boundsOf(late, 960, 540, isRed));
+    expect(boundsOf(early, 960, 540, isWhitePx)!.count).toBeLessThan(boundsOf(late, 960, 540, isWhitePx)!.count / 2);
+  });
+});
+
+describe('bóng: khoảng cách và độ đậm (FR-028)', () => {
+  const shadowed = (distance: number, opacity: number): Partial<SceneStyle> => ({
+    stroke: { enabled: false, color: '#000000', width: 1 },
+    shadow: { enabled: true, color: '#FF00FF', blur: 0, distance, opacity },
+  });
+  const isShadow = (r: number, g: number, b: number, a: number) => a > 20 && r > 200 && g < 60 && b > 200;
+  const frameOf = (over: Partial<SceneStyle>) => draw(scene(style(1920, 1080, over), [cue({ text: 'HELLO' })]), 2000);
+
+  it('khoảng cách đẩy bóng xuống đúng số điểm ảnh của khung chuẩn', () => {
+    const near = boundsOf(frameOf(shadowed(8, 100)), 1920, 1080, isShadow)!;
+    const far = boundsOf(frameOf(shadowed(20, 100)), 1920, 1080, isShadow)!;
+    expect(far.y1 - near.y1).toBeGreaterThanOrEqual(10);
+    expect(far.y1 - near.y1).toBeLessThanOrEqual(14);
+  });
+
+  it('độ đậm quyết định độ đục của bóng; 0 thì không thấy bóng', () => {
+    const half = frameOf(shadowed(20, 50));
+    const box = boundsOf(half, 1920, 1080, isShadow)!;
+    const lowest = maxAlpha(half, 1920, { ...box, y0: box.y1 - 4 });
+    expect(lowest).toBeGreaterThan(100);
+    expect(lowest).toBeLessThan(150);
+    expect(boundsOf(frameOf(shadowed(20, 0)), 1920, 1080, isShadow)).toBeNull();
+  });
+});
+
 describe('Video Overlay không đổi (spec 005)', () => {
   it('mọi cấu hình mẫu vẽ ra đúng từng điểm ảnh như trước khi mở rộng', async () => {
     const golden = readGolden()[process.platform];
@@ -193,6 +300,36 @@ function rowsOf(data: Buffer, sc: Scene): { y0: number; y1: number } | null {
     }
   }
   return y0 < 0 ? null : { y0, y1 };
+}
+
+/** Khung bao và số điểm ảnh thỏa điều kiện của dữ liệu RGBA (không nhân sẵn alpha khi vẽ trực tiếp). */
+function boundsOf(data: Buffer, width: number, height: number, pred: (r: number, g: number, b: number, a: number) => boolean) {
+  let x0 = width;
+  let y0 = height;
+  let x1 = -1;
+  let y1 = -1;
+  let count = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const o = (y * width + x) * 4;
+      const a = data[o + 3]!;
+      // dữ liệu canvas nhân sẵn alpha: chia lại để so màu
+      const un = (v: number) => (a === 0 ? 0 : Math.min(255, Math.round((v * 255) / a)));
+      if (!pred(un(data[o]!), un(data[o + 1]!), un(data[o + 2]!), a)) continue;
+      count++;
+      x0 = Math.min(x0, x);
+      x1 = Math.max(x1, x);
+      y0 = Math.min(y0, y);
+      y1 = Math.max(y1, y);
+    }
+  }
+  return x1 < 0 ? null : { x0, y0, x1, y1, count };
+}
+
+function maxAlpha(data: Buffer, width: number, r: { x0: number; y0: number; x1: number; y1: number }): number {
+  let max = 0;
+  for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) max = Math.max(max, data[(y * width + x) * 4 + 3]!);
+  return max;
 }
 
 function maxDiff(a: Uint8ClampedArray, b: Uint8ClampedArray): number {

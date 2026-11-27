@@ -251,21 +251,30 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 **Independent Test**: đổi từng thuộc tính trên video dọc và ngang, so khung xem trước với thành phẩm.
 
 - [ ] T093 [P] [US4] `tests/unit/video/style.test.ts` và mở rộng `scene.test.ts`: song ngữ (cụm nằm trọn khung), bóng khoảng cách và độ đậm, 600, vùng an toàn (FR-026 đến FR-031).
+  - đang dở (27/11): đã viết ca song ngữ, bóng, vùng an toàn (đã thấy trượt rồi đạt); ca độ đậm 600 chờ phông của T094.
 - [ ] T094 [US4] Hỏi người dùng, rồi tải vào `public/fonts/overlay/` Oswald 400/600/700, Open Sans 400/600/700/800 và bản 600 của Be Vietnam Pro, Roboto, Montserrat, Inter kèm giấy phép; chạy `scripts/build-font-coverage.ts`.
+  - parked — chờ người dùng cho phép tải: lệnh tải bị chế độ quyền tự động từ chối (27/11). Cần từ github.com/google/fonts: Oswald[wght].ttf 168 KB, OpenSans[wdth,wght].ttf 520 KB, Roboto[wdth,wght].ttf 477 KB, Montserrat[wght].ttf 727 KB, Inter[opsz,wght].ttf 856 KB, BeVietnamPro-SemiBold.ttf 134 KB, kèm 2 tệp OFL.txt (Oswald, Open Sans). Google Fonts chỉ còn phông biến thiên cho 5 họ đầu; bộ vẽ trên máy chủ đã chọn đúng độ đậm của phông biến thiên (thử với Bahnschrift), còn phải so bề rộng chữ với trình duyệt sau khi tải.
 - [ ] T095 [US4] Thêm họ phông và độ đậm 600 vào `src/lib/overlay/fonts.ts`; lọc danh sách của tab Video Overlay trong `src/components/overlay/typography-panel.tsx` về bộ cũ.
-- [ ] T096 [US4] Thêm khối thứ hai (song ngữ), bóng khoảng cách và độ đậm vào `src/lib/overlay/draw.ts`, `layout.ts`.
-- [ ] T097 [P] [US4] Viết `src/lib/video/safe-zones.ts` (TikTok, Shorts, Reels theo phần trăm khung 9:16, ghi rõ là mô phỏng gần đúng).
-- [ ] T098 [US4] Viết route `src/app/api/video/jobs/[jobId]/style/route.ts` và `src/app/api/projects/[projectId]/video/settings/route.ts` (kiểu gần nhất, về mặc định). Gọi `recomputeSourceExpiry` trong cùng giao dịch khi đổi trạng thái hoặc có hoạt động.
-- [ ] T099 [US4] Viết `src/components/video/style-panel.tsx` (bảng riêng, không tách mã của overlay; có nút về mặc định, tự lưu; gắn vào `Tabs` của `editor.tsx`) (FR-031). Mẫu: `src/components/overlay/typography-panel.tsx`.
+  - parked — chờ T094.
+- [X] T096 [US4] Thêm khối thứ hai (song ngữ), bóng khoảng cách và độ đậm vào `src/lib/overlay/draw.ts`, `layout.ts`.
+  - done: `SceneStyle.secondary`, `shadow.distance/opacity`, `AppliedCue.secondary`; khung vàng Video Overlay không đổi.
+- [X] T097 [P] [US4] Viết `src/lib/video/safe-zones.ts` (TikTok, Shorts, Reels theo phần trăm khung 9:16, ghi rõ là mô phỏng gần đúng).
+- [X] T098 [US4] Viết route `src/app/api/video/jobs/[jobId]/style/route.ts` và `src/app/api/projects/[projectId]/video/settings/route.ts` (kiểu gần nhất, về mặc định). Gọi `recomputeSourceExpiry` trong cùng giao dịch khi đổi trạng thái hoặc có hoạt động.
+  - done: `src/lib/video/settings-service.ts`; `tests/integration/video-style.test.ts` 13 ca. Từ điển trong route cài đặt làm ở T105.
+- [X] T099 [US4] Viết `src/components/video/style-panel.tsx` (bảng riêng, không tách mã của overlay; có nút về mặc định, tự lưu; gắn vào `Tabs` của `editor.tsx`) (FR-031). Mẫu: `src/components/overlay/typography-panel.tsx`.
   - `SliderField`, `SelectField`, `SwitchRow`, `shared/color-field.tsx` dùng bằng import; hàng `space-y-2`; nhóm có tiêu đề `h2` `text-base font-semibold`.
   - Không chép: giới hạn cỡ, viền, phông của overlay.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T100 [US4] Thêm lớp vùng an toàn và cảnh báo chữ lấn vùng vào `src/components/video/video-preview.tsx` (lớp DOM riêng, không vào bộ vẽ).
+  - done (27/11): `style-panel.tsx`, `style-store.ts`, `use-style-editor.ts`. Agent kiểm (`ui-consistency:verifying`) hai lượt. Còn mở (mức thấp, lượt 2): "dải lỗi không còn chớp, nhưng nút Thử lại bị disabled lúc đang gửi nên có thể vẫn mất tiêu điểm bàn phím" (`editor.tsx`). Giới hạn chấp nhận: đã chỉnh kiểu một lần thì không nhận kiểu mới từ máy chủ; hai tab cùng chỉnh thì lượt lưu sau đè lượt trước, không báo (FR-024 nói về bản sửa phụ đề).
+- [X] T100 [US4] Thêm lớp vùng an toàn và cảnh báo chữ lấn vùng vào `src/components/video/video-preview.tsx` (lớp DOM riêng, không vào bộ vẽ).
   - Công tắc bằng `SwitchRow`/`SelectField`; cảnh báo `role="alert"`; màu theo theme.
   - Mẫu: `src/components/overlay/preview-player.tsx`. Không chép: ô bàn cờ nền trong suốt.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T101 [US4] `tests/e2e/video-parity.spec.ts`: 20 thời điểm, 9:16 và 16:9, lệch ≤ 1% chiều cao (SC-009); thay đổi hiện ≤ 0,2 giây (SC-007).
+  - done (27/11): lớp vùng an toàn trong `video-preview.tsx`, kiểm theo mẻ ở `use-safe-zones.ts`; agent kiểm hai lượt. Chưa kiểm trên trình duyệt: cuộn của cột xem trước và bề rộng 375 px.
+- [X] T101 [US4] `tests/e2e/video-parity.spec.ts`: 20 thời điểm, 9:16 và 16:9, lệch ≤ 1% chiều cao (SC-009); thay đổi hiện ≤ 0,2 giây (SC-007).
+  - done (27/11): `tests/e2e/video-parity.spec.ts` đạt trên Chromium; 20 thời điểm (15 có chữ), mép lệch ≤ 1% chiều cao, vùng chữ trùng 90–100%; sửa chữ hiện sau 8 ms, đổi kiểu 10 ms (SC-007).
 - [ ] T102 [US4] Chạy Independent Test của US4 theo `specs/006-video-translate-subtitle/quickstart.md` §4 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - đang dở (27/11): trên mã phase 6, quickstart §4 đạt phần sau — đổi kiểu trên 16:9 và 9:16, song ngữ, vùng an toàn có cảnh báo (E2E TikTok; ba mạng ở kiểm thử đơn vị), 20 thời điểm khớp (`video-parity.spec.ts`), khung vàng Video Overlay không đổi, E2E video 17/17 gồm 375 px. Chưa: phông Oswald, Open Sans và độ đậm 600 (T094, T095), nên story chưa xong. Hiệu ứng kiểm ở T123.
 
 ---
 

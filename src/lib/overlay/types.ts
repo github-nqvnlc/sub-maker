@@ -9,6 +9,8 @@ export type AppliedCue = {
   /** lúc đọc xong: khoảng đọc của câu là [startMs, readEndMs) */
   readEndMs: number;
   text: string;
+  /** câu gốc của cue song ngữ, vẽ phía trên `text` khi kiểu cảnh có khai báo dòng thứ hai (spec 006) */
+  secondary?: string;
   /** mốc gốc: voice khớp mốc hay tệp phụ đề */
   origin: 'voice' | 'file';
 };

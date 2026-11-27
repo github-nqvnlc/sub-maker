@@ -4,10 +4,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { SelectField } from '@/components/overlay/fields';
 import { fmtDuration } from '@/lib/format';
+import { useSafeZoneHits } from '@/lib/hooks/use-safe-zones';
 import { useSubtitleCanvas } from '@/lib/hooks/use-subtitle-canvas';
 import type { VideoJobDetailDto } from '@/lib/hooks/use-video';
 import { useT } from '@/lib/i18n/client';
+import { fmt } from '@/lib/i18n/fmt';
+import { isVerticalFrame, SAFE_PLATFORMS, SAFE_ZONES, type SafePlatform } from '@/lib/video/safe-zones';
+import type { VideoStyle } from '@/lib/video/style';
 import { localVideoUrl } from '@/lib/video/upload-client';
 import type { Cue, VideoMedia } from '@/lib/video/types';
 import { cn } from '@/lib/utils';
@@ -20,7 +25,20 @@ type Source = { kind: SourceKind; url: string };
  * xem trước → video nguồn → chỉ âm thanh; nguồn lỗi thì chuyển sang nguồn kế tiếp. Một phần tử `<video>` phát cả âm thanh nên mốc
  * đang phát không đổi khi đổi nguồn.
  */
-export function VideoPreview({ job, media, cues, mediaRef }: { job: VideoJobDetailDto; media: VideoMedia; cues: readonly Cue[]; mediaRef: React.RefObject<HTMLVideoElement | null> }) {
+export function VideoPreview({
+  job,
+  media,
+  cues,
+  style,
+  mediaRef,
+}: {
+  job: VideoJobDetailDto;
+  media: VideoMedia;
+  cues: readonly Cue[];
+  /** kiểu đang chỉnh (có thể chưa lưu) */
+  style: VideoStyle;
+  mediaRef: React.RefObject<HTMLVideoElement | null>;
+}) {
   const t = useT();
   const p = t.video.editor.preview;
   const boxRef = useRef<HTMLDivElement>(null);
@@ -33,7 +51,12 @@ export function VideoPreview({ job, media, cues, mediaRef }: { job: VideoJobDeta
   const [playFailed, setPlayFailed] = useState(false);
   // tệp trên máy, nếu video được chọn trong phiên này và trình duyệt phát được
   const [local] = useState(() => (media.browserPlayable ? localVideoUrl(job.id) : null));
-  const { fonts } = useSubtitleCanvas({ boxRef, canvasRef, mediaRef, style: job.style, cues });
+  const { fonts } = useSubtitleCanvas({ boxRef, canvasRef, mediaRef, style, cues });
+  // vùng an toàn chỉ là lựa chọn của khung xem trước trên video dọc, không lưu và không vào video xuất ra
+  const vertical = isVerticalFrame(media.width, media.height);
+  const [zone, setZone] = useState<SafePlatform | 'none'>('none');
+  const platform = vertical && zone !== 'none' ? zone : null;
+  const hits = useSafeZoneHits(platform, style, cues, fonts);
 
   const alive = job.sourceState === 'ready' || job.sourceState === 'checking';
   const sources = useMemo(() => {
@@ -132,6 +155,17 @@ export function VideoPreview({ job, media, cues, mediaRef }: { job: VideoJobDeta
             }}
           />
           <canvas ref={canvasRef} role="img" aria-label={p.label} data-testid="video-preview-canvas" data-fonts={fonts} className={cn('pointer-events-none absolute inset-0 size-full', fonts !== 'ready' && 'opacity-40')} />
+          {platform ? (
+            <div aria-hidden className="pointer-events-none absolute inset-0" data-testid="video-safe-zones">
+              {SAFE_ZONES[platform].map((z) => (
+                <div
+                  key={`${z.x}-${z.y}`}
+                  className="absolute border border-dashed border-destructive bg-destructive/25"
+                  style={{ left: `${z.x}%`, top: `${z.y}%`, width: `${z.width}%`, height: `${z.height}%` }}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
       {source && loading ? (
@@ -184,6 +218,24 @@ export function VideoPreview({ job, media, cues, mediaRef }: { job: VideoJobDeta
           aria-label={t.player.seek}
         />
       </div>
+      {vertical ? (
+        <SelectField label={p.safeZone} value={zone} onChange={setZone} options={(['none', ...SAFE_PLATFORMS] as const).map((z) => ({ value: z, label: p.safeZones[z] }))} hint={p.safeZoneHint} />
+      ) : null}
+      {platform && fonts !== 'error' ? (
+        hits === null ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            {p.safeZoneChecking}
+          </p>
+        ) : hits.length > 0 ? (
+          <p role="alert" className="text-sm text-destructive" data-testid="safe-zone-warning">
+            {fmt(p.safeZoneHit, { platform: p.safeZones[platform], count: hits.length, cues: hits.slice(0, 10).join(', ') + (hits.length > 10 ? '…' : '') })}
+          </p>
+        ) : (
+          <p role="status" className="text-xs text-muted-foreground">
+            {fmt(p.safeZoneClear, { platform: p.safeZones[platform] })}
+          </p>
+        )
+      ) : null}
     </section>
   );
 }

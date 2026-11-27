@@ -130,7 +130,8 @@ export function toSceneStyle(input: VideoStyle, width: number, height: number): 
     font: { family: style.font.family, size: style.font.size, weight: style.font.weight as FontWeight },
     text: { color: style.color },
     stroke: { ...style.stroke },
-    shadow: { enabled: style.shadow.enabled, color: style.shadow.color, blur: style.shadow.blur },
+    shadow: { ...style.shadow },
+    secondary: { ...style.sourceLine },
     box: { ...style.box },
     position: { ...style.position },
     align: style.align,
@@ -153,13 +154,18 @@ export function cueDisplayText(cue: Pick<Cue, 'sourceText' | 'targetText'>, disp
   return text.trim();
 }
 
-/** Cue đưa vào bộ vẽ: bỏ cue không có chữ, đánh số liên tục; khoảng đọc từng từ là cả cue (FR-034). */
+/**
+ * Cue đưa vào bộ vẽ: bỏ cue không có chữ, đánh số liên tục; khoảng đọc từng từ là cả cue (FR-034). Song ngữ: bản dịch là khối chính,
+ * câu gốc là dòng thứ hai, trừ khi thiếu một câu hoặc hai câu giống nhau.
+ */
 export function toAppliedCues(cues: ReadonlyArray<Pick<Cue, 'startMs' | 'endMs' | 'sourceText' | 'targetText'>>, display: Display): AppliedCue[] {
   const out: AppliedCue[] = [];
   for (const c of cues) {
     const text = cueDisplayText(c, display).normalize('NFC');
     if (!text) continue;
-    out.push({ i: out.length, startMs: c.startMs, endMs: c.endMs, readEndMs: c.endMs, text, origin: 'file' });
+    const source = display === 'bilingual' ? c.sourceText.trim().normalize('NFC') : '';
+    const secondary = source && source !== text ? { secondary: source } : {};
+    out.push({ i: out.length, startMs: c.startMs, endMs: c.endMs, readEndMs: c.endMs, text, ...secondary, origin: 'file' });
   }
   return out;
 }

@@ -66,7 +66,7 @@ function warnAboutText(scene: Scene, cues: RenderTask['cues'], family: FontFamil
   const shrunk = cues.filter((_, i) => scene.layoutOf(i).shrunk).map((c) => c.i + 1);
   if (shrunk.length > 0) send({ type: 'warning', code: 'CUE_SHRUNK', params: { count: shrunk.length, cues: shrunk.slice(0, 10).join(', ') + (shrunk.length > 10 ? '…' : '') } });
   const coverage = JSON.parse(readFileSync(path.join(fontDir, 'coverage.json'), 'utf8')) as FontCoverage;
-  const missing = new Set(cues.flatMap((c) => missingChars(c.text, family, weight, coverage)));
+  const missing = new Set(cues.flatMap((c) => missingChars(`${c.text} ${c.secondary ?? ''}`, family, weight, coverage)));
   if (missing.size > 0) send({ type: 'warning', code: 'MISSING_GLYPH', params: { chars: [...missing].slice(0, 20).join(' ') } });
 }
 

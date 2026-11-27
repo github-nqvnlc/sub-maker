@@ -191,7 +191,8 @@ export type WordState = {
   wipe: number;
 };
 
-const PLAIN: WordState = { visible: true, highlight: false, scale: 1, chars: null, wipe: 0 };
+/** Từ không có hiệu ứng nào. */
+export const PLAIN: WordState = { visible: true, highlight: false, scale: 1, chars: null, wipe: 0 };
 /** Thời gian từ đang đọc phóng lên cỡ nổi bật (ms). */
 const ACTIVE_RAMP_MS = 80;
 

@@ -182,13 +182,26 @@ function SubtitleFiles({ job, revision, ensureSaved }: { job: VideoJobDetailDto;
  * Ước tính, lưu ý và nút xuất video gắn phụ đề (spec 006, US3; FR-042, FR-043). Máy chủ kiểm tra lại mọi điều kiện khi tạo bản xuất.
  * `ensureSaved` lưu nốt phụ đề và trả số phiên bản đã lưu (null khi không lưu được).
  */
-export function ExportPanel({ job, revision, ensureSaved }: { job: VideoJobDetailDto; revision: number; ensureSaved: () => Promise<number | null> }) {
+export function ExportPanel({
+  job,
+  revision,
+  ensureSaved,
+  styleVersion,
+  ensureStyleSaved,
+}: {
+  job: VideoJobDetailDto;
+  revision: number;
+  ensureSaved: () => Promise<number | null>;
+  /** tăng sau mỗi lần lưu kiểu phụ đề: lưu ý và ước tính phụ thuộc kiểu */
+  styleVersion: number;
+  ensureStyleSaved: () => Promise<boolean>;
+}) {
   const t = useT();
   const e = t.video.export;
   const qc = useQueryClient();
   const jobState = [job.status, job.sourceState, job.exports.map((x) => `${x.id}:${x.status}`).join()].join('|');
-  // đổi phụ đề, trạng thái việc, video nguồn hay bản xuất thì ước tính lại
-  const situation = `${revision}|${jobState}`;
+  // đổi phụ đề, kiểu, trạng thái việc, video nguồn hay bản xuất thì ước tính lại
+  const situation = `${revision}|${styleVersion}|${jobState}`;
   const estimate = useQuery({
     queryKey: ['video-estimate', job.id, situation],
     queryFn: () => apiPost<ExportEstimateDto>(`/api/video/jobs/${job.id}/exports/estimate`),
@@ -200,6 +213,8 @@ export function ExportPanel({ job, revision, ensureSaved }: { job: VideoJobDetai
   // biến của lượt gọi là trạng thái việc lúc bấm (không gồm phiên bản phụ đề: lượt bấm tự lưu nên phiên bản đổi ngay)
   const create = useMutation<unknown, Error, string>({
     mutationFn: async () => {
+      // bản xuất chốt nội dung và kiểu ở máy chủ nên cả hai phải lưu xong
+      if (!(await ensureStyleSaved())) throw new ApiError(409, 'CONFLICT', e.styleSaveFirst);
       const saved = await ensureSaved();
       if (saved === null) throw new ApiError(409, 'CONFLICT', e.saveFirst);
       return apiPost(`/api/video/jobs/${job.id}/exports`, { kind: 'burn', format: 'mp4', baseRevision: saved });

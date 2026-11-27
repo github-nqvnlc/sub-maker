@@ -17,8 +17,10 @@ export type VideoFile = { name: string; mimeType: string; buffer: Buffer };
 /**
  * Video thử ngắn. `padMb` nối một hộp `free` hợp lệ của MP4 vào cuối để tệp lớn hơn một phần tải (16 MB) mà vẫn đọc được.
  */
-export function makeVideoFile(name: string, opts: { seconds?: number; padMb?: number; size?: string; rate?: number } = {}): VideoFile {
-  const { seconds = 6, padMb = 0, size = '640x360', rate = 25 } = opts;
+export function makeVideoFile(name: string, opts: { seconds?: number; padMb?: number; size?: string; rate?: number; color?: string } = {}): VideoFile {
+  const { seconds = 6, padMb = 0, size = '640x360', rate = 25, color } = opts;
+  // `color`: nền một màu để tách vùng chữ khi so khung
+  const picture = color ? `color=c=${color}:s=${size}:r=${rate}:d=${seconds}` : `testsrc2=s=${size}:r=${rate}:d=${seconds}`;
   // đuôi quyết định định dạng: .webm phát được ở mọi trình duyệt, .avi (MPEG-4) thì không
   const ext = name.endsWith('.webm') ? 'webm' : name.endsWith('.avi') ? 'avi' : 'mp4';
   const codecs = {
@@ -31,7 +33,7 @@ export function makeVideoFile(name: string, opts: { seconds?: number; padMb?: nu
     const file = path.join(dir, `v.${ext}`);
     const r = spawnSync(
       process.env.FFMPEG_PATH || 'ffmpeg',
-      ['-v', 'error', '-f', 'lavfi', '-i', `testsrc2=s=${size}:r=${rate}:d=${seconds}`, '-f', 'lavfi', '-i', `sine=frequency=600:duration=${seconds}`, ...codecs, '-y', file],
+      ['-v', 'error', '-f', 'lavfi', '-i', picture, '-f', 'lavfi', '-i', `sine=frequency=600:duration=${seconds}`, ...codecs, '-y', file],
       { stdio: 'inherit' },
     );
     if (r.status !== 0) throw new Error('Không tạo được video thử');

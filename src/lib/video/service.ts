@@ -225,7 +225,7 @@ export async function toDto(job: JobRow): Promise<VideoJobDto> {
 
 export type VideoProjectSettingsDto = { direction: Direction; glossary: GlossaryPair[]; style: VideoStyle };
 
-async function projectSettings(projectId: string, db: Db = getDb()): Promise<VideoProjectSettingsDto> {
+export async function projectVideoSettings(projectId: string, db: Db = getDb()): Promise<VideoProjectSettingsDto> {
   const [row] = await db.select().from(videoProjectSettings).where(eq(videoProjectSettings.projectId, projectId));
   return { direction: row?.direction ?? 'to_vi', glossary: row?.glossary ?? [], style: parseStoredStyle(row?.style) };
 }
@@ -241,7 +241,7 @@ export async function getVideoTab(user: Principal, projectId: string) {
     quota: await videoQuotaInfo(user.id),
     limits: { maxBytes: settings.videoMaxBytes, maxMinutes: settings.videoMaxMinutes, extensions: [...VIDEO_EXTENSIONS] },
     retention: { sourceHours: settings.videoSourceRetainHours, idleDays: settings.videoIdleRetainDays, outputDays: settings.videoOutputRetainDays },
-    settings: await projectSettings(projectId),
+    settings: await projectVideoSettings(projectId),
   };
 }
 export type VideoTabDto = Awaited<ReturnType<typeof getVideoTab>>;
@@ -315,7 +315,7 @@ export async function createVideoJob(user: Principal, projectId: string, raw: un
   if (body.size > settings.videoMaxBytes) throw new HttpError(413, 'VIDEO_TOO_LARGE', undefined, { maxBytes: String(settings.videoMaxBytes) });
   // FR-013: chưa cấu hình thì chặn TRƯỚC khi tải lên
   if (!(await sttReady())) throw new HttpError(409, 'STT_NOT_CONFIGURED');
-  const prefs = await projectSettings(projectId);
+  const prefs = await projectVideoSettings(projectId);
 
   const jobId = randomUUID();
   const key = storageKeys.videoSource(user.id, jobId, ext);

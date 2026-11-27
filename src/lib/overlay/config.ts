@@ -196,7 +196,6 @@ export type SceneStyle = Pick<
   | 'font'
   | 'text'
   | 'stroke'
-  | 'shadow'
   | 'box'
   | 'position'
   | 'align'
@@ -210,6 +209,10 @@ export type SceneStyle = Pick<
   | 'highlightColor'
   | 'shakeScope'
 > & {
+  /** `distance` (px khung chuẩn) và `opacity` (0–100) chỉ dịch video dùng; vắng thì bóng lệch theo cỡ chữ và đậm hoàn toàn */
+  shadow: OverlayConfig['shadow'] & { distance?: number; opacity?: number };
+  /** dòng thứ hai của cue song ngữ, nằm trên khối chính (spec 006, FR-026) */
+  secondary?: { size: number; color: string; opacity: number };
   /** khung chuẩn: bố cục (cách xuống dòng, vị trí) chỉ phụ thuộc khung này; mọi thông số điểm ảnh tính trên nó */
   frame: { width: number; height: number };
   /** hệ số từ khung chuẩn ra khung đích: nhân vào mọi thông số điểm ảnh khi vẽ */

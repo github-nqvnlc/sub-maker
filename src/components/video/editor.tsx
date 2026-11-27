@@ -16,12 +16,14 @@ import { CueList } from '@/components/video/cue-list';
 import { ExportList } from '@/components/video/export-list';
 import { ExportPanel } from '@/components/video/export-panel';
 import { VideoStatusBadge } from '@/components/video/status';
+import { StylePanel } from '@/components/video/style-panel';
 import { Timeline } from '@/components/video/timeline';
 import { VideoPreview } from '@/components/video/video-preview';
 import { ApiError, api } from '@/lib/api-client';
 import { fmtDuration } from '@/lib/format';
 import { useCueEditor } from '@/lib/hooks/use-cue-editor';
 import { useActiveCue } from '@/lib/hooks/use-media-clock';
+import { useStyleEditor } from '@/lib/hooks/use-style-editor';
 import { useVideoEvents, useVideoJob, type VideoJobDetailDto } from '@/lib/hooks/use-video';
 import { newRequestId } from '@/lib/hooks/use-overlay';
 import { useFormat, useT } from '@/lib/i18n/client';
@@ -62,6 +64,7 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
   const tools = e.tools;
   const editor = useCueEditor(job.id, loaded, media.durationMs);
   const { store, cues } = editor;
+  const styleEditor = useStyleEditor(job);
   const mediaRef = useRef<HTMLVideoElement>(null);
   const active = useActiveCue(mediaRef, cues);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -167,6 +170,16 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
           </Button>
         </div>
       ) : null}
+      {styleEditor.error !== null ? (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive lg:col-span-12">
+          <span>
+            {e.style.saveError} {styleEditor.error}
+          </span>
+          <Button size="sm" variant="outline" disabled={styleEditor.status === 'saving'} onClick={() => styleEditor.store.retry()}>
+            {t.common.retry}
+          </Button>
+        </div>
+      ) : null}
       {editor.status === 'conflict' ? (
         <div role="alert" className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 lg:col-span-12" data-testid="save-conflict">
           <p className="text-sm font-medium">{editor.error?.message ?? e.save.error}</p>
@@ -186,17 +199,19 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
       ) : null}
       {/* xem trước: cột phải, bám theo khi cuộn trên màn hình rộng; đứng trước trong thứ tự trang nên tới được ngay bằng phím Tab */}
       <div className="min-w-0 lg:order-2 lg:col-span-5">
-        <div className="space-y-3 lg:sticky lg:top-4">
-          <VideoPreview job={job} media={media} cues={cues} mediaRef={mediaRef} />
+        {/* video dọc kèm lựa chọn vùng an toàn có thể cao hơn màn hình: cột tự cuộn */}
+        <div className="space-y-3 lg:sticky lg:top-4 lg:-m-1 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:p-1">
+          <VideoPreview job={job} media={media} cues={cues} style={styleEditor.style} mediaRef={mediaRef} />
           <Timeline cues={cues} selectedId={selectedId} durationMs={media.durationMs} mediaRef={mediaRef} disabled={readOnly} onChange={actions.setEdge} />
         </div>
       </div>
       <div className="min-w-0 lg:order-1 lg:col-span-7">
         <Tabs defaultValue="cues">
-          <TabsList aria-label={e.tabsLabel}>
+          <TabsList aria-label={e.tabsLabel} className="flex h-auto flex-wrap group-data-horizontal/tabs:h-auto">
             <TabsTrigger value="cues">
               {e.tabCues} ({cues.length})
             </TabsTrigger>
+            <TabsTrigger value="style">{e.tabStyle}</TabsTrigger>
             <TabsTrigger value="export">{t.video.export.tab}</TabsTrigger>
             <TabsTrigger value="log">{e.tabLog}</TabsTrigger>
           </TabsList>
@@ -264,8 +279,11 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
               />
             )}
           </TabsContent>
+          <TabsContent value="style">
+            <StylePanel style={styleEditor.style} status={styleEditor.status} onChange={(next) => styleEditor.store.set(next)} />
+          </TabsContent>
           <TabsContent value="export" className="space-y-6">
-            <ExportPanel job={job} revision={editor.revision} ensureSaved={ensureSaved} />
+            <ExportPanel job={job} revision={editor.revision} ensureSaved={ensureSaved} styleVersion={styleEditor.savedVersion} ensureStyleSaved={() => styleEditor.store.flush()} />
             <ExportList job={job} revision={editor.revision} />
           </TabsContent>
           <TabsContent value="log">

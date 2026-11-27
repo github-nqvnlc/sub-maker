@@ -42,6 +42,12 @@ Cơ chế làm tiếp sau khi chạm hạn mức **chưa được thử**. Ngư�
 - Kiểm thử unit và contract đạt 552 sau khi bỏ 2 ca MiniMax; bộ tích hợp đạt ở lần chạy đầy đủ trước đó. `.env` có khóa `SPIKE_*`: không bao giờ đặt `REAL_PROVIDER_TESTS=1`.
 - Lỗi tốc độ giọng MiniMax (gửi ngoài 0,5–2) vẫn còn trong mã, ngoài phạm vi spec 006.
 
+## Đợt 2 và 3: T093–T143 (bắt đầu 2026-11-27)
+
+- Người dùng nhắn "Làm tiếp T093–T143": thay cho giới hạn phạm vi ở quyết định 2. Các quyết định khác giữ nguyên: commit cục bộ trên `main` sau mỗi phase, **không push**; T143 dừng, nêu task còn treo, hỏi về token rồi mới push.
+- Lịch tự làm tiếp: `CronCreate` mỗi giờ phút 23, mã `4c596316`; xong và đã báo cáo thì xóa. `request_keep_awake` (`session_idle`) đã bật. Hạn mức lúc bắt đầu: 5 giờ 3% (đặt lại 14:00 ngày 27/11), tuần 61% (đặt lại 01:00 ngày 28/11).
+- Phiên `local_e8aa714a-5f19-4393-a232-e08a50a7d3a6` sửa hai ca E2E cũ trong cùng thư mục (`tests/e2e/ai-config.spec.ts`, `manage-jobs.spec.ts`): không commit hai tệp đó, và tránh chạy kiểm thử cùng lúc (chung CSDL, cổng).
+
 ## Hiện trạng khi bàn giao MVP (2026-11-26)
 
 - **T001–T092 xong**, trừ T041 (`parked — chờ video`). Dừng ở đây theo quyết định 2; T093–T143 chờ người dùng.

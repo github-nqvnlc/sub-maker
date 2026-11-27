@@ -70,7 +70,7 @@ async function missingGlyphs(cues: readonly Cue[], style: VideoStyle): Promise<s
   const known = await loadCoverage();
   if (!known) return [];
   const missing = new Set<string>();
-  for (const c of toAppliedCues(cues, style.display)) for (const ch of missingChars(c.text, style.font.family, style.font.weight, known)) missing.add(ch);
+  for (const c of toAppliedCues(cues, style.display)) for (const ch of missingChars(`${c.text} ${c.secondary ?? ''}`, style.font.family, style.font.weight, known)) missing.add(ch);
   return [...missing].slice(0, 20);
 }
 
