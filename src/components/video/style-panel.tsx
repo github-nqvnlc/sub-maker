@@ -50,8 +50,9 @@ export function StylePanel({ style, status, onChange }: { style: VideoStyle; sta
   /** Đổi chế độ hoặc hiệu ứng: tổ hợp không hợp được đưa về mặc định của chế độ; báo khi hiệu ứng người dùng đã chọn bị thay. */
   const applyEffects = (next: VideoStyle) => {
     const r = normalizeStyle(next);
-    // hiệu ứng từ luôn đổi theo chế độ; chỉ báo khi một lựa chọn người dùng đã đặt bị thay
-    if (r.changed.includes('enter') || (r.changed.includes('wordEffect') && style.wordEffect !== 'none')) toast.info(o.configAdjusted);
+    // chế độ Karaoke tự khóa một lựa chọn duy nhất nên rời Karaoke không coi là ghi đè lựa chọn hiệu ứng từ của người dùng
+    const userPickedWordEffect = STYLE_WORD_EFFECTS_OF[style.sync].length > 1 && style.wordEffect !== 'none';
+    if (r.changed.includes('enter') || (r.changed.includes('wordEffect') && userPickedWordEffect)) toast.info(o.configAdjusted);
     onChange(r.style);
   };
   const usesDuration = (style.sync !== 'word' && style.enter !== 'cut') || style.wordEffect === 'pop';

@@ -366,8 +366,8 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
   - done (27/11): nhóm hiệu ứng trong `style-panel.tsx`; agent kiểm, hai mục thấp đã sửa (chờ một dòng xác nhận).
 - [X] T122 [US8] Thêm ca hiệu ứng vào `tests/e2e/video-parity.spec.ts` và `tests/integration/video-render.test.ts`.
   - done: ca hiệu ứng trong `video-render.test.ts` và `video-parity.spec.ts` đạt.
-- [ ] T123 [US8] Chạy Independent Test của US8 theo `specs/006-video-translate-subtitle/quickstart.md` §4 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
-  - đang dở: đối chiếu xem trước và thành phẩm đạt cho karaoke + nảy (`video-parity.spec.ts`); từng hiệu ứng còn lại mới kiểm ở bộ vẽ dùng chung (`scene.test.ts`), chưa so trên trình duyệt.
+- [X] T123 [US8] Chạy Independent Test của US8 theo `specs/006-video-translate-subtitle/quickstart.md` §4 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - Kết quả (27/11): quickstart §4 đạt toàn phần qua `tests/e2e/video-parity.spec.ts` (2/2 ca đạt): ca 1 (`640×360`, `360×640`, `karaoke` + `bounce`, 85,3%–100,0%, sửa chữ 16 ms, đổi kiểu 14 ms); ca 2 (`1280×720`, rút ngắn cue 1 xuống 300 ms < `effectMs = 500`, rời `karaoke` không hiện toast và sửa `style-panel.tsx` cho phép `STYLE_WORD_EFFECTS_OF[sync].length === 1`) kiểm đủ `fade` (90,3%–93,1%), `pop` (91,0%–93,4%), `slideUp` (89,5%–93,3%), `blurIn` (92,3%–94,2%), `word-none` (93,5%–94,2%), `word-pop` (90,2%–93,8%), `word-typewriter` (92,9%–94,1%) và `glow` (mép ≤ 1% chiều cao, IoU lõi + quầng 81,8%–83,8% ở ngưỡng `220` do `shadowBlur` Blink/Skia + YUV420). Đạt cả trên bộ vẽ (`tests/unit/video/scene.test.ts` 58 ca) và E2E `video-parity.spec.ts`.
 
 ---
 

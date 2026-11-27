@@ -80,7 +80,7 @@ async function previewMask(page: Page, video: { width: number; height: number })
   return maskOf(shot.width, shot.height, video, (x, y) => data[(y * shot.width + x) * 4 + 3]! >= 120);
 }
 
-async function videoMask(file: string, frame: number, size: { width: number; height: number }): Promise<Mask> {
+async function videoMask(file: string, frame: number, size: { width: number; height: number }, threshold = 60): Promise<Mask> {
   const { stdout } = await promisify(execFile)(
     process.env.FFMPEG_PATH || 'ffmpeg',
     ['-v', 'error', '-i', file, '-vf', `select=eq(n\\,${frame}),format=rgb24`, '-frames:v', '1', '-fps_mode', 'passthrough', '-f', 'rawvideo', 'pipe:1'],
@@ -91,7 +91,7 @@ async function videoMask(file: string, frame: number, size: { width: number; hei
   const bg = [stdout[at(2, 2)]!, stdout[at(2, 2) + 1]!, stdout[at(2, 2) + 2]!];
   return maskOf(size.width, size.height, size, (x, y) => {
     const o = at(x, y);
-    return Math.abs(stdout[o]! - bg[0]!) + Math.abs(stdout[o + 1]! - bg[1]!) + Math.abs(stdout[o + 2]! - bg[2]!) >= 60;
+    return Math.abs(stdout[o]! - bg[0]!) + Math.abs(stdout[o + 1]! - bg[1]!) + Math.abs(stdout[o + 2]! - bg[2]!) >= threshold;
   });
 }
 
@@ -133,14 +133,19 @@ async function openEditor(page: Page, projectId: string, source: VideoFile): Pro
   return job.id;
 }
 
-/** Xuất bằng giao diện rồi tải thành phẩm của lượt xuất đó. */
+/** Xuất bằng giao diện rồi tải thành phẩm của đúng lượt xuất vừa tạo. */
 async function exportVideo(page: Page, jobId: string, dir: string, name: string): Promise<string> {
   await page.getByRole('tab', { name: 'Xuất video' }).click();
-  await page.getByRole('button', { name: 'Xuất video', exact: true }).click();
+  const [createdRes] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith(`/api/video/jobs/${jobId}/exports`) && r.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Xuất video', exact: true }).click(),
+  ]);
+  expect(createdRes.ok(), await createdRes.text()).toBeTruthy();
+  const created = (await createdRes.json()) as { id: string };
   const detail = async () => (await (await page.request.get(`/api/video/jobs/${jobId}`, { headers: hdr })).json()) as { exports: Array<{ id: string; status: string }> };
-  await expect.poll(async () => (await detail()).exports[0]?.status, { timeout: 120_000, intervals: [500] }).toBe('completed');
+  await expect.poll(async () => (await detail()).exports.find((e) => e.id === created.id)?.status, { timeout: 120_000, intervals: [500] }).toBe('completed');
   const file = path.join(dir, name);
-  const res = await page.request.get(`/api/video/exports/${(await detail()).exports[0]!.id}/video`);
+  const res = await page.request.get(`/api/video/exports/${created.id}/video`);
   expect(res.ok()).toBeTruthy();
   await writeFile(file, await res.body());
   return file;
@@ -241,5 +246,108 @@ test('khung xem trước khớp video xuất ra tại 20 thời điểm, đổi 
   } finally {
     await rm(dir, { recursive: true, force: true });
     console.log(`[video parity ${browserName}] ${notes.join('; ')}`);
+  }
+});
+
+/** Mặt nạ xem trước quy về cùng phép đo độ lệch màu trên nền xanh lá [0, 128, 0] như `videoMask` (dùng cho fade/blur/glow). */
+async function previewCompositeMask(page: Page, video: { width: number; height: number }, threshold = 60): Promise<Mask> {
+  const shot = await page.getByTestId('video-preview-canvas').evaluate((el) => {
+    const cv = el as HTMLCanvasElement;
+    const d = cv.getContext('2d')!.getImageData(0, 0, cv.width, cv.height).data;
+    let s = '';
+    for (let i = 0; i < d.length; i += 0x8000) s += String.fromCharCode(...d.subarray(i, i + 0x8000));
+    return { width: cv.width, height: cv.height, data: btoa(s) };
+  });
+  const data = Buffer.from(shot.data, 'base64');
+  return maskOf(shot.width, shot.height, video, (x, y) => {
+    const o = (y * shot.width + x) * 4;
+    const a = data[o + 3]! / 255;
+    if (a <= 0) return false;
+    const r = data[o]! * a;
+    const g = data[o + 1]! * a + 128 * (1 - a);
+    const b = data[o + 2]! * a;
+    return r + Math.abs(g - 128) + b >= threshold;
+  });
+}
+
+test('mọi hiệu ứng còn lại, cue ngắn hơn hiệu ứng và toast rời karaoke (T123; FR-032..FR-036) @parity', async ({ page, browserName }) => {
+  test.setTimeout(480_000);
+  await page.setViewportSize({ width: 1440, height: 1320 });
+  const p = await videoProject(page, mock);
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'video-fx-parity-'));
+  const notes: string[] = [];
+  const size = { width: 1280, height: 720 };
+  try {
+    const src = makeVideoFile('tat-ca-hieu-ung.webm', { size: '1280x720', color: '0x008000' });
+    const jobId = await openEditor(page, p.id, src);
+
+    // ---- Rời Karaoke không hiện toast "đưa về mặc định"; rời Word (có chọn "Từ bung ra") thì hiện ----
+    await page.getByRole('tab', { name: 'Kiểu chữ' }).click();
+    const syncSelect = page.getByRole('combobox', { name: 'Chế độ đồng bộ' });
+    await syncSelect.click();
+    await page.getByRole('option', { name: 'Karaoke' }).click();
+    await syncSelect.click();
+    await page.getByRole('option', { name: 'Theo đoạn' }).click();
+    await expect(page.getByText('Một số lựa chọn không hợp với chế độ mới đã được đưa về mặc định')).toHaveCount(0);
+
+    await syncSelect.click();
+    await page.getByRole('option', { name: 'Theo từng từ' }).click();
+    await page.getByRole('combobox', { name: 'Hiệu ứng từ' }).click();
+    await page.getByRole('option', { name: 'Từ bung ra' }).click();
+    await syncSelect.click();
+    await page.getByRole('option', { name: 'Theo đoạn' }).click();
+    await expect(page.getByText('Một số lựa chọn không hợp với chế độ mới đã được đưa về mặc định')).toBeVisible();
+    await expect(page.getByTestId('style-save-status')).toHaveText('Đã lưu');
+
+    // ---- Rút ngắn cue 1 xuống 300 ms (ngắn hơn effectMs = 500 ms) để kiểm FR-035 ----
+    const cuesRes = await page.request.get(`/api/video/jobs/${jobId}/cues`, { headers: hdr });
+    const cuesJson = (await cuesRes.json()) as { revision: number; cues: Array<{ id: string; startMs: number; endMs: number }> };
+    const cue1 = cuesJson.cues[0]!;
+    const opsRes = await page.request.post(`/api/video/jobs/${jobId}/cues/ops`, {
+      data: { baseRevision: cuesJson.revision, ops: [{ type: 'update', id: cue1.id, patch: { endMs: cue1.startMs + 300 } }] },
+      headers: hdr,
+    });
+    expect(opsRes.ok(), await opsRes.text()).toBeTruthy();
+
+    const base: VideoStyle = { ...DEFAULT_VIDEO_STYLE, font: { family: 'be-vietnam-pro', size: 64, weight: 800 }, stroke: { enabled: true, color: '#000000', width: 8 }, effectMs: 500 };
+    const cases: Array<{ label: string; style: VideoStyle; frames: number[] }> = [
+      { label: 'fade', style: { ...base, sync: 'cue', enter: 'fade' }, frames: [9, 13, 55, 65] },
+      { label: 'pop', style: { ...base, sync: 'cue', enter: 'pop' }, frames: [6, 13, 52, 70] },
+      { label: 'slideUp', style: { ...base, sync: 'cue', enter: 'slideUp' }, frames: [6, 13, 52, 70] },
+      { label: 'blurIn', style: { ...base, sync: 'cue', enter: 'blurIn' }, frames: [8, 13, 50, 65] },
+      { label: 'word-none', style: { ...base, sync: 'word', wordEffect: 'none', enter: 'cut' }, frames: [6, 13, 52, 70, 88] },
+      { label: 'word-pop', style: { ...base, sync: 'word', wordEffect: 'pop', enter: 'cut' }, frames: [6, 13, 52, 70, 88] },
+      { label: 'word-typewriter', style: { ...base, sync: 'word', wordEffect: 'typewriter', enter: 'cut' }, frames: [6, 13, 52, 70, 88] },
+      { label: 'glow', style: { ...base, sync: 'cue', enter: 'glow', highlightColor: '#FF0000' }, frames: [6, 13, 52, 70] },
+    ];
+
+    for (const c of cases) {
+      const saved = await page.request.put(`/api/video/jobs/${jobId}/style`, { data: c.style, headers: hdr });
+      expect(saved.ok(), await saved.text()).toBeTruthy();
+      await page.reload();
+      await expect(page.getByTestId('video-preview-canvas')).toHaveAttribute('data-fonts', 'ready');
+      const outFile = await exportVideo(page, jobId, dir, `${c.label}.mp4`);
+      let inked = 0;
+      await page.getByRole('tab', { name: /^Phụ đề/ }).click();
+      for (const frame of c.frames) {
+        await seekPreview(page, frame);
+        const threshold = c.label === 'glow' ? 220 : 60;
+        const preview = await previewCompositeMask(page, size, threshold);
+        const video = await videoMask(outFile, frame, size, threshold);
+        const where = `${c.label}, khung ${frame}`;
+        expect(!!preview.box, `${where}: cùng có hoặc cùng không có chữ`).toBe(!!video.box);
+        if (!preview.box || !video.box) continue;
+        inked++;
+        const tolerance = size.height * 0.01;
+        for (const edge of ['x0', 'y0', 'x1', 'y1'] as const) expect(Math.abs(preview.box[edge] - video.box[edge]), `${where}: mép ${edge}`).toBeLessThanOrEqual(tolerance);
+        const iou = overlap(preview, video);
+        notes.push(`${where}: trùng ${(iou * 100).toFixed(1)}%`);
+        expect(iou, `${where}: vùng chữ trùng nhau`).toBeGreaterThan(c.label === 'glow' ? 0.8 : 0.85);
+      }
+      expect(inked, `${c.label}: phải có chữ ở các khung thử`).toBeGreaterThanOrEqual(2);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    console.log(`[video fx parity ${browserName}] ${notes.join('; ')}`);
   }
 });

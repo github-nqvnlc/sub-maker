@@ -51,6 +51,8 @@ Cơ chế làm tiếp sau khi chạm hạn mức **chưa được thử**. Ngư�
 - Hạn mức 5 giờ lúc 10:42 đã dùng 83% (đặt lại 14:00); tuần 71%.
 - Phát hiện khi kiểm phase 9 (chưa sửa): `data-model.md` §5 ghi âm thanh tách và token thô tính vào trần hệ thống, nhưng `quota.ts` (`videoSystemBytes`) không cộng, khớp `research.md`; cần thống nhất tài liệu hoặc cách tính.
 - 27/11 11:00: phase 9 `c7a6c71`. Phase 10: T119, T120 xong; `p10.mjs`, `t122.mjs` đã áp (ca dựng hình hiệu ứng đạt); đang chờ E2E `video-parity.spec.ts` và agent `a2dcf9d815525d433` kiểm T121, rồi ghi T121–T123 và commit. Hạn mức 5 giờ 90%+.
+- 27/11 11:05: phase 10 đã commit `5e9d186` (T123 đang dở). Hạn mức 5 giờ hết (đặt lại 14:00). **Làm tiếp từ T124** (phase 11), rồi 12, 13; còn mở mức rất thấp ở `style-panel.tsx`: rời karaoke vẫn hiện toast "đã đưa về mặc định".
+- 27/11 11:55: hoàn tất T123 (US8) và sửa `style-panel.tsx` (rời `karaoke` không hiện toast "đã đưa về mặc định"), `tests/e2e/video-parity.spec.ts` đạt 2/2. Tiếp tục phase 11 (T124–T130), rồi phase 12, phase 6 phông (`T093–T095`, `T102`) và phase 13.
 - (cũ) Bản vá soạn sẵn trong thư mục tạm cho phase 10: `t119.mjs` (kiểm thử hiệu ứng), `p10.mjs` (nhóm hiệu ứng trong bảng kiểu), `t122.mjs` (kiểm thử dựng hình và đối chiếu); chạy bằng `node <tệp>` sau khi commit phase 9.
 - T094, T095 chờ người dùng cho phép tải phông (lệnh tải bị chế độ quyền tự động từ chối); không thử tải bằng đường khác.
 - Máy thiếu bộ nhớ ảo khi chạy `npm test` hoặc build E2E (ứng dụng khác của người dùng chiếm gần hết commit): chạy kiểm thử với `--maxWorkers=1..3`, đợi bộ nhớ trống rồi chạy lại phần sập; không đóng ứng dụng, không tắt máy chủ dev cổng 3000 (không phải do phiên này mở).
