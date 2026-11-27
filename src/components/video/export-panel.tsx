@@ -200,25 +200,29 @@ export function ExportPanel({
   const t = useT();
   const e = t.video.export;
   const qc = useQueryClient();
+  const [kind, setKind] = useState<'burn' | 'layer'>('burn');
+  const [layerFormat, setLayerFormat] = useState<'mp4' | 'mov'>('mp4');
+  const format = kind === 'burn' ? 'mp4' : layerFormat;
   const jobState = [job.status, job.sourceState, job.exports.map((x) => `${x.id}:${x.status}`).join()].join('|');
-  // đổi phụ đề, kiểu, trạng thái việc, video nguồn hay bản xuất thì ước tính lại
+  const createKey = `${jobState}|${kind}|${format}`;
+  // đổi phụ đề, kiểu, lựa chọn loại xuất, trạng thái việc, video nguồn hay bản xuất thì ước tính lại
   const situation = `${revision}|${styleVersion}|${jobState}`;
   const estimate = useQuery({
-    queryKey: ['video-estimate', job.id, situation],
-    queryFn: () => apiPost<ExportEstimateDto>(`/api/video/jobs/${job.id}/exports/estimate`),
+    queryKey: ['video-estimate', job.id, situation, kind, format],
+    queryFn: () => apiPost<ExportEstimateDto>(`/api/video/jobs/${job.id}/exports/estimate`, { kind, format }),
     gcTime: 0,
     placeholderData: keepPreviousData,
     // lý do khóa có thể hết vì việc ở nơi khác (quyền, số việc, hạn mức): hỏi lại; lý do thuộc việc này đã đổi `situation`
     refetchInterval: (q) => (CHANGES_ELSEWHERE.has(q.state.data?.blocked ?? '') ? 5000 : false),
   });
-  // biến của lượt gọi là trạng thái việc lúc bấm (không gồm phiên bản phụ đề: lượt bấm tự lưu nên phiên bản đổi ngay)
+  // biến của lượt gọi là trạng thái việc + lựa chọn xuất lúc bấm (không gồm phiên bản phụ đề: lượt bấm tự lưu nên phiên bản đổi ngay)
   const create = useMutation<unknown, Error, string>({
     mutationFn: async () => {
       // bản xuất chốt nội dung và kiểu ở máy chủ nên cả hai phải lưu xong
       if (!(await ensureStyleSaved())) throw new ApiError(409, 'CONFLICT', e.styleSaveFirst);
       const saved = await ensureSaved();
       if (saved === null) throw new ApiError(409, 'CONFLICT', e.saveFirst);
-      return apiPost(`/api/video/jobs/${job.id}/exports`, { kind: 'burn', format: 'mp4', baseRevision: saved });
+      return apiPost(`/api/video/jobs/${job.id}/exports`, { kind, format, baseRevision: saved });
     },
     onSuccess: () => toast.success(e.queued),
     onSettled: async () => {
@@ -236,7 +240,7 @@ export function ExportPanel({
   // đang có bản xuất hoặc video nguồn đang tải lên là trạng thái chờ bình thường, không báo lỗi đỏ
   const busyText = data?.blocked === 'VIDEO_EXPORT_RUNNING' || data?.blocked === 'VIDEO_SOURCE_NOT_READY' ? blockedText : null;
   // lỗi chỉ còn nghĩa khi việc chưa đổi trạng thái kể từ lúc bấm
-  const problem = busyText ? null : (blockedText ?? (create.isError && create.variables === jobState ? messageOf(create.error, t.common.genericError) : null));
+  const problem = busyText ? null : (blockedText ?? (create.isError && create.variables === createKey ? messageOf(create.error, t.common.genericError) : null));
 
   return (
     <div className="space-y-6">
@@ -246,7 +250,30 @@ export function ExportPanel({
         </h2>
         <Card>
           <CardContent className="space-y-4 p-5">
-            <p className="text-xs text-muted-foreground">{e.desc}</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <SelectField
+                label={e.kind}
+                value={kind}
+                onChange={(v) => setKind(v)}
+                options={[
+                  { value: 'burn', label: e.kinds.burn },
+                  { value: 'layer', label: e.kinds.layer },
+                ]}
+              />
+              {kind === 'layer' ? (
+                <SelectField
+                  label={e.layerBackground}
+                  value={layerFormat}
+                  onChange={(v) => setLayerFormat(v)}
+                  options={[
+                    { value: 'mp4', label: e.layerFormats.mp4 },
+                    { value: 'mov', label: e.layerFormats.mov },
+                  ]}
+                />
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">{kind === 'layer' ? e.layerDesc : e.desc}</p>
+            {kind === 'layer' && format === 'mov' ? <p className="text-xs text-muted-foreground">{e.layerMovHint}</p> : null}
             {reupload ? <Reupload job={job} /> : null}
             {initialUploading ? (
               live ? (
@@ -317,7 +344,7 @@ export function ExportPanel({
             ) : null}
 
             <div className="flex justify-end pt-2">
-              <Button disabled={!data || estimate.isPlaceholderData || !!data.blocked || create.isPending} onClick={() => create.mutate(jobState)}>
+              <Button disabled={!data || estimate.isPlaceholderData || !!data.blocked || create.isPending} onClick={() => create.mutate(createKey)}>
                 {create.isPending ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />

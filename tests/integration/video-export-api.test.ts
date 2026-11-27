@@ -66,7 +66,12 @@ describe('ước tính và tạo bản xuất', () => {
     const job = await reviewJob(user, projectId);
     const stale = await postExport(user, job.id, { baseRevision: job.cueRevision - 1 });
     expect(await errorOf(stale)).toMatchObject({ code: 'CUE_CONFLICT' });
-    expect((await errorOf(await postExport(user, job.id, { kind: 'layer' }))).code).toBe('VALIDATION');
+    expect(
+      (await errorOf(await user.client.post(`/api/video/jobs/${job.id}/exports`, { json: { kind: 'layer', format: 'webm', baseRevision: job.cueRevision } }))).code,
+    ).toBe('VALIDATION');
+    expect(
+      (await errorOf(await user.client.post(`/api/video/jobs/${job.id}/exports`, { json: { kind: 'burn', format: 'mov', baseRevision: job.cueRevision } }))).code,
+    ).toBe('VALIDATION');
 
     await getDb().update(videoJobs).set({ sourceState: 'checking' }).where(eq(videoJobs.id, job.id));
     expect((await errorOf(await postExport(user, job.id))).code).toBe('VIDEO_SOURCE_NOT_READY');

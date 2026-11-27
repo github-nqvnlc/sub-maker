@@ -6,7 +6,7 @@ import type { Download, Page } from '@playwright/test';
 import { startMockProvider, type MockProvider } from '../../mock-provider/server';
 import { expect, test } from './fixtures';
 import { expectNoHorizontalScroll } from './overlay-helpers';
-import { e2eQuery, jobRow, makeVideoFile, openVideoTab, startUpload, videoProject, waitVideoJob, type VideoFile } from './video-helpers';
+import { adminSettings, e2eQuery, jobRow, makeVideoFile, openVideoTab, startUpload, videoProject, waitVideoJob, type VideoFile } from './video-helpers';
 
 /** Spec 006, US3 qua đường thật: xuất bằng ffmpeg thật, tải ba loại tệp, hạn xóa, tải lại video nguồn (FR-037 đến FR-046, FR-054). */
 let mock: MockProvider;
@@ -46,10 +46,10 @@ async function downloadSubtitle(page: Page): Promise<{ name: string; text: strin
 }
 
 type Probe = { format: { duration: string }; streams: Array<{ codec_type: string; codec_name: string; width?: number; height?: number; nb_read_packets?: string }> };
-function probe(buffer: Buffer): Probe {
+function probe(buffer: Buffer, ext = 'mp4'): Probe {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-out-'));
   try {
-    const file = path.join(dir, 'v.mp4');
+    const file = path.join(dir, `v.${ext}`);
     writeFileSync(file, buffer);
     return JSON.parse(execFileSync(process.env.FFPROBE_PATH || 'ffprobe', ['-v', 'error', '-count_packets', '-show_format', '-show_streams', '-of', 'json', file], { encoding: 'utf8' })) as Probe;
   } finally {
@@ -167,5 +167,65 @@ test('Independent Test US3: video 5 phút xuất bằng kiểu mặc định gi�
     const file = await downloadSubtitle(page);
     expect(file.name).toBe(`nam-phut.vi${format}`);
     expect(file.text).toContain('Cảm ơn thầy.');
+  }
+});
+
+test('US10: xuất riêng lớp phụ đề (.mp4 phông xanh và .mov trong suốt), đúng kích thước nguồn và chặn khi quá dài', async ({ browser, page }) => {
+  test.setTimeout(180_000);
+  const source = makeVideoFile('lop.mp4', { seconds: 6, size: '640x360', rate: 25 });
+  const { jobId } = await openExport(page, source);
+  const src = probe(source.buffer);
+  const srcVideo = src.streams.find((s) => s.codec_type === 'video')!;
+
+  await pick(page, 'Kiểu xuất', 'Xuất riêng lớp phụ đề');
+  await expect(page.getByRole('combobox', { name: 'Nền và định dạng' })).toBeVisible();
+  await expect(page.getByText('Chỉ xuất lớp phụ đề đúng kích thước và thời lượng nguồn')).toBeVisible();
+  await expectNoHorizontalScroll(page);
+
+  // 1) .mp4 phông xanh (#00FF00)
+  await pick(page, 'Nền và định dạng', 'Phông xanh lá (#00FF00) · .mp4 (mọi phần mềm dựng phim)');
+  await exportButton(page).click();
+  const mp4Row = exportRows(page).filter({ hasText: 'Lớp phụ đề · .mp4' });
+  await expect(mp4Row.getByText('Hoàn tất')).toBeVisible({ timeout: 90_000 });
+
+  const [dlMp4] = await Promise.all([page.waitForEvent('download'), mp4Row.getByRole('link', { name: 'Tải video' }).click()]);
+  expect(dlMp4.suggestedFilename()).toBe('lop-lop-phu-de.mp4');
+  const outMp4 = probe(await bytesOf(dlMp4), 'mp4');
+  expect(outMp4.streams.find((s) => s.codec_type === 'video')).toMatchObject({ codec_name: 'h264', width: srcVideo.width, height: srcVideo.height });
+  expect(outMp4.streams.filter((s) => s.codec_type === 'audio')).toHaveLength(0);
+  expect(Math.abs(Number(outMp4.format.duration) - Number(src.format.duration))).toBeLessThanOrEqual(0.1);
+
+  // 2) .mov trong suốt (Premiere, DaVinci Resolve, After Effects)
+  await pick(page, 'Nền và định dạng', 'Nền trong suốt · .mov (Premiere, DaVinci Resolve, After Effects)');
+  await expect(page.getByText('Tệp .mov trong suốt rất lớn')).toBeVisible();
+  await exportButton(page).click();
+  await expect(exportRows(page)).toHaveCount(2);
+  const movRow = exportRows(page).filter({ hasText: 'Lớp phụ đề · .mov' });
+  await expect(movRow.getByText('Hoàn tất')).toBeVisible({ timeout: 90_000 });
+
+  const [dlMov] = await Promise.all([page.waitForEvent('download'), movRow.getByRole('link', { name: 'Tải video' }).click()]);
+  expect(dlMov.suggestedFilename()).toBe('lop-lop-phu-de.mov');
+  const outMov = probe(await bytesOf(dlMov), 'mov');
+  expect(outMov.streams.find((s) => s.codec_type === 'video')).toMatchObject({ codec_name: 'prores', width: srcVideo.width, height: srcVideo.height });
+  expect(outMov.streams.filter((s) => s.codec_type === 'audio')).toHaveLength(0);
+  expect(Math.abs(Number(outMov.format.duration) - Number(src.format.duration))).toBeLessThanOrEqual(0.1);
+
+  // 3) Quá overlayMaxMinutesTransparent: .mov bị chặn kèm role="alert", .mp4 phông xanh vẫn bật
+  const adminCtx = await browser.newContext({ locale: 'vi-VN' });
+  const adminPage = await adminCtx.newPage();
+  await adminSettings(adminPage, { overlayMaxMinutesTransparent: 1 });
+  try {
+    await e2eQuery(`update video_jobs set media = jsonb_set(media, '{durationMs}', '120000'::jsonb) where id = $1`, [jobId]);
+    await page.reload();
+    await page.getByRole('tab', { name: 'Xuất video' }).click();
+    await pick(page, 'Kiểu xuất', 'Xuất riêng lớp phụ đề');
+    await pick(page, 'Nền và định dạng', 'Nền trong suốt · .mov (Premiere, DaVinci Resolve, After Effects)');
+    await expect(page.getByRole('alert').filter({ hasText: 'nền trong suốt' })).toBeVisible();
+    await expect(exportButton(page)).toBeDisabled();
+    await pick(page, 'Nền và định dạng', 'Phông xanh lá (#00FF00) · .mp4 (mọi phần mềm dựng phim)');
+    await expect(exportButton(page)).toBeEnabled();
+  } finally {
+    await adminSettings(adminPage, { overlayMaxMinutesTransparent: 10 });
+    await adminCtx.close();
   }
 });

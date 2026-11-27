@@ -403,13 +403,17 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 
 **Independent Test**: xuất hai dạng, chèn lên nguồn trong phần mềm dựng phim, khớp mốc.
 
-- [ ] T131 [P] [US10] Thêm ca lớp phụ đề vào `tests/integration/video-render.test.ts`: kích thước nguồn, nền, `VIDEO_LAYER_TOO_LONG`, tính hạn mức video, hết hạn 7 ngày (FR-041).
-- [ ] T132 [US10] Hỗ trợ `kind: 'layer'` trong `src/lib/video/exports.ts`, `estimate.ts` (bảng của spec 005 nhân theo diện tích) và `src/worker/jobs/video-render.ts` (tác vụ `render` với kích thước bất kỳ, không tiếng).
-- [ ] T133 [US10] Thêm lựa chọn lớp phụ đề vào `src/components/video/export-panel.tsx`.
+- [X] T131 [P] [US10] Thêm ca lớp phụ đề vào `tests/integration/video-render.test.ts`: kích thước nguồn, nền, `VIDEO_LAYER_TOO_LONG`, tính hạn mức video, hết hạn 7 ngày (FR-041).
+  - done (27/11): thêm 4 ca lớp phụ đề riêng trong `tests/integration/video-render.test.ts` (đã thấy trượt 3/4 rồi đạt), kiểm `.mp4` phông xanh `#00FF00`, `.mov` nền trong suốt ProRes (`360×640`, MIME `video/quicktime`), không tiếng, trừ hạn mức và hạn 7 ngày, `VIDEO_LAYER_TOO_LONG` (`422`), và tổ hợp schema.
+- [X] T132 [US10] Hỗ trợ `kind: 'layer'` trong `src/lib/video/exports.ts`, `estimate.ts` (bảng của spec 005 nhân theo diện tích) và `src/worker/jobs/video-render.ts` (tác vụ `render` với kích thước bất kỳ, không tiếng).
+  - done (27/11): `estimateLayer` trong `estimate.ts`, `exportRequestSchema`/`exportEstimateSchema`/`assertLayerDuration`/`serveExport` trong `exports.ts` & `exports/estimate/route.ts`, `RenderTask` nhận `style` tùy kích thước + `format` trong `protocol.ts` & `main.ts`, `video-render.ts` chạy `render` không tải video nguồn khi `kind === 'layer'`; `video-render.test.ts` 22/22 và `video-export-api.test.ts` 12/12 đạt.
+- [X] T133 [US10] Thêm lựa chọn lớp phụ đề vào `src/components/video/export-panel.tsx`.
   - `SelectField`; ghi phần mềm phù hợp; lỗi `role="alert"`.
   - Mẫu: `src/components/overlay/canvas-panel.tsx`. Không chép: tỉ lệ khung và nền xanh dương, đen.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T134 [US10] Chạy Independent Test của US10 theo `specs/006-video-translate-subtitle/quickstart.md` §3 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - done (27/11): chọn `Kiểu xuất` và `Nền và định dạng` trong `export-panel.tsx`, hiển thị `Gắn cứng`/`Lớp phụ đề` trong `export-list.tsx`, song ngữ `vi.ts`/`en.ts`; agent `ui-reviewer` chấm PASS.
+- [X] T134 [US10] Chạy Independent Test của US10 theo `specs/006-video-translate-subtitle/quickstart.md` §3 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - Kết quả (27/11): quickstart §3 đạt cả US3 và US10 qua `tests/e2e/video-export.spec.ts` (5/5 ca đạt gồm US3 5 phút, tải lại nguồn, mobile 375 px, và ca US10 xuất cả `.mp4` phông xanh lẫn `.mov` trong suốt đúng kích thước nguồn và không tiếng, cùng kiểm `VIDEO_LAYER_TOO_LONG` trên giao diện). Việc ghép đè trong phần mềm dựng phim thương mại (Premiere/DaVinci/CapCut) ghi vào `user-tasks.md`.
 
 ---
 

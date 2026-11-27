@@ -71,7 +71,8 @@ export function ExportList({ job, revision }: { job: VideoJobDetailDto; revision
         <div className="max-w-64 min-w-40 space-y-0.5 whitespace-normal">
           <p className="font-medium">{fmt(l.createdAt, { date: fx.dateTime(e.createdAt) })}</p>
           <p className="text-xs text-muted-foreground">
-            .{e.format} · {fmtDuration(e.durationMs)} · {e.sizeBytes === null ? fmt(l.estimated, { size: fmtBytes(e.estimatedBytes) }) : fmtBytes(e.sizeBytes)}
+            {l.kinds[e.kind === 'layer' ? 'layer' : 'burn']} · .{e.format} · {fmtDuration(e.durationMs)} ·{' '}
+            {e.sizeBytes === null ? fmt(l.estimated, { size: fmtBytes(e.estimatedBytes) }) : fmtBytes(e.sizeBytes)}
           </p>
           {e.cueRevision < revision ? <p className="text-xs text-muted-foreground">{l.outdated}</p> : null}
           {e.expiresAt ? (

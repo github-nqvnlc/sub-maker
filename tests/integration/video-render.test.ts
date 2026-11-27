@@ -36,7 +36,7 @@ import {
   videoStreamOf,
   withObject,
 } from './video-export-helpers';
-import { grantVideo, videoJobRow, videoUsed } from './video-helpers';
+import { errorOf, grantVideo, videoJobRow, videoUsed } from './video-helpers';
 import { videoLogKeys } from './video-pipeline-helpers';
 import { makeTestVideo } from './video-media';
 import { FAST, jobRow as voiceJobRow, newProject, putGlobalConfig, startJob, uploadScript } from './voice-helpers';
@@ -433,4 +433,128 @@ describe('lỗi, hạn mức và phục hồi', () => {
     await Promise.all([ra, rb]);
     expect((await exportRow(b.id))!.status).toBe('completed');
   }, 90_000);
+});
+
+describe('lớp phụ đề riêng (T131; US10, FR-041)', () => {
+  const sampleRgba = (file: string, seconds: number) =>
+    execFileSync(process.env.FFMPEG_PATH || 'ffmpeg', ['-v', 'error', '-ss', String(seconds), '-i', file, '-frames:v', '1', '-vf', 'format=rgba', '-f', 'rawvideo', '-'], {
+      maxBuffer: 64 * 1024 * 1024,
+    });
+
+  const countPixels = (buf: Buffer, w: number, y0: number, y1: number, pred: (r: number, g: number, b: number, a: number) => boolean) => {
+    let n = 0;
+    for (let y = y0; y < y1; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (pred(buf[i]!, buf[i + 1]!, buf[i + 2]!, buf[i + 3]!)) n++;
+      }
+    }
+    return n;
+  };
+
+  it('xuất .mp4 phông xanh (#00FF00) đúng kích thước, thời lượng nguồn, không tiếng, cộng hạn mức và giữ 7 ngày', async () => {
+    const source = await plain();
+    const job = await reviewJob(user, projectId, source);
+    const before = await videoUsed(user.id);
+    const est = await (await user.client.post(`/api/video/jobs/${job.id}/exports/estimate`, { json: { kind: 'layer', format: 'mp4' } })).json();
+    expect(est).toMatchObject({ blocked: null, width: SIZE.width, height: SIZE.height });
+
+    const createRes = await user.client.post(`/api/video/jobs/${job.id}/exports`, { json: { kind: 'layer', format: 'mp4', baseRevision: job.cueRevision } });
+    expect(createRes.status).toBe(201);
+    const dto = (await createRes.json()) as { id: string; kind: string; format: string };
+    expect(dto).toMatchObject({ kind: 'layer', format: 'mp4' });
+
+    await runExport(dto.id);
+    const row = (await exportRow(dto.id))!;
+    expect(row).toMatchObject({ status: 'completed', kind: 'layer', format: 'mp4', progressPercent: 100 });
+    expect(row.outputKey).toBe(storageKeys.videoExport(user.id, job.id, row.id, 'mp4', 1));
+    expect(await videoUsed(user.id)).toBe(before + row.outputBytes!);
+    expect(Math.abs(row.expiresAt!.getTime() - row.finishedAt!.getTime() - 7 * 24 * 3600_000)).toBeLessThan(1000);
+
+    await compare(source, 'mp4', row.outputKey!, (src, out) => {
+      const a = probeFile(src);
+      const b = probeFile(out);
+      expect(videoStreamOf(b)).toMatchObject({ codec_name: 'h264', pix_fmt: 'yuv420p', ...SIZE });
+      expect(b.streams.filter((s) => s.codec_type === 'audio')).toHaveLength(0);
+      expect(Math.abs(Number(b.format.duration) - Number(a.format.duration))).toBeLessThanOrEqual(0.1);
+      // 0,6 giây: vùng trên xanh lá (#00FF00), dải dưới có chữ trắng; 1,5 giây: toàn khung xanh lá
+      const active = sampleRgba(out, 0.6);
+      const blank = sampleRgba(out, 1.5);
+      const isGreen = (r: number, g: number, b: number) => g > 200 && r < 40 && b < 40;
+      const isWhite = (r: number, g: number, b: number) => r > 200 && g > 200 && b > 200;
+      expect(countPixels(active, SIZE.width, 0, 150, isGreen)).toBeGreaterThan(SIZE.width * 140);
+      expect(countPixels(active, SIZE.width, 280, 340, isWhite)).toBeGreaterThan(40);
+      expect(countPixels(blank, SIZE.width, 0, SIZE.height, isWhite)).toBe(0);
+    });
+  }, 90_000);
+
+  it('xuất .mov nền trong suốt giữ kích thước nguồn bất kỳ (360×640), không tiếng, trả MIME quicktime', async () => {
+    const flat = await custom('mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=25:d=6', '-f', 'lavfi', '-i', 'sine=d=6', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac']);
+    const flatFile = path.join(tmp, 'layer-flat.mp4');
+    await writeFile(flatFile, flat);
+    const turned = await custom('mp4', ['-display_rotation', '90', '-i', flatFile, '-c', 'copy']);
+    const job = await reviewJob(user, projectId, turned, 'doc.mp4');
+
+    const est = await (await user.client.post(`/api/video/jobs/${job.id}/exports/estimate`, { json: { kind: 'layer', format: 'mov' } })).json();
+    expect(est).toMatchObject({ blocked: null, width: 360, height: 640 });
+    expect(est.estimatedBytes).toBeGreaterThan(1_200_000);
+    expect(est.estimatedBytes).toBeLessThan(2_200_000);
+
+    const createRes = await user.client.post(`/api/video/jobs/${job.id}/exports`, { json: { kind: 'layer', format: 'mov', baseRevision: job.cueRevision } });
+    expect(createRes.status).toBe(201);
+    const dto = (await createRes.json()) as { id: string };
+    await runExport(dto.id);
+    const row = (await exportRow(dto.id))!;
+    expect(row).toMatchObject({ status: 'completed', kind: 'layer', format: 'mov' });
+    expect(row.outputKey).toBe(storageKeys.videoExport(user.id, job.id, row.id, 'mov', 1));
+
+    const dl = await user.client.get(`/api/video/exports/${row.id}/video`);
+    expect(dl.status).toBe(200);
+    expect(dl.headers.get('content-type')).toContain('video/quicktime');
+    expect(dl.headers.get('content-disposition')).toContain('.mov');
+    await dl.body?.cancel();
+
+    await withObject(row.outputKey!, async (out) => {
+      const b = probeFile(out);
+      const vs = videoStreamOf(b);
+      expect(vs).toMatchObject({ codec_name: 'prores', width: 360, height: 640 });
+      expect(vs.pix_fmt).toMatch(/^yuva444p/);
+      expect(b.streams.filter((s) => s.codec_type === 'audio')).toHaveLength(0);
+      expect(Math.abs(Number(b.format.duration) - 6)).toBeLessThanOrEqual(0.1);
+      const active = sampleRgba(out, 0.6);
+      const blank = sampleRgba(out, 1.5);
+      // vùng trên trong suốt (alpha = 0), vùng chữ ở ~85% (hàng 510..580) có alpha > 200; khoảng trống không có điểm ảnh đục
+      expect(countPixels(active, 360, 0, 300, (_r, _g, _b, a) => a > 0)).toBe(0);
+      expect(countPixels(active, 360, 500, 590, (_r, _g, _b, a) => a > 200)).toBeGreaterThan(40);
+      expect(countPixels(blank, 360, 0, 640, (_r, _g, _b, a) => a > 0)).toBe(0);
+    });
+  }, 90_000);
+
+  it('nền trong suốt quá overlayMaxMinutesTransparent báo VIDEO_LAYER_TOO_LONG (422); phông xanh vẫn được phép', async () => {
+    const job = await reviewJob(user, projectId, await plain());
+    await getDb()
+      .update(videoJobs)
+      .set({ media: { ...job.media!, durationMs: 120_000 } })
+      .where(eq(videoJobs.id, job.id));
+    await getDb()
+      .insert(systemSettings)
+      .values({ key: 'overlayMaxMinutesTransparent', value: 1 })
+      .onConflictDoUpdate({ target: systemSettings.key, set: { value: 1 } });
+
+    const est = await (await user.client.post(`/api/video/jobs/${job.id}/exports/estimate`, { json: { kind: 'layer', format: 'mov' } })).json();
+    expect(est.blocked).toBe('VIDEO_LAYER_TOO_LONG');
+
+    const failMov = await user.client.post(`/api/video/jobs/${job.id}/exports`, { json: { kind: 'layer', format: 'mov', baseRevision: job.cueRevision } });
+    expect(failMov.status).toBe(422);
+    expect(await errorOf(failMov)).toMatchObject({ code: 'VIDEO_LAYER_TOO_LONG' });
+
+    const okMp4 = await user.client.post(`/api/video/jobs/${job.id}/exports`, { json: { kind: 'layer', format: 'mp4', baseRevision: job.cueRevision } });
+    expect(okMp4.status).toBe(201);
+  }, 60_000);
+
+  it('tổ hợp loại/định dạng không hợp lệ (burn+mov, layer+webm) bị từ chối ở schema', async () => {
+    const job = await reviewJob(user, projectId, await plain());
+    expect((await errorOf(await user.client.post(`/api/video/jobs/${job.id}/exports`, { json: { kind: 'burn', format: 'mov', baseRevision: job.cueRevision } }))).code).toBe('VALIDATION');
+    expect((await errorOf(await user.client.post(`/api/video/jobs/${job.id}/exports`, { json: { kind: 'layer', format: 'webm', baseRevision: job.cueRevision } }))).code).toBe('VALIDATION');
+  });
 });

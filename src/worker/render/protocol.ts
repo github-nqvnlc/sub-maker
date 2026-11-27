@@ -6,7 +6,6 @@ import type { AppliedCue } from '../../lib/overlay/types';
 export type RenderTask = {
   type: 'render';
   cues: AppliedCue[];
-  config: OverlayConfig;
   durationMs: number;
   audioPath: string | null;
   outPath: string;
@@ -14,7 +13,10 @@ export type RenderTask = {
   maxBytes: number;
   threads: number;
   fontDir: string;
-};
+} & (
+  | { config: OverlayConfig; style?: never; format?: never }
+  | { style: SceneStyle; format: 'mp4' | 'mov'; config?: never }
+);
 
 /** Gắn cứng phụ đề lên video nguồn (spec 006, contracts/render-and-media.md §2). */
 export type BurnTask = {

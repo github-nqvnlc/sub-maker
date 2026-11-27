@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
-import { isTransparent, sizeOf } from '../../lib/overlay/config';
+import { isTransparent, outputSize, overlaySceneStyle } from '../../lib/overlay/config';
 import { createScene, drawFrame, measureWith, sceneBand, type Ctx2D, type Layer, type Scene } from '../../lib/overlay/draw';
 import { fontFilesFor, missingChars, registeredName, type FontCoverage, type FontFamily, type FontWeight } from '../../lib/overlay/fonts';
 import { frameCount, frameTimeMs } from '../../lib/overlay/frames';
@@ -71,18 +71,19 @@ function warnAboutText(scene: Scene, cues: RenderTask['cues'], family: FontFamil
 }
 
 async function render(task: RenderTask): Promise<number> {
-  const { config } = task;
-  registerFonts(config.font.family, task.fontDir);
-  const { width, height } = sizeOf(config);
+  const style = task.style ?? overlaySceneStyle(task.config);
+  const format = task.format ?? task.config!.format;
+  registerFonts(style.font.family, task.fontDir);
+  const { width, height } = outputSize(style);
   const canvas = createCanvas(width, height);
   const g = canvas.getContext('2d');
-  const scene = createScene({ config, cues: task.cues, measure: measure(), createLayer });
-  warnAboutText(scene, task.cues, config.font.family, config.font.weight, task.fontDir);
+  const scene = createScene({ style, cues: task.cues, measure: measure(), createLayer });
+  warnAboutText(scene, task.cues, style.font.family, style.font.weight, task.fontDir);
 
   const total = frameCount(task.durationMs);
-  const opaque = !isTransparent(config);
+  const opaque = !isTransparent(style);
   return encode({
-    args: encodeArgs({ format: config.format, width, height, frames: total, audioPath: task.audioPath, outPath: task.outPath, threads: task.threads }),
+    args: encodeArgs({ format, width, height, frames: total, audioPath: task.audioPath, outPath: task.outPath, threads: task.threads }),
     outPath: task.outPath,
     maxBytes: task.maxBytes,
     total,

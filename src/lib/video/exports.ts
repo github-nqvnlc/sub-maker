@@ -10,9 +10,10 @@ import { isUuid } from '../projects/access';
 import { deleteObject } from '../storage/client';
 import { serveObject } from '../storage/proxy';
 import { enqueueVideoRender } from '../../worker/queues';
+import { getSettings } from '../settings';
 import { requestStopVideoExports } from './control';
 import { loadCues } from './cues';
-import { estimateBurn, type BurnEstimate } from './estimate';
+import { estimateBurn, estimateLayer, type BurnEstimate } from './estimate';
 import { recomputeSourceExpiry } from './expiry';
 import { appendVideoLog } from './log';
 import { LEASE_MS } from './media';
@@ -24,11 +25,22 @@ import { parseStoredStyle, toAppliedCues, type VideoStyle } from './style';
 import type { Cue } from './types';
 
 /**
- * Bản xuất video gắn cứng phụ đề (spec 006, US3; FR-037, FR-042, FR-043, FR-053, FR-054). Nội dung và kiểu được chốt lúc tạo; chỗ trong
- * hạn mức được giữ bằng dung lượng ước tính cho tới khi có thành phẩm.
+ * Bản xuất video gắn cứng hoặc lớp phụ đề riêng (spec 006, US3, US10; FR-037, FR-041..043, FR-053, FR-054). Nội dung và kiểu được chốt
+ * lúc tạo; chỗ trong hạn mức được giữ bằng dung lượng ước tính cho tới khi có thành phẩm.
  */
 
-export const exportRequestSchema = z.object({ kind: z.literal('burn'), format: z.literal('mp4'), baseRevision: z.number().int().min(0) }).strict();
+export const exportRequestSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('burn'), format: z.literal('mp4'), baseRevision: z.number().int().min(0) }).strict(),
+  z.object({ kind: z.literal('layer'), format: z.enum(['mp4', 'mov']), baseRevision: z.number().int().min(0) }).strict(),
+]);
+
+export const exportEstimateSchema = z
+  .object({
+    kind: z.enum(['burn', 'layer']).optional().default('burn'),
+    format: z.enum(['mp4', 'mov']).optional().default('mp4'),
+  })
+  .strict()
+  .refine((v) => !(v.kind === 'burn' && v.format === 'mov'), { message: 'burn chỉ hỗ trợ mp4' });
 
 type JobRow = typeof videoJobs.$inferSelect;
 export type ExportRow = typeof videoExports.$inferSelect;
@@ -87,17 +99,30 @@ export type ExportEstimateDto = {
   remainingBytes: number;
 };
 
+function assertLayerDuration(kind: 'burn' | 'layer', format: 'mp4' | 'mov', durationMs: number, maxTransparentMinutes: number): void {
+  if (kind === 'layer' && format === 'mov' && durationMs > maxTransparentMinutes * 60_000) {
+    throw new HttpError(422, 'VIDEO_LAYER_TOO_LONG', undefined, { minutes: String(maxTransparentMinutes) });
+  }
+}
+
 /** Ước tính trước khi xuất, kèm lý do nếu chưa xuất được. Không giữ chỗ. */
-export async function estimateExport(user: Principal, jobId: string): Promise<ExportEstimateDto> {
+export async function estimateExport(user: Principal, jobId: string, raw: unknown = {}): Promise<ExportEstimateDto> {
+  const choice = exportEstimateSchema.parse(raw ?? {});
   const job = await getOwnedVideoJob(user.id, jobId);
   const cues = await loadCues(job.id);
   const style = parseStoredStyle(job.style);
-  const estimate = job.media ? estimateBurn(job.media) : null;
+  const estimate = job.media
+    ? choice.kind === 'layer'
+      ? estimateLayer(job.media, style, choice.format)
+      : estimateBurn(job.media)
+    : null;
   let blocked: string | null = null;
   try {
     requireVideoPermission(user);
     assertExportable(job);
     if (toAppliedCues(cues, style.display).length === 0) throw new HttpError(422, 'VIDEO_NO_CUES');
+    const settings = await getSettings();
+    assertLayerDuration(choice.kind, choice.format, job.media.durationMs, settings.overlayMaxMinutesTransparent);
     await withVideoLock(async (tx) => {
       await assertNoOpenExport(tx, job.id);
       await assertJobSlot(tx, user.id, { excludeJobId: job.id });
@@ -143,9 +168,11 @@ export async function createExport(user: Principal, jobId: string, raw: unknown)
     const cues = await loadCues(job.id, tx);
     const style = parseStoredStyle(job.style);
     if (toAppliedCues(cues, style.display).length === 0) throw new HttpError(422, 'VIDEO_NO_CUES');
+    const settings = await getSettings(tx);
+    assertLayerDuration(body.kind, body.format, job.media.durationMs, settings.overlayMaxMinutesTransparent);
     await assertNoOpenExport(tx, job.id);
     await assertJobSlot(tx, user.id, { excludeJobId: job.id });
-    const estimate = estimateBurn(job.media);
+    const estimate = body.kind === 'layer' ? estimateLayer(job.media, style, body.format) : estimateBurn(job.media);
     await assertVideoRoom(tx, user.id, estimate.bytes);
     const [created] = await tx
       .insert(videoExports)
@@ -251,8 +278,8 @@ export async function serveExport(ownerId: string, exportId: string, request: Re
   const base = job.originalFileName.replace(/\.[A-Za-z0-9]{1,5}$/, '') || 'video';
   const preview = new URL(request.url).searchParams.get('inline') === 'true';
   return serveObject(row.outputKey, {
-    contentType: 'video/mp4',
-    downloadName: preview ? undefined : `${base}-phu-de.${row.format}`,
+    contentType: row.format === 'mov' ? 'video/quicktime' : 'video/mp4',
+    downloadName: preview ? undefined : `${base}${row.kind === 'layer' ? '-lop-phu-de' : '-phu-de'}.${row.format}`,
     rangeHeader: request.headers.get('range'),
     signal: request.signal,
     onStreaming: () => renewDownloadLease(row.id),

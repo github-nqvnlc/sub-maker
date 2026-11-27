@@ -1,8 +1,10 @@
+import { estimateBytes, type EstimateInput } from '../overlay/estimate';
+import type { VideoStyle } from './style';
 import type { VideoMedia } from './types';
 
 /**
- * Ước tính bản xuất gắn cứng (spec 006, research R3, R12; FR-038, FR-042, FR-053). Hàm thuần, dùng chung cho API ước tính và worker.
- * Mọi con số là ƯỚC TÍNH: dung lượng thật chỉ biết sau khi dựng xong.
+ * Ước tính bản xuất gắn cứng và lớp phụ đề (spec 006, research R3, R12; FR-038, FR-041, FR-042, FR-053). Hàm thuần, dùng chung cho
+ * API ước tính và worker. Mọi con số là ƯỚC TÍNH: dung lượng thật chỉ biết sau khi dựng xong.
  */
 
 const AUDIO_BPS = 192_000;
@@ -10,6 +12,8 @@ const AUDIO_BPS = 192_000;
 const SURROUND_BPS = 640_000;
 const CONTAINER_OVERHEAD = 1.05;
 const MAX_OVERLAY_FPS = 60;
+const LAYER_MIN_BYTES = 100 * 1024;
+const LAYER_REF_PIXELS = 1080 * 1920;
 
 /** Codec tiếng đặt thẳng được vào `.mp4` nên giữ nguyên chất lượng (FR-037). */
 export const COPY_AUDIO_CODECS: ReadonlySet<string> = new Set(['aac', 'mp3', 'ac3', 'eac3']);
@@ -44,6 +48,39 @@ export function estimateBurn(media: Pick<VideoMedia, 'durationMs' | 'width' | 'h
     bytes: Math.ceil(seconds * ((burnMaxrate(media) + audio) / 8) * CONTAINER_OVERHEAD),
     // thêm thời gian tải nguồn về và đưa thành phẩm lên kho
     seconds: Math.ceil(seconds / speedOf(width * height) + 30),
+    width,
+    height,
+    warnings,
+  };
+}
+
+/** Ước tính lớp phụ đề riêng: bảng spec 005 trên 1080×1920 nhân theo tỉ lệ diện tích khung nguồn, không tiếng (FR-041). */
+export function estimateLayer(
+  media: Pick<VideoMedia, 'durationMs' | 'width' | 'height'>,
+  style: Pick<VideoStyle, 'font' | 'shadow' | 'box' | 'sync' | 'enter'>,
+  format: 'mp4' | 'mov',
+): BurnEstimate {
+  const { width, height } = burnOutputSize(media);
+  const seconds = media.durationMs / 1000;
+  const baseBytes = estimateBytes(
+    {
+      aspect: '9:16',
+      format,
+      includeAudio: false,
+      font: { ...style.font, weight: style.font.weight as EstimateInput['font']['weight'] },
+      shadow: { enabled: style.shadow.enabled, color: style.shadow.color, blur: style.shadow.blur },
+      box: { enabled: style.box.enabled, color: style.box.color, radius: style.box.radius, opacity: style.box.opacity },
+      sync: style.sync,
+      enter: style.enter,
+      shakeScope: 'exclaim',
+    },
+    media.durationMs,
+  );
+  const warnings: EstimateWarning[] = [];
+  if (width !== media.width || height !== media.height) warnings.push({ code: 'ROUNDED_SIZE', params: { width, height } });
+  return {
+    bytes: Math.max(LAYER_MIN_BYTES, Math.ceil((baseBytes * (width * height)) / LAYER_REF_PIXELS)),
+    seconds: Math.ceil(seconds / speedOf(width * height) + 20),
     width,
     height,
     warnings,

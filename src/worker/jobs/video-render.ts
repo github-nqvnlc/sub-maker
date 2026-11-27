@@ -17,7 +17,7 @@ import { addVideoUsed, videoReservedBytes, videoSystemBytes, withVideoLock } fro
 import { parseStoredStyle, toAppliedCues, toSceneStyle } from '../../lib/video/style';
 import type { RetryPolicy } from '../pipeline/synthesize-segment';
 import { QUEUES, type VideoRenderPayload } from '../queues';
-import type { BurnTask } from '../render/protocol';
+import type { BurnTask, RenderTask } from '../render/protocol';
 import { spawnRender, type RenderHandle, type SpawnRender } from '../render/spawn-render';
 import {
   defaultFreeBytes,
@@ -45,7 +45,7 @@ export type VideoRenderOptions = {
   admissionPollMs?: number;
   stallMs?: number;
   /** thay tiến trình con trong kiểm thử */
-  spawnRender?: SpawnRender<BurnTask>;
+  spawnRender?: SpawnRender<BurnTask | RenderTask> | SpawnRender<BurnTask>;
   freeBytes?: (dir: string) => Promise<number>;
   download?: (key: string, file: string) => Promise<void>;
   upload?: typeof uploadFileMultipart;
@@ -129,7 +129,7 @@ export async function runVideoRender(exportId: string, opts: VideoRenderOptions 
 
   const control = new RunControl();
   const retry: RetryPolicy = { ...VIDEO_RETRY, ...opts.retry };
-  const spawn: SpawnRender<BurnTask> = opts.spawnRender ?? spawnRender;
+  const spawn = (opts.spawnRender ?? spawnRender) as SpawnRender<BurnTask | RenderTask>;
   const mine = and(eq(videoExports.id, row.id), eq(videoExports.status, 'running'), eq(videoExports.attempt, row.attempt));
   const key = storageKeys.videoExport(row.ownerId, row.jobId, row.id, row.format, row.attempt);
   let progress = 50;
@@ -179,14 +179,18 @@ export async function runVideoRender(exportId: string, opts: VideoRenderOptions 
     if (!job) throw new JobGone();
     const media = job.media;
     if (!media || !job.sourceKey || job.sourceState !== 'ready') throw new VideoFailure('SOURCE_DELETED');
-    if ((await (opts.freeBytes ?? defaultFreeBytes)(dir)) < job.fileSizeBytes + row.estimatedBytes + DISK_MARGIN) throw new VideoFailure('DISK_FULL');
+    const isLayer = row.kind === 'layer';
+    const needDisk = (isLayer ? 0 : job.fileSizeBytes) + row.estimatedBytes + DISK_MARGIN;
+    if ((await (opts.freeBytes ?? defaultFreeBytes)(dir)) < needDisk) throw new VideoFailure('DISK_FULL');
     const source = path.join(dir, `source.${job.ext}`);
-    try {
-      await (opts.download ?? downloadObjectToFile)(job.sourceKey, source);
-    } catch (e) {
-      throw storageFailure(e);
+    if (!isLayer) {
+      try {
+        await (opts.download ?? downloadObjectToFile)(job.sourceKey, source);
+      } catch (e) {
+        throw storageFailure(e);
+      }
+      control.checkpoint();
     }
-    control.checkpoint();
     const maxBytes = await roomFor(row);
     if (maxBytes < 1) throw new VideoFailure('QUOTA_EXCEEDED');
     const { width, height } = burnOutputSize(media);
@@ -199,27 +203,43 @@ export async function runVideoRender(exportId: string, opts: VideoRenderOptions 
     const cancel = () => handle?.cancel();
     control.abort.signal.addEventListener('abort', cancel, { once: true });
     try {
-      handle = spawn(
-        {
-          type: 'burn',
-          cues: toAppliedCues(row.cues, style.display),
-          style: toSceneStyle(style, width, height),
-          source: {
-            path: source,
-            demuxer: demuxerOf(job.ext),
-            audioIndex: media.audioIndex,
-            fps: media.fps,
+      const appliedCues = toAppliedCues(row.cues, style.display);
+      const sceneStyle = toSceneStyle(style, width, height);
+      const task: BurnTask | RenderTask = isLayer
+        ? {
+            type: 'render',
+            cues: appliedCues,
+            style: { ...sceneStyle, background: row.format === 'mov' ? 'transparent' : 'green' },
+            format: row.format === 'mov' ? 'mov' : 'mp4',
             durationMs: media.durationMs,
-            hdr: media.hdr,
-            matrix: media.matrix,
-            copyAudio: COPY_AUDIO_CODECS.has(media.audioCodec),
-          },
-          maxrate: burnMaxrate(media),
-          outPath,
-          maxBytes,
-          threads: videoThreads(),
-          fontDir: FONT_DIR(),
-        },
+            audioPath: null,
+            outPath,
+            maxBytes,
+            threads: videoThreads(),
+            fontDir: FONT_DIR(),
+          }
+        : {
+            type: 'burn',
+            cues: appliedCues,
+            style: sceneStyle,
+            source: {
+              path: source,
+              demuxer: demuxerOf(job.ext),
+              audioIndex: media.audioIndex,
+              fps: media.fps,
+              durationMs: media.durationMs,
+              hdr: media.hdr,
+              matrix: media.matrix,
+              copyAudio: COPY_AUDIO_CODECS.has(media.audioCodec),
+            },
+            maxrate: burnMaxrate(media),
+            outPath,
+            maxBytes,
+            threads: videoThreads(),
+            fontDir: FONT_DIR(),
+          };
+      handle = spawn(
+        task,
         {
           onProgress: (frame, total) => {
             progress = Math.max(progress, Math.min(95, 50 + Math.floor((frame / Math.max(1, total)) * 45)));
@@ -237,7 +257,7 @@ export async function runVideoRender(exportId: string, opts: VideoRenderOptions 
       await log('info', 'exportRendered', { mb: Math.round((out.bytes / 1048576) * 10) / 10 });
       await log('info', 'exportUploading');
       try {
-        await (opts.upload ?? uploadFileMultipart)(key, outPath, 'video/mp4', {
+        await (opts.upload ?? uploadFileMultipart)(key, outPath, row.format === 'mov' ? 'video/quicktime' : 'video/mp4', {
           signal: control.abort.signal,
           onProgress: (sent, total) => {
             progress = Math.max(progress, 95 + Math.floor((sent / Math.max(1, total)) * 4));
