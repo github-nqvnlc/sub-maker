@@ -67,7 +67,7 @@ test.describe('cấu hình AI (US9)', () => {
     await up.goto('/settings/profile');
     await expect(up.getByRole('link', { name: 'Cấu hình AI' })).toBeVisible();
     await up.getByRole('link', { name: 'Cấu hình AI' }).click();
-    await up.getByRole('tab', { name: /FPT AI Marketplace/ }).click();
+    await up.getByRole('tab', { name: /FPT\.AI/ }).click();
     await up.getByLabel('Địa chỉ gốc (Base URL)').fill(`${mock.url}/s/ok/v1`);
     await up.getByLabel('Khóa API').fill(PRIVATE_KEY);
     await up.getByRole('button', { name: 'Lưu cấu hình' }).click();

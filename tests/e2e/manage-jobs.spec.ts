@@ -63,10 +63,12 @@ test.describe('quản lý tiến trình (US4)', () => {
     await expect.poll(async () => (await (await page.request.get(`/api/projects/${project.id}`)).json()).jobs.length, { timeout: 15_000 }).toBe(2);
     const jobs: { id: string; status: string }[] = (await (await page.request.get(`/api/projects/${project.id}`)).json()).jobs;
     const rerun = jobs.find((j) => j.id !== job.id)!;
+    // Chạy lại xong thì giao diện mở trang theo dõi của tiến trình mới
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/jobs/${rerun.id}$`));
     await waitJob(page, rerun.id, 'completed', 90_000);
 
     // 5) Xóa một tiến trình: hộp xác nhận nêu hậu quả; hủy thì giữ, xác nhận thì mất
-    await page.reload();
+    await page.getByRole('link', { name: 'Về Project' }).click();
     await page.getByRole('tab', { name: /Tiến trình/ }).click();
     const rows = page.locator('tbody tr');
     await expect(rows).toHaveCount(2);
