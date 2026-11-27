@@ -376,3 +376,46 @@ describe('tải lại video nguồn đã xóa (T073, FR-046)', () => {
     expect((await reupload(fresh.id, bytes)).status).toBe(409);
   }, 60_000);
 });
+
+describe('xóa nhiều (T114, FR-045)', () => {
+  const bulk = (who: TestUser, ids: unknown) => who.client.post('/api/video/jobs/bulk-delete', { json: { ids } });
+
+  it('dừng, xóa mọi tệp và phiên tải của các việc được chọn, trả dung lượng; mã của người khác báo không tìm thấy', async () => {
+    const done = await reviewJob(user, projectId, await sampleVideo());
+    const bytes = randomBytes(PART + 10);
+    const sending = await createVideoJobApi(user, projectId, bytes);
+    await putPart(user, sending.upload.id, 1, bytes.subarray(0, PART));
+    const uploadKey = (await uploadRow(sending.upload.id))!.key;
+
+    const other = await createUser();
+    await grantVideo(admin, other.id);
+    const theirs = await createVideoJobApi(other, await newProject(other), randomBytes(1000));
+    const unknown = '00000000-0000-4000-8000-000000000000';
+    // thu hồi quyền vẫn xóa được dữ liệu của mình
+    await grantVideo(admin, user.id, false);
+
+    const res = await bulk(user, [done.id, sending.job.id, sending.job.id, theirs.job.id, unknown]);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { deleted: string[]; notFound: string[] };
+    expect(body.deleted.sort()).toEqual([done.id, sending.job.id].sort());
+    expect(body.notFound.sort()).toEqual([theirs.job.id, unknown].sort());
+    expect(await jobsOf(user.id)).toEqual([]);
+    expect(await videoJobRow(theirs.job.id)).toBeDefined();
+    expect(await headObject(done.sourceKey!)).toBeNull();
+    expect(await listMultipartUploads(uploadKey)).toEqual([]);
+    expect(await videoUsed(user.id)).toBe(0);
+    expect((await videoQuotaInfo(user.id)).reservedBytes).toBe(0);
+  });
+
+  it.each([
+    ['rỗng', []],
+    ['quá 100 mã', Array.from({ length: 101 }, () => '00000000-0000-4000-8000-000000000000')],
+    ['không phải mã', ['abc']],
+  ])('danh sách %s: 422', async (_name, ids) => {
+    expect((await bulk(user, ids)).status).toBe(422);
+  });
+
+  it('chưa đăng nhập: 401', async () => {
+    expect((await new TestClient().post('/api/video/jobs/bulk-delete', { json: { ids: ['00000000-0000-4000-8000-000000000000'] } })).status).toBe(401);
+  });
+});

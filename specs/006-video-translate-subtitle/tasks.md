@@ -333,14 +333,19 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 
 **Independent Test**: khởi động lại ở từng giai đoạn, dừng, chạy lại, xóa nhiều; dung lượng đúng.
 
-- [ ] T114 [P] [US7] Thêm ca xóa nhiều vào `tests/integration/video-upload.test.ts` (FR-045).
-- [ ] T115 [US7] Viết route `src/app/api/video/jobs/bulk-delete/route.ts`.
-- [ ] T116 [US7] Thêm chọn nhiều, dung lượng video đã dùng so với hạn mức vào `src/components/video/video-job-list.tsx` và `video-tab.tsx`.
+- [X] T114 [P] [US7] Thêm ca xóa nhiều vào `tests/integration/video-upload.test.ts` (FR-045).
+  - done (27/11): ca xóa nhiều trong `tests/integration/video-upload.test.ts` (đã thấy trượt rồi đạt).
+- [X] T115 [US7] Viết route `src/app/api/video/jobs/bulk-delete/route.ts`.
+  - done: route `bulk-delete`, `deleteVideoJobsBulk`; ca cô lập đã thêm.
+- [X] T116 [US7] Thêm chọn nhiều, dung lượng video đã dùng so với hạn mức vào `src/components/video/video-job-list.tsx` và `video-tab.tsx`.
   - `DataTable` có chọn nhiều và thanh "đã chọn n"; `ConfirmDialog` nêu số lượng, dung lượng; cỡ chữ phụ `text-xs text-muted-foreground`.
   - Mẫu: `src/components/overlay/overlay-job-list.tsx`. Không chép: tổng dung lượng chỉ của tệp đã xong (ở đây so với hạn mức video).
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T117 [US7] (dùng `ui-consistency:adjusting`) Thêm dung lượng video theo User và toàn hệ thống vào `src/app/api/admin/stats/route.ts` và `src/components/admin/admin-stats-view.tsx` (FR-053). Ghi `done` hoặc `parked`.
-- [ ] T118 [US7] Chạy Independent Test của US7 theo `specs/006-video-translate-subtitle/quickstart.md` §6 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - done (27/11): chọn nhiều, xóa nhiều có xác nhận, dung lượng cả tài khoản ở tiêu đề danh sách; agent kiểm hai lượt. Còn mở (mức thấp, lượt 2): (a) `upload-panel.tsx` còn thanh dung lượng không có nhãn hay số nhìn thấy được; (b) chữ tiếng Anh `deleteMissing` sai số khi n = 1 (đề xuất: "Could not delete {n} job(s): not found.").
+- [X] T117 [US7] (dùng `ui-consistency:adjusting`) Thêm dung lượng video theo User và toàn hệ thống vào `src/app/api/admin/stats/route.ts` và `src/components/admin/admin-stats-view.tsx` (FR-053). Ghi `done` hoặc `parked`.
+  - done (27/11): thẻ và cột dung lượng video, sắp xếp theo video; agent kiểm hai lượt, mọi mục đã đóng.
+- [X] T118 [US7] Chạy Independent Test của US7 theo `specs/006-video-translate-subtitle/quickstart.md` §6 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - Kết quả (27/11): quickstart §6 — dung lượng, chọn nhiều, xóa có xác nhận và thống kê quản trị đạt qua `tests/e2e/video-manage.spec.ts`; khởi động lại từng giai đoạn, hạn mức đồng thời, tự xóa, xóa Project/User và đối soát đạt ở kiểm thử tích hợp (`video-recovery`, `video-quota`, `video-retention`, `video-deletion`, `reconcile-storage`; chạy đầy đủ lần gần nhất ở cổng phase 7: 1747 đạt).
 
 ---
 

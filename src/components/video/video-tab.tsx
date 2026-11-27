@@ -53,7 +53,7 @@ export function VideoTab({ projectId }: { projectId: string }) {
       ) : (
         <UploadPanel projectId={projectId} tab={tab.data} jobs={jobs.data ?? []} />
       )}
-      <VideoJobList projectId={projectId} allowed={tab.data.allowed} />
+      <VideoJobList projectId={projectId} allowed={tab.data.allowed} quota={tab.data.quota} />
       <GlossaryEditor projectId={projectId} />
     </div>
   );

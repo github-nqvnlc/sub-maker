@@ -130,7 +130,19 @@ export function useVideoActions(projectId: string) {
     },
     onSettled: refresh,
   });
-  return { stop, rerun, remove };
+  const removeMany = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) uploadRegistry.get(id)?.pause();
+      const result = await apiPost<{ deleted: string[]; notFound: string[] }>('/api/video/jobs/bulk-delete', { ids });
+      for (const id of result.deleted) {
+        uploadRegistry.remove(id);
+        forgetLocalVideo(id);
+      }
+      return result;
+    },
+    onSettled: refresh,
+  });
+  return { stop, rerun, remove, removeMany };
 }
 
 const idle = () => null;

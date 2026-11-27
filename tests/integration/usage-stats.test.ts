@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startMockProvider, type MockProvider } from '../../mock-provider/server';
 import { getDb } from '@/lib/db';
@@ -115,6 +115,18 @@ describe('Dashboard cá nhân', () => {
 });
 
 describe('Thống kê Administrator', () => {
+  it('dung lượng video theo từng User và toàn hệ thống so với trần; sắp xếp theo video (FR-053)', async () => {
+    await getDb().update(users).set({ videoUsedBytes: 5000 }).where(eq(users.id, alice.id));
+    await getDb().update(users).set({ videoUsedBytes: 9000 }).where(eq(users.id, bob.id));
+    const body = (await (await admin.client.get('/api/admin/stats?sort=video')).json()) as { totals: { video: { usedBytes: number; capBytes: number } }; users: Array<{ user: { id: string }; videoUsedBytes: number }> };
+    expect(body.totals.video).toEqual({ usedBytes: 14_000, capBytes: 100 * 1024 ** 3 });
+    expect(body.users.slice(0, 2).map((r) => [r.user.id, r.videoUsedBytes])).toEqual([
+      [bob.id, 9000],
+      [alice.id, 5000],
+    ]);
+    await getDb().update(users).set({ videoUsedBytes: 0 }).where(inArray(users.id, [alice.id, bob.id]));
+  });
+
   it('User thường → 404, chưa đăng nhập → 401', async () => {
     expect((await alice.client.get('/api/admin/stats')).status).toBe(404);
     expect((await new TestClient().get('/api/admin/stats')).status).toBe(401);

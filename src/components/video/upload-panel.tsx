@@ -332,9 +332,6 @@ export function UploadPanel({ projectId, tab, jobs }: { projectId: string; tab: 
         <Card>
           <CardContent className="space-y-4 p-5">
             <div className="space-y-2">
-              <p className="text-xs tabular-nums text-muted-foreground">
-                {fmt(u.quota, { used: fmtBytes(tab.quota.usedBytes + tab.quota.reservedBytes), quota: fmtBytes(tab.quota.quotaBytes) })}
-              </p>
               <Progress value={Math.min(100, ((tab.quota.usedBytes + tab.quota.reservedBytes) / Math.max(1, tab.quota.quotaBytes)) * 100)} aria-label={u.storageTitle} />
               <p className="text-xs text-muted-foreground">{fmt(u.retention, { hours: tab.retention.sourceHours, days: tab.retention.idleDays, outputDays: tab.retention.outputDays })}</p>
             </div>

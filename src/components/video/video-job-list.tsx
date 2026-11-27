@@ -17,6 +17,7 @@ import { fmtBytes, fmtDuration } from '@/lib/format';
 import { useUploadVersion, useVideoActions, useVideoEvents, useVideoJob, useVideoJobs, type VideoJobDto } from '@/lib/hooks/use-video';
 import { useFormat, useT } from '@/lib/i18n/client';
 import { fmt } from '@/lib/i18n/fmt';
+import type { VideoQuotaInfo } from '@/lib/video/quota';
 import { videoErrorText, videoLogText } from '@/lib/video/text';
 import { uploadRegistry } from '@/lib/video/upload-client';
 
@@ -28,8 +29,8 @@ function percentOf(j: VideoJobDto): number {
   return j.upload ? Math.floor((j.upload.receivedBytes / Math.max(1, j.upload.sizeBytes)) * 100) : 0;
 }
 
-/** Dung lượng được trả lại khi xóa: video đang giữ và chỗ giữ trước của phiên tải đang mở. */
-const freedBytes = (j: VideoJobDto): number => j.storedBytes + (j.upload?.sizeBytes ?? 0);
+/** Dung lượng được trả lại khi xóa: video đang giữ và chỗ giữ trước của phiên tải, bản xuất đang chờ hoặc chạy. */
+const freedBytes = (j: VideoJobDto): number => j.storedBytes + j.reservedExportBytes + (j.upload?.sizeBytes ?? 0);
 
 /** `row`: bản ghi trong danh sách (hỏi lại định kỳ, có tiến độ tải lên) — dùng cho phần trạng thái khi có. */
 function JobLog({ jobId, row }: { jobId: string; row?: VideoJobDto }) {
@@ -52,18 +53,24 @@ function JobLog({ jobId, row }: { jobId: string; row?: VideoJobDto }) {
 }
 
 /** Các việc dịch video của Project: theo dõi tiến độ, xem nhật ký, dừng, chạy lại, xóa (spec 006, FR-044, FR-045, FR-054). */
-export function VideoJobList({ projectId, allowed }: { projectId: string; allowed: boolean }) {
+export function VideoJobList({ projectId, allowed, quota }: { projectId: string; allowed: boolean; quota: VideoQuotaInfo }) {
   const t = useT();
   const fx = useFormat();
   const jobs = useVideoJobs(projectId);
   useUploadVersion(); // vẽ lại khi tiến độ tải lên đổi
-  const { stop, rerun, remove } = useVideoActions(projectId);
+  const { stop, rerun, remove, removeMany } = useVideoActions(projectId);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  /** các việc chờ xác nhận xóa; giữ nội dung trong lúc hộp thoại đóng */
+  const [bulk, setBulk] = useState<VideoJobDto[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [logId, setLogId] = useState<string | null>(null);
   const [stopTarget, setStopTarget] = useState<VideoJobDto | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VideoJobDto | null>(null);
   const onError = (e: unknown) => toast.error(e instanceof Error ? e.message : t.common.genericError);
   const l = t.video.list;
   const rows = jobs.data ?? [];
+  // việc đã bị xóa ở nơi khác thì không còn nằm trong lựa chọn
+  const selected = new Set(rows.filter((j) => picked.has(j.id)).map((j) => j.id));
   const requestStop = async (id: string) => {
     try {
       await stop.mutateAsync(id);
@@ -161,7 +168,30 @@ export function VideoJobList({ projectId, allowed }: { projectId: string; allowe
           {l.title}
         </h2>
         <Badge variant="secondary">{rows.length}</Badge>
+        <p className="text-xs tabular-nums text-muted-foreground" data-testid="video-storage-used">
+          {fmt(l.storage, { used: fmtBytes(quota.usedBytes), quota: fmtBytes(quota.quotaBytes) })}
+          {quota.reservedBytes > 0 ? ` ${fmt(l.storageReserved, { size: fmtBytes(quota.reservedBytes) })}` : null}
+        </p>
       </div>
+
+      {selected.size > 0 ? (
+        <div className="flex items-center justify-between rounded-lg border bg-accent/40 px-3 py-2" role="status">
+          <span className="text-sm">
+            {selected.size} {t.projects.selectedCount}
+          </span>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => {
+              setBulk(rows.filter((j) => selected.has(j.id)));
+              setBulkOpen(true);
+            }}
+          >
+            <Trash2 className="size-4" />
+            {t.jobs.deleteSelected}
+          </Button>
+        </div>
+      ) : null}
 
       {jobs.isPending ? (
         <LoadingList rows={2} />
@@ -170,7 +200,7 @@ export function VideoJobList({ projectId, allowed }: { projectId: string; allowe
       ) : rows.length === 0 ? (
         <EmptyState title={l.empty} />
       ) : (
-        <DataTable rows={rows} columns={columns} rowId={(j) => j.id} />
+        <DataTable rows={rows} columns={columns} rowId={(j) => j.id} selected={selected} onSelectedChange={setPicked} selectAllLabel={l.selectAll} selectLabel={l.selectRow} />
       )}
 
       <Dialog open={!!logId} onOpenChange={(o) => !o && setLogId(null)}>
@@ -202,6 +232,35 @@ export function VideoJobList({ projectId, allowed }: { projectId: string; allowe
         confirmLabel={l.stop}
         onConfirm={async () => {
           if (stopTarget) await requestStop(stopTarget.id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title={bulk.length > 1 ? l.deleteManyTitle : l.deleteTitle}
+        description={
+          <>
+            <p className="font-medium text-foreground">{fmt(l.deleteCount, { n: bulk.length, size: fmtBytes(bulk.reduce((n, j) => n + freedBytes(j), 0)) })}</p>
+            <ul className="max-h-32 list-disc space-y-0.5 overflow-y-auto pl-5 break-all">
+              {bulk.map((j) => (
+                <li key={j.id}>{j.fileName}</li>
+              ))}
+            </ul>
+            <p>{l.deleteDesc}</p>
+            {bulk.some((j) => j.canStop || j.upload) ? <p>{l.deleteActiveDesc}</p> : null}
+          </>
+        }
+        confirmLabel={l.delete}
+        onConfirm={async () => {
+          try {
+            const r = await removeMany.mutateAsync(bulk.map((j) => j.id));
+            if (r.deleted.length > 0) toast.success(fmt(l.deletedMany, { n: r.deleted.length }));
+            if (r.notFound.length > 0) toast.error(fmt(l.deleteMissing, { n: r.notFound.length }));
+            setPicked(new Set());
+          } catch (e) {
+            onError(e);
+          }
         }}
       />
 

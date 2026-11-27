@@ -22,6 +22,7 @@ type Stats = {
     tokens: number | null;
     costEstimateUsd: number | null;
     storageUsedBytes: number;
+    video: { usedBytes: number; capBytes: number };
     charsByScope: { global: number; user: number };
   };
   users: {
@@ -32,6 +33,7 @@ type Stats = {
     charsByScope: { global: number; user: number };
     costEstimateUsd: number | null;
     storageUsedBytes: number;
+    videoUsedBytes: number;
   }[];
 };
 
@@ -42,6 +44,7 @@ const sortOptions = (t: Dict) =>
     { value: 'voices', label: t.adminStats.voices },
     { value: 'cost', label: t.adminStats.cost },
     { value: 'storage', label: t.adminStats.storage },
+    { value: 'video', label: t.adminStats.videoStorage },
     { value: 'lastActive', label: t.adminStats.lastActive },
   ] as const;
 
@@ -81,6 +84,7 @@ export function AdminStatsView() {
             <StatCard label={t.adminStats.projects} value={fx.number(q.data.totals.projects)} testId="admin-stat-projects" />
             <StatCard label={t.adminStats.voices} value={fx.number(q.data.totals.voices)} testId="admin-stat-voices" />
             <StatCard label={t.adminStats.storage} value={fmtBytes(q.data.totals.storageUsedBytes)} testId="admin-stat-storage" />
+            <StatCard label={t.adminStats.videoSystem} value={`${fmtBytes(q.data.totals.video.usedBytes)} / ${fmtBytes(q.data.totals.video.capBytes)}`} testId="admin-stat-video" />
             <StatCard label={t.adminStats.chars} value={fx.number(q.data.totals.chars)} testId="admin-stat-chars" />
             <StatCard label={t.adminStats.scopeGlobal} value={fx.number(q.data.totals.charsByScope.global)} testId="admin-stat-global" />
             <StatCard label={t.adminStats.scopeUser} value={fx.number(q.data.totals.charsByScope.user)} testId="admin-stat-own" />
@@ -91,7 +95,9 @@ export function AdminStatsView() {
               testId="admin-stat-cost"
             />
           </div>
-          <p className="text-xs text-muted-foreground">{t.adminStats.anonymizedNote}</p>
+          <p className="text-xs text-muted-foreground">
+            {t.adminStats.anonymizedNote} {t.adminStats.videoNote}
+          </p>
 
           <div className="flex flex-wrap items-center gap-2">
             <Select value={sort} onValueChange={setSort}>
@@ -125,6 +131,7 @@ export function AdminStatsView() {
                     <TableHead className="text-right">{t.adminStats.colOwn}</TableHead>
                     <TableHead className="text-right">{t.adminStats.cost}</TableHead>
                     <TableHead className="text-right">{t.adminStats.storage}</TableHead>
+                    <TableHead className="text-right">{t.adminStats.videoStorage}</TableHead>
                     <TableHead>{t.adminStats.lastActive}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -141,6 +148,7 @@ export function AdminStatsView() {
                       <TableCell className="text-right tabular-nums">{fx.number(r.charsByScope.user)}</TableCell>
                       <TableCell className="text-right tabular-nums">{usd(r.costEstimateUsd)}</TableCell>
                       <TableCell className="text-right tabular-nums">{fmtBytes(r.storageUsedBytes)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtBytes(r.videoUsedBytes)}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs">{r.user.lastActiveAt ? fx.dateTime(r.user.lastActiveAt) : t.adminStats.never}</TableCell>
                     </TableRow>
                   ))}

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { HttpError, notFound } from '../api/errors';
 import { getDb, type Db } from '../db';
 import {
+  VIDEO_EXPORT_ACTIVE,
   VIDEO_PIPELINE_ACTIVE,
   videoExports,
   videoJobLogs,
@@ -84,6 +85,8 @@ export type VideoJobDto = {
   upload: VideoUploadDto | null;
   /** hạn mức video đang dùng cho việc này: video nguồn còn giữ và thành phẩm còn giữ */
   storedBytes: number;
+  /** chỗ đang giữ trước cho bản xuất đang chờ hoặc chạy */
+  reservedExportBytes: number;
   canStop: boolean;
   canRerun: boolean;
   /** còn âm thanh hoặc video nguồn để gửi dịch lại */
@@ -163,6 +166,7 @@ export function videoJobDto(j: JobRow, exports: ReadonlyArray<ExportListRow>, up
     audioMismatch: j.audioMismatch,
     upload,
     storedBytes: (j.sourceKey ? j.fileSizeBytes : 0) + exports.reduce((n, e) => n + (e.status === 'completed' ? (e.outputBytes ?? 0) : 0), 0),
+    reservedExportBytes: exports.reduce((n, e) => n + ((VIDEO_EXPORT_ACTIVE as readonly string[]).includes(e.status) ? e.estimatedBytes : 0), 0),
     canStop: pipelineActive || !!active,
     canRerun: (j.status === 'failed' || j.status === 'stopped') && canResume(j),
     canRetranslate: canResume(j),
@@ -452,6 +456,20 @@ export async function deleteVideoJob(ownerId: string, id: string): Promise<void>
   const job = await getOwnedVideoJob(ownerId, id);
   await requestStopVideoJobs(ownerId, [job.id]);
   await deleteVideoJobs(ownerId, { jobIds: [job.id] });
+}
+
+/** Xóa nhiều việc của chủ sở hữu (FR-045): dừng rồi xóa như xóa từng việc; mã không phải của người này được báo là không tìm thấy. */
+export async function deleteVideoJobsBulk(ownerId: string, ids: string[]): Promise<{ deleted: string[]; notFound: string[] }> {
+  const rows = await getDb()
+    .select({ id: videoJobs.id })
+    .from(videoJobs)
+    .where(and(eq(videoJobs.ownerId, ownerId), inArray(videoJobs.id, ids)));
+  const own = rows.map((r) => r.id);
+  if (own.length === 0) return { deleted: [], notFound: ids };
+  await requestStopVideoJobs(ownerId, own);
+  const deleted = await deleteVideoJobs(ownerId, { jobIds: own });
+  const gone = new Set(deleted);
+  return { deleted, notFound: ids.filter((id) => !gone.has(id)) };
 }
 
 /** Nhật ký sau mốc `afterId`, cho luồng sự kiện. */

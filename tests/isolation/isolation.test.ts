@@ -125,6 +125,8 @@ const VIDEO_CASES: Record<string, Case> = {
   'DELETE /video/exports/{exportId}': onExport(),
   'PUT /projects/{projectId}/video/settings': onProject({ json: { direction: 'vi_to_en' } }),
   'PUT /video/jobs/{jobId}/style': onJob({ json: DEFAULT_VIDEO_STYLE }),
+  // chỉ nhận mã trong thân: mã của người khác được báo không tìm thấy (video-upload.test.ts)
+  'POST /video/jobs/bulk-delete': { kind: 'self', init: { json: { ids: [ZERO_UUID] } } },
   'POST /video/jobs/{jobId}/retranslate/estimate': onJob({ json: {} }),
   'POST /video/jobs/{jobId}/retranslate': onJob({ json: { confirm: true, direction: 'to_vi', baseRevision: 0 } }),
 };

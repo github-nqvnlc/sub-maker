@@ -5,6 +5,7 @@ import { users } from '../db/schema';
 import { notFound, validation } from '../api/errors';
 import { getSettings } from '../settings';
 import { toAdminUser, type AdminUserDto } from '../users/admin-service';
+import { videoSystemBytes } from '../video/quota';
 
 /**
  * Thống kê (US8, FR-038..040). Nguyên tắc:
@@ -110,7 +111,7 @@ export async function getDashboard(userId: string, range: Range): Promise<Dashbo
   };
 }
 
-export const STATS_SORTS = ['projects', 'voices', 'chars', 'cost', 'storage', 'lastActive'] as const;
+export const STATS_SORTS = ['projects', 'voices', 'chars', 'cost', 'storage', 'video', 'lastActive'] as const;
 export type StatsSort = (typeof STATS_SORTS)[number];
 
 export type AdminStatsDto = {
@@ -123,6 +124,8 @@ export type AdminStatsDto = {
     tokens: number | null;
     costEstimateUsd: number | null;
     storageUsedBytes: number;
+    /** dung lượng video toàn hệ thống theo đúng cách so với trần (FR-053): đã dùng, giữ chỗ và bản xem trước */
+    video: { usedBytes: number; capBytes: number };
     charsByScope: { global: number; user: number };
   };
   users: {
@@ -134,13 +137,14 @@ export type AdminStatsDto = {
     tokens: number | null;
     costEstimateUsd: number | null;
     storageUsedBytes: number;
+    videoUsedBytes: number;
   }[];
 };
 
 /** Thống kê toàn hệ thống + từng User. Chỉ số liệu tổng hợp — không có nội dung Project (Nguyên tắc I). */
 export async function getAdminStats(range: Range, sort: StatsSort, order: 'asc' | 'desc'): Promise<AdminStatsDto> {
   const db = getDb();
-  const [perUser, totals, sums] = await Promise.all([
+  const [perUser, totals, sums, videoBytes, settings] = await Promise.all([
     db.execute(sql`
       select u.id,
         (select count(*)::int from projects p where p.owner_id = u.id) as projects,
@@ -176,6 +180,8 @@ export async function getAdminStats(range: Range, sort: StatsSort, order: 'asc' 
         (select coalesce(sum(storage_used_bytes), 0)::bigint from users) as storage`) as unknown as Promise<
       Rows<{ users: number; projects: number; voices: number; storage: string }>
     >,
+    videoSystemBytes(),
+    getSettings(),
   ]);
 
   const allUsers = await db.select().from(users);
@@ -193,6 +199,7 @@ export async function getAdminStats(range: Range, sort: StatsSort, order: 'asc' 
         tokens: numOrNull(r.tokens),
         costEstimateUsd: numOrNull(r.cost),
         storageUsedBytes: u.storageUsedBytes,
+        videoUsedBytes: u.videoUsedBytes,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -209,6 +216,8 @@ export async function getAdminStats(range: Range, sort: StatsSort, order: 'asc' 
         return r.costEstimateUsd ?? -1;
       case 'storage':
         return r.storageUsedBytes;
+      case 'video':
+        return r.videoUsedBytes;
       case 'lastActive':
         return r.user.lastActiveAt ? Date.parse(r.user.lastActiveAt) : 0;
     }
@@ -228,6 +237,7 @@ export async function getAdminStats(range: Range, sort: StatsSort, order: 'asc' 
       tokens: numOrNull(t?.tokens),
       costEstimateUsd: numOrNull(t?.cost),
       storageUsedBytes: num(s?.storage),
+      video: { usedBytes: videoBytes, capBytes: settings.videoSystemCapBytes },
       charsByScope: { global: num(t?.chars_global), user: num(t?.chars_user) },
     },
     users: rows,
