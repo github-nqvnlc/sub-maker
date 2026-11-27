@@ -5,6 +5,10 @@
 export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'flv', 'm4v'] as const;
 export type VideoExtension = (typeof VIDEO_EXTENSIONS)[number];
 
+/** Định dạng âm thanh trình duyệt có thể tách và gửi lên luồng nhanh (FR-010, research R8). */
+export const CLIENT_AUDIO_EXTENSIONS = ['m4a', 'mp4', 'webm', 'ogg', 'mp3', 'wav'] as const;
+export type ClientAudioExtension = (typeof CLIENT_AUDIO_EXTENSIONS)[number];
+
 /** Kiểu nội dung khi lưu và phát video nguồn. */
 export const VIDEO_CONTENT_TYPES: Record<VideoExtension, string> = {
   mp4: 'video/mp4',
@@ -83,6 +87,8 @@ export type VideoMedia = {
   matrix: 'bt709' | 'bt601';
   /** trình duyệt phổ biến phát được nguồn (không cần bản xem trước vì định dạng) */
   browserPlayable: boolean;
+  /** mốc và thời lượng luồng tiếng do trình duyệt tách (dùng để đối chiếu khi nguồn tải xong) */
+  clientAudio?: { startMs: number; durationMs: number };
 };
 
 export const CUE_LIMITS = {

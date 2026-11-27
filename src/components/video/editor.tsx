@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Redo2, Search, Undo2 } from 'lucide-react';
@@ -22,24 +22,124 @@ import { VideoStatusBadge } from '@/components/video/status';
 import { StylePanel } from '@/components/video/style-panel';
 import { Timeline } from '@/components/video/timeline';
 import { VideoPreview } from '@/components/video/video-preview';
-import { ApiError, api } from '@/lib/api-client';
+import { ApiError, api, apiPost } from '@/lib/api-client';
 import { fmtDuration } from '@/lib/format';
 import { useCueEditor } from '@/lib/hooks/use-cue-editor';
 import { useActiveCue } from '@/lib/hooks/use-media-clock';
 import { useStyleEditor } from '@/lib/hooks/use-style-editor';
-import { useVideoEvents, useVideoJob, type VideoJobDetailDto } from '@/lib/hooks/use-video';
+import { useLiveUpload, useVideoEvents, useVideoJob, videoKeys, type VideoJobDetailDto } from '@/lib/hooks/use-video';
 import { newRequestId } from '@/lib/hooks/use-overlay';
 import { useFormat, useT } from '@/lib/i18n/client';
 import { fmt } from '@/lib/i18n/fmt';
 import { insertAfterOp, mergeOps, nudgeOp, setEdgeOp, splitOps, type Caret, type CueOp } from '@/lib/video/cue-ops';
 import type { CueListDto } from '@/lib/video/cues';
 import type { FindMatch } from '@/lib/video/find-replace';
+import type { RetranslateEstimateDto } from '@/lib/video/retranslate';
 import { videoErrorText, videoLogText } from '@/lib/video/text';
 import { CUE_LIMITS, type VideoMedia } from '@/lib/video/types';
 
 function JobLog({ job }: { job: VideoJobDetailDto }) {
   const t = useT();
   return <EventLog label={t.video.list.logLabel} empty={t.video.list.logEmpty} entries={job.logs.map((l) => ({ id: l.id, ts: l.ts, level: l.level, text: videoLogText(t, l) }))} />;
+}
+
+/** Tiến độ tải video nguồn trong lúc người dùng đã có thể sửa phụ đề từ luồng nhanh (T128). */
+function SourceUploadingNotice({ job }: { job: VideoJobDetailDto }) {
+  const t = useT();
+  const live = useLiveUpload(job.id);
+  if (job.sourceState !== 'uploading') return null;
+  const percent = live ? live.percent : job.upload ? Math.floor((job.upload.receivedBytes / Math.max(1, job.upload.sizeBytes)) * 100) : 0;
+  return (
+    <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3 lg:col-span-12" data-testid="video-source-progress">
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span role="status">{t.video.editor.preview.audioWhileUploading}</span>
+        <span className="tabular-nums">{percent}%</span>
+      </div>
+      <Progress value={percent} className="h-1.5" aria-label={t.video.upload.progressLabel} />
+    </div>
+  );
+}
+
+/** Thông báo và hộp xác nhận dịch lại từ nguồn khi âm thanh trình duyệt lệch thời lượng > 1 giây (FR-011, T128). */
+function AudioMismatchPrompt({ job, readOnly, ensureSaved }: { job: VideoJobDetailDto; readOnly: boolean; ensureSaved: () => Promise<number | null> }) {
+  const t = useT();
+  const fx = useFormat();
+  const qc = useQueryClient();
+  const m = t.video.editor.audioMismatch;
+  const r = t.video.retranslate;
+  const [open, setOpen] = useState(false);
+  const prompted = useRef(false);
+
+  useEffect(() => {
+    if (job.audioMismatch && job.sourceState === 'ready' && job.editable && !prompted.current) {
+      prompted.current = true;
+      setOpen(true);
+    } else if (!job.audioMismatch) {
+      prompted.current = false;
+    }
+  }, [job.audioMismatch, job.sourceState, job.editable]);
+
+  const estimate = useQuery({
+    queryKey: ['video-mismatch-estimate', job.id],
+    queryFn: () => apiPost<RetranslateEstimateDto>(`/api/video/jobs/${job.id}/retranslate/estimate`),
+    enabled: open && job.audioMismatch,
+    gcTime: 0,
+  });
+
+  if (!job.audioMismatch || job.sourceState !== 'ready') return null;
+  const cost = estimate.data?.costEstimateUsd;
+
+  return (
+    <>
+      <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm lg:col-span-12" data-testid="audio-mismatch-banner">
+        <span>{m.banner}</span>
+        <Button size="sm" variant="outline" disabled={readOnly} onClick={() => setOpen(true)}>
+          {m.action}
+        </Button>
+      </div>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={m.title}
+        destructive={false}
+        description={
+          <>
+            <p>{m.desc}</p>
+            {estimate.isError ? (
+              <div role="alert" className="flex flex-wrap items-center gap-2 text-destructive">
+                <span>{r.estimateError}</span>
+                <Button size="sm" variant="outline" disabled={estimate.isFetching} onClick={() => void estimate.refetch()}>
+                  {t.common.retry}
+                </Button>
+              </div>
+            ) : !estimate.data ? (
+              <p role="status">{r.estimating}</p>
+            ) : (
+              <>
+                <p>{fmt(r.duration, { duration: fmtDuration(estimate.data.durationMs) })}</p>
+                <p>{cost === null || cost === undefined ? r.costUnknown : fmt(r.cost, { cost: fx.usd(cost) })}</p>
+              </>
+            )}
+            <p className="font-medium text-foreground">{r.replaces}</p>
+          </>
+        }
+        confirmLabel={m.confirm}
+        confirmDisabled={readOnly || estimate.isError || !estimate.data}
+        onConfirm={async () => {
+          const saved = await ensureSaved();
+          if (saved === null) return void toast.error(t.video.export.saveFirst);
+          try {
+            await apiPost(`/api/video/jobs/${job.id}/retranslate`, { confirm: true, direction: job.direction, baseRevision: saved });
+            toast.success(r.queued);
+          } catch (err) {
+            toast.error(err instanceof ApiError ? err.message : t.common.genericError);
+          }
+          await qc.invalidateQueries({ queryKey: videoKeys.job(job.id) });
+          await qc.invalidateQueries({ queryKey: videoKeys.jobs(job.projectId) });
+        }}
+      />
+    </>
+  );
 }
 
 /** Chưa có kịch bản: tiến độ và nhật ký cho tới khi dịch xong; việc đã dừng hoặc lỗi thì chỉ cách làm tiếp. */
@@ -184,6 +284,8 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <SourceUploadingNotice job={job} />
+      <AudioMismatchPrompt job={job} readOnly={readOnly} ensureSaved={ensureSaved} />
       {/* lỗi lưu và xung đột thấy được ở mọi tab */}
       {/* giữ dải báo trong lúc thử lại để trang không xê dịch */}
       {editor.error && editor.status !== 'conflict' ? (

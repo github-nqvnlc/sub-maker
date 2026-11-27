@@ -36,8 +36,9 @@ export async function retranslateVideoJob(user: VideoPrincipal & { id: string },
   const body = bodySchema.parse(raw);
   if (!cuesEditable(job) || job.sourceState === 'rejected') throw new HttpError(409, 'VIDEO_NOT_EDITABLE');
   if (job.cueRevision !== body.baseRevision) throw new HttpError(409, 'CUE_CONFLICT', undefined, { revision: String(job.cueRevision) });
-  // đã tách âm thanh thì dịch thẳng; chưa thì cần video nguồn
-  const step = nextPipelineStep(job);
+  // đã tách âm thanh thì dịch thẳng; nếu âm thanh trình duyệt lệch nguồn và nguồn sẵn sàng thì tách lại từ nguồn
+  const clearMismatchedAudio = job.audioMismatch && job.sourceState === 'ready';
+  const step = clearMismatchedAudio ? 'prepare' : nextPipelineStep(job);
   if (step === 'prepare' && job.sourceState !== 'ready' && job.sourceState !== 'checking') throw new HttpError(409, 'VIDEO_SOURCE_GONE');
   if (!(await getSttConfigRow())?.enabled) throw new HttpError(409, 'STT_NOT_CONFIGURED');
   // dữ liệu của lượt trước còn ở nhà cung cấp thì lấy và xóa trước khi quên id (FR-017)
@@ -58,6 +59,8 @@ export async function retranslateVideoJob(user: VideoPrincipal & { id: string },
         heartbeatAt: null,
         finishedAt: null,
         progressPercent: step === 'translate' ? 10 : 0,
+        ...(clearMismatchedAudio ? { audioTempKey: null, clientAudio: false } : {}),
+        audioMismatch: false,
         translationRun: job.translationRun + 1,
         sonioxFileId: null,
         sonioxTranscriptionId: null,

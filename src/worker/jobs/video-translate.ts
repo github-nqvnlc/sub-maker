@@ -21,7 +21,7 @@ import { billTranslation, providerSnapshot, releaseProviderData, saveRawTranscri
 import { segmentCues, type DraftCue } from '../../lib/video/segmentation';
 import { CUE_LIMITS, cueBytes, TARGET_LANGUAGE } from '../../lib/video/types';
 import { backoffMs, DEFAULT_RETRY, type RetryPolicy } from '../pipeline/synthesize-segment';
-import { QUEUES, type VideoTranslatePayload } from '../queues';
+import { enqueueVideoPrepare, QUEUES, type VideoTranslatePayload } from '../queues';
 import { JobGone, JobStopped, makeVideoTempDir, RunControl, startBeat, storageFailure, VIDEO_RETRY, VideoFailure, withTransientRetry, type VideoErrorCode } from '../video/run';
 
 /**
@@ -42,6 +42,7 @@ export type VideoTranslateOptions = {
   admissionPollMs?: number;
   /** thay thao tác kho (kiểm thử lỗi kho lưu tệp) */
   storage?: Partial<{ download: typeof downloadObjectToFile; saveTranscript: typeof saveRawTranscript }>;
+  enqueuePrepare?: (jobId: string) => Promise<unknown>;
   /** điểm dừng cho kiểm thử phục hồi: ném lỗi tại đây mô phỏng worker chết */
   onStage?: (stage: 'uploaded' | 'started' | 'transcript-saved' | 'billed' | 'cues-saved') => Promise<void>;
 };
@@ -312,9 +313,9 @@ export async function runVideoTranslate(jobId: string, opts: VideoTranslateOptio
     const done = await db.transaction(async (tx) => {
       const r = await tx
         .update(videoJobs)
-        .set({ status: 'review_ready', stageKey: 'reviewReady', progressPercent: 50, errorCode: null, finishedAt: new Date(), lastActivityAt: new Date(), updatedAt: new Date() })
+        .set({ status: 'review_ready', stageKey: 'reviewReady', progressPercent: 50, errorCode: null, heartbeatAt: null, finishedAt: new Date(), lastActivityAt: new Date(), updatedAt: new Date() })
         .where(and(mine, eq(videoJobs.cancelRequested, false)))
-        .returning({ cueCount: videoJobs.cueCount });
+        .returning({ cueCount: videoJobs.cueCount, sourceState: videoJobs.sourceState });
       if (r.length) await recomputeSourceExpiry(jobId, tx as unknown as Db);
       return r[0] ?? null;
     });
@@ -325,6 +326,7 @@ export async function runVideoTranslate(jobId: string, opts: VideoTranslateOptio
     }
     finished = true;
     await log('info', 'reviewReady', { n: done.cueCount });
+    if (done.sourceState === 'checking') await (opts.enqueuePrepare ?? enqueueVideoPrepare)(jobId).catch(() => undefined);
   };
 
   const run = async () => {
@@ -384,12 +386,13 @@ export async function runVideoTranslate(jobId: string, opts: VideoTranslateOptio
     await db.transaction(async (tx) => {
       await tx
         .update(videoJobs)
-        .set({ status: stopped ? 'stopped' : 'failed', stageKey: stopped ? 'stopped' : 'failed', errorCode: code, cancelRequested: false, finishedAt: new Date(), updatedAt: new Date() })
+        .set({ status: stopped ? 'stopped' : 'failed', stageKey: stopped ? 'stopped' : 'failed', errorCode: code, cancelRequested: false, heartbeatAt: null, finishedAt: new Date(), updatedAt: new Date() })
         .where(mine);
       await recomputeSourceExpiry(jobId, tx as unknown as Db);
     });
     if (stopped) await appendVideoLog(jobId, 'warn', 'stopped');
     else await appendVideoLog(jobId, 'error', 'failed', { reason: code! });
+    if (cur?.sourceState === 'checking') await (opts.enqueuePrepare ?? enqueueVideoPrepare)(jobId).catch(() => undefined);
   } finally {
     stopBeat();
   }

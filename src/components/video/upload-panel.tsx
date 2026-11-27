@@ -18,6 +18,7 @@ import { useLiveUpload, useUploadVersion, videoKeys, type VideoJobDto, type Vide
 import { useFormat, useT } from '@/lib/i18n/client';
 import { fmt } from '@/lib/i18n/fmt';
 import { fingerprintFile } from '@/lib/video/fingerprint';
+import { abortClientAudioJob, canExtractClientAudio, clearClientAudioJob, extractClientAudio, trackClientAudioJob } from '@/lib/video/client-audio';
 import { DIRECTIONS, VIDEO_EXTENSIONS, type Direction } from '@/lib/video/types';
 import { rememberLocalVideo, uploadRegistry, VideoUpload } from '@/lib/video/upload-client';
 
@@ -140,6 +141,7 @@ export function LiveUpload({ projectId, job }: { projectId: string; job: VideoJo
         }
         confirmLabel={u.cancelConfirm}
         onConfirm={async () => {
+          abortClientAudioJob(job.id);
           const live = uploadRegistry.get(job.id);
           const uploadId = live?.uploadId ?? job.upload?.id;
           // giữ lượt tải (tạm dừng) tới khi máy chủ hủy xong, để việc không hiện lại ở mục "đang tải dở"
@@ -222,13 +224,58 @@ export function UploadPanel({ projectId, tab, jobs }: { projectId: string; tab: 
     toast.success(u.resumed);
   }
 
+  async function startClientAudioFastPath(jobId: string, f: File) {
+    const ctrl = trackClientAudioJob(jobId);
+    const skip = () => apiPost(`/api/video/jobs/${jobId}/client-audio/skip`).catch(() => undefined);
+    try {
+      const extracted = await extractClientAudio(f, { signal: ctrl.signal });
+      if (ctrl.signal.aborted) return;
+      if (!extracted.ok) {
+        await skip();
+        return;
+      }
+      const fp = await fingerprintFile(extracted.blob);
+      if (ctrl.signal.aborted) return;
+      const session = await apiPost<{ id: string; partSize: number; partCount: number }>(`/api/video/jobs/${jobId}/client-audio`, {
+        size: extracted.blob.size,
+        fingerprint: fp,
+        ext: extracted.ext,
+        mime: extracted.mime,
+      });
+      const up = new VideoUpload({ uploadId: session.id, file: extracted.blob, partSize: session.partSize, partCount: session.partCount });
+      const onAbort = () => up.cancel();
+      ctrl.signal.addEventListener('abort', onAbort, { once: true });
+      try {
+        up.start();
+        await up.running;
+      } finally {
+        ctrl.signal.removeEventListener('abort', onAbort);
+      }
+      if (ctrl.signal.aborted) return;
+      if (up.getSnapshot().phase !== 'done') await skip();
+      else void refresh();
+    } catch {
+      if (!ctrl.signal.aborted) await skip();
+    } finally {
+      clearClientAudioJob(jobId);
+    }
+  }
+
   async function createJob(f: File) {
     const fingerprint = await fingerprintFile(f);
     // chọn đúng tệp đang tải dở thì tải tiếp thay vì tạo việc mới
     const same = unfinished.find((j) => j.size === f.size && j.fingerprint === fingerprint);
     if (same) return resumeJob(same, f, fingerprint);
-    const created = await apiPost<{ job: VideoJobDto; upload: { id: string; partSize: number; partCount: number } }>(`/api/projects/${projectId}/video/jobs`, { fileName: f.name, size: f.size, fingerprint, direction });
+    const fastPath = canExtractClientAudio(f.name);
+    const created = await apiPost<{ job: VideoJobDto; upload: { id: string; partSize: number; partCount: number } }>(`/api/projects/${projectId}/video/jobs`, {
+      fileName: f.name,
+      size: f.size,
+      fingerprint,
+      direction,
+      clientAudio: fastPath,
+    });
     start(created.job.id, f, created.upload);
+    if (fastPath) void startClientAudioFastPath(created.job.id, f);
     toast.success(u.started);
   }
 

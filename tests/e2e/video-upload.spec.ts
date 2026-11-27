@@ -58,18 +58,20 @@ test('tải video → dịch → chờ duyệt → nhật ký → xóa @mobile',
 test('tạm dừng, tiếp tục và mạng đứt rồi có lại', async ({ page }) => {
   const p = await videoProject(page, mock);
   await openVideoTab(page, p.id);
+  const createdPromise = page.waitForResponse((r) => r.url().endsWith(`/api/projects/${p.id}/video/jobs`) && r.request().method() === 'POST');
   await page.route(PARTS, delayParts(2500));
   await startUpload(page, makeVideoFile('hai-phan.mp4', { padMb: 17 }));
+  const sourceUploadId = ((await (await createdPromise).json()) as { upload: { id: string } }).upload.id;
   const live = page.getByTestId('video-live-upload');
   await expect(live).toContainText('Đang tải lên');
   await live.getByRole('button', { name: 'Tạm dừng' }).click();
   await expect(live).toContainText('Đã tạm dừng');
   await expect(jobRow(page, 'hai-phan.mp4').getByText('Đang tải lên')).toBeVisible();
 
-  // mạng đứt: hai lần gửi đầu của mỗi phần thất bại, bộ tải tự thử lại
+  // mạng đứt: hai lần gửi đầu của mỗi phần video nguồn thất bại, bộ tải tự thử lại
   await page.unroute(PARTS);
   const attempts = new Map<string, number>();
-  await page.route(PARTS, async (route) => {
+  await page.route(`**/api/video/uploads/${sourceUploadId}/parts/*`, async (route) => {
     const n = (attempts.get(route.request().url()) ?? 0) + 1;
     attempts.set(route.request().url(), n);
     if (n <= 2) await route.abort('internetdisconnected');
@@ -77,6 +79,8 @@ test('tạm dừng, tiếp tục và mạng đứt rồi có lại', async ({ pa
   });
   await live.getByRole('button', { name: 'Tiếp tục' }).click();
   await waitVideoJob(page, p.id, 'review_ready');
+  // đợi hai phần video nguồn gửi xong hẳn (luồng nhanh có thể đưa việc sang review_ready trước khi phần 2 thử lại xong)
+  await expect.poll(async () => (await videoJobs(page, p.id))[0]?.sourceState, { timeout: 60_000, intervals: [300] }).toBe('ready');
   expect([...attempts.values()]).toEqual([3, 3]);
   await expect(jobRow(page, 'hai-phan.mp4').getByText('Chờ duyệt')).toBeVisible();
   await expect(live).toBeHidden();

@@ -6,6 +6,7 @@ import { Download, FileVideo, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { SelectField } from '@/components/overlay/fields';
 import { FileDropzone } from '@/components/shared/file-dropzone';
 import { ErrorState, LoadingList } from '@/components/shared/states';
@@ -227,10 +228,13 @@ export function ExportPanel({
   });
 
   const data = estimate.data;
-  const reupload = job.sourceState === 'deleted' || (job.sourceState === 'uploading' && !!job.upload);
+  const live = useLiveUpload(job.id);
+  const reupload = job.sourceState === 'deleted' || (job.sourceState === 'uploading' && !!job.media && job.media.videoCodec !== 'pending');
+  const initialUploading = job.sourceState === 'uploading' && !reupload;
+  const uploadPercent = live ? live.percent : job.upload ? Math.floor((job.upload.receivedBytes / Math.max(1, job.upload.sizeBytes)) * 100) : 0;
   const blockedText = data?.blocked ? ((t.errors as Record<string, string>)[data.blocked] ?? t.common.genericError) : null;
-  // đang có bản xuất là trạng thái bình thường, không phải lỗi
-  const busyText = data?.blocked === 'VIDEO_EXPORT_RUNNING' ? blockedText : null;
+  // đang có bản xuất hoặc video nguồn đang tải lên là trạng thái chờ bình thường, không báo lỗi đỏ
+  const busyText = data?.blocked === 'VIDEO_EXPORT_RUNNING' || data?.blocked === 'VIDEO_SOURCE_NOT_READY' ? blockedText : null;
   // lỗi chỉ còn nghĩa khi việc chưa đổi trạng thái kể từ lúc bấm
   const problem = busyText ? null : (blockedText ?? (create.isError && create.variables === jobState ? messageOf(create.error, t.common.genericError) : null));
 
@@ -244,6 +248,21 @@ export function ExportPanel({
           <CardContent className="space-y-4 p-5">
             <p className="text-xs text-muted-foreground">{e.desc}</p>
             {reupload ? <Reupload job={job} /> : null}
+            {initialUploading ? (
+              live ? (
+                <div className="rounded-lg border p-3">
+                  <LiveUpload projectId={job.projectId} job={job} />
+                </div>
+              ) : (
+                <div className="space-y-2 rounded-lg border p-3" data-testid="video-source-export-progress">
+                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span role="status">{t.video.editor.preview.audioWhileUploading}</span>
+                    <span className="tabular-nums">{uploadPercent}%</span>
+                  </div>
+                  <Progress value={uploadPercent} className="h-1.5" aria-label={t.video.upload.progressLabel} />
+                </div>
+              )
+            ) : null}
             {job.sourceState === 'checking' ? (
               <p role="status" className="text-sm text-muted-foreground">
                 {e.reupload.checking}
@@ -254,7 +273,7 @@ export function ExportPanel({
               <LoadingList rows={2} />
             ) : !data ? (
               <ErrorState message={e.estimateError} onRetry={() => void estimate.refetch()} />
-            ) : data.estimatedBytes > 0 ? (
+            ) : data.estimatedBytes > 0 && job.media?.videoCodec !== 'pending' ? (
               <section aria-label={e.estimateTitle} className="space-y-2 rounded-lg border p-3">
                 <h3 className="text-sm font-medium">{e.estimateTitle}</h3>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">

@@ -14,7 +14,17 @@ import { fingerprintOf } from './fingerprint';
 import { appendVideoLog } from './log';
 import { requireVideoPermission, type VideoPrincipal } from './permission';
 import { addVideoUsed, assertJobSlot, assertVideoRoom, withVideoLock } from './quota';
-import { VIDEO_CONTENT_TYPES } from './types';
+import { CLIENT_AUDIO_EXTENSIONS, VIDEO_CONTENT_TYPES } from './types';
+
+const CLIENT_AUDIO_MAX_BYTES = 500 * 1024 * 1024;
+const CLIENT_AUDIO_MIMES: Record<(typeof CLIENT_AUDIO_EXTENSIONS)[number], string> = {
+  m4a: 'audio/mp4',
+  mp4: 'audio/mp4',
+  webm: 'audio/webm',
+  ogg: 'audio/ogg',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+};
 
 /**
  * Tải video từng phần (spec 006, FR-004 đến FR-006, research R7): trình duyệt gửi từng phần 16 MB qua ứng dụng (kiểm đăng nhập,
@@ -222,6 +232,14 @@ export async function completeUpload(user: Principal, uploadId: string): Promise
         })
         .where(eq(videoJobs.id, upload.jobId));
       await addVideoUsed(user.id, upload.sizeBytes, tx);
+    } else if (upload.kind === 'client_audio') {
+      const [job] = await tx.select({ status: videoJobs.status, audioTempKey: videoJobs.audioTempKey, clientAudio: videoJobs.clientAudio }).from(videoJobs).where(eq(videoJobs.id, upload.jobId)).for('update');
+      if (job?.status === 'waiting_media' && !job.audioTempKey && job.clientAudio) {
+        await tx
+          .update(videoJobs)
+          .set({ status: 'queued', stageKey: 'queued', lastActivityAt: new Date(), updatedAt: new Date() })
+          .where(eq(videoJobs.id, upload.jobId));
+      }
     }
     await recomputeSourceExpiry(upload.jobId, tx);
     return true;
@@ -230,6 +248,9 @@ export async function completeUpload(user: Principal, uploadId: string): Promise
     await appendVideoLog(upload.jobId, 'info', 'uploadDone', { mb: Math.round((upload.sizeBytes / 1048576) * 10) / 10 });
     // hàng đợi tạm không nhận được thì sweeper xếp lại (việc đã ở trạng thái chờ)
     await enqueueVideoPrepare(upload.jobId).catch((e) => console.error('[video] không xếp được việc chuẩn bị:', e instanceof Error ? e.message : e));
+  } else if (finished && upload.kind === 'client_audio') {
+    await appendVideoLog(upload.jobId, 'info', 'clientAudioDone', { mb: Math.round((upload.sizeBytes / 1048576) * 100) / 100 });
+    await enqueueVideoPrepare(upload.jobId).catch((e) => console.error('[video] không xếp được việc chuẩn bị (client audio):', e instanceof Error ? e.message : e));
   }
   return { jobId: upload.jobId };
 }
@@ -300,4 +321,103 @@ export async function reuploadSource(user: Principal, jobId: string, raw: unknow
 /** Dọn các phiên quá hạn 48 giờ (sweeper và lịch dọn gọi). Trả id phiên đã đóng. */
 export async function expireUpload(upload: UploadRow): Promise<void> {
   await discardUpload(upload.ownerId, upload);
+}
+
+export const clientAudioSchema = z
+  .object({
+    size: z.number().int().min(1),
+    fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    ext: z.string().trim().min(1).max(16),
+    mime: z.string().trim().min(1).max(100),
+  })
+  .strict();
+
+/**
+ * Mở phiên tải âm thanh do trình duyệt tách (≤ 500 MB) (spec 006, US9, FR-010). Không tính vào hạn mức video của người dùng (lưu ở
+ * `video-tmp/` và xóa ngay sau khi chuyển sang MP3).
+ */
+export async function createClientAudioUpload(user: Principal, jobId: string, raw: unknown): Promise<{ id: string; partSize: number; partCount: number }> {
+  const job = await ownedJob(user.id, jobId);
+  requireVideoPermission(user);
+  const body = clientAudioSchema.parse(raw);
+  const ext = body.ext.toLowerCase() as (typeof CLIENT_AUDIO_EXTENSIONS)[number];
+  if (!(CLIENT_AUDIO_EXTENSIONS as readonly string[]).includes(ext)) throw new HttpError(422, 'MEDIA_UNSUPPORTED');
+  const mimeLower = body.mime.toLowerCase();
+  if (!mimeLower.startsWith('audio/') && mimeLower !== 'video/mp4' && mimeLower !== 'video/webm') throw new HttpError(422, 'MEDIA_UNSUPPORTED');
+  if (body.size > CLIENT_AUDIO_MAX_BYTES) throw new HttpError(413, 'FILE_TOO_LARGE');
+
+  const key = storageKeys.videoClientAudio(user.id, job.id, ext);
+  const storageUploadId = await createMultipart(key, CLIENT_AUDIO_MIMES[ext]);
+  const partCount = partCountOf(body.size);
+  try {
+    const id = await withVideoLock(async (tx) => {
+      const [cur] = await tx
+        .select({ status: videoJobs.status, sourceState: videoJobs.sourceState, clientAudio: videoJobs.clientAudio, audioTempKey: videoJobs.audioTempKey })
+        .from(videoJobs)
+        .where(eq(videoJobs.id, job.id))
+        .for('update');
+      if (!cur || !cur.clientAudio || cur.audioTempKey !== null || cur.status !== 'waiting_media' || cur.sourceState === 'rejected' || cur.sourceState === 'deleted') {
+        throw new HttpError(409, 'CONFLICT');
+      }
+      const [already] = await tx
+        .select({ id: videoUploads.id })
+        .from(videoUploads)
+        .where(and(eq(videoUploads.jobId, job.id), eq(videoUploads.kind, 'client_audio'), inArray(videoUploads.state, ['active', 'completing', 'completed'])));
+      if (already) throw new HttpError(409, 'CONFLICT');
+      const [upload] = await tx
+        .insert(videoUploads)
+        .values({
+          jobId: job.id,
+          ownerId: user.id,
+          kind: 'client_audio',
+          storageUploadId,
+          key,
+          sizeBytes: body.size,
+          partSize: VIDEO_PART_SIZE,
+          partCount,
+          fingerprint: body.fingerprint,
+          expiresAt: new Date(Date.now() + UPLOAD_TTL_MS),
+        })
+        .returning({ id: videoUploads.id });
+      return upload!.id;
+    });
+    return { id, partSize: VIDEO_PART_SIZE, partCount };
+  } catch (e) {
+    await abortMultipart(key, storageUploadId).catch(() => undefined);
+    throw e;
+  }
+}
+
+/** Bỏ qua luồng nhanh của trình duyệt; đóng phiên tải âm thanh (nếu có) để máy chủ tách từ video nguồn khi tải xong (FR-010). */
+export async function skipClientAudio(user: Principal, jobId: string): Promise<{ ok: true }> {
+  const job = await ownedJob(user.id, jobId);
+  requireVideoPermission(user);
+  const { aborted, startPrepare } = await withVideoLock(async (tx) => {
+    const [cur] = await tx
+      .select({ status: videoJobs.status, sourceState: videoJobs.sourceState, audioTempKey: videoJobs.audioTempKey })
+      .from(videoJobs)
+      .where(eq(videoJobs.id, job.id))
+      .for('update');
+    if (!cur) throw notFound();
+    const closed = await tx
+      .update(videoUploads)
+      .set({ state: 'aborted' })
+      .where(and(eq(videoUploads.jobId, job.id), eq(videoUploads.kind, 'client_audio'), inArray(videoUploads.state, ['active', 'completing'])))
+      .returning({ key: videoUploads.key, storageUploadId: videoUploads.storageUploadId });
+    const shouldQueue = cur.status === 'waiting_media' && (cur.sourceState === 'checking' || cur.sourceState === 'ready');
+    if (!cur.audioTempKey) {
+      await tx
+        .update(videoJobs)
+        .set({
+          clientAudio: false,
+          ...(shouldQueue ? { status: 'queued', stageKey: 'queued' } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(videoJobs.id, job.id));
+    }
+    return { aborted: closed, startPrepare: shouldQueue };
+  });
+  for (const u of aborted) await abortMultipart(u.key, u.storageUploadId).catch(() => undefined);
+  if (startPrepare) await enqueueVideoPrepare(job.id).catch(() => undefined);
+  return { ok: true };
 }

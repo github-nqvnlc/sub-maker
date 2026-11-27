@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { api, apiDelete, apiPost } from '@/lib/api-client';
 import type { VideoJobDetailDto, VideoJobDto, VideoLogDto, VideoTabDto } from '@/lib/video/service';
 import { isBusyStatus } from '@/lib/video/status';
+import { abortClientAudioJob } from '@/lib/video/client-audio';
 import { forgetLocalVideo, uploadRegistry, type UploadSnapshot } from '@/lib/video/upload-client';
 
 /** Dữ liệu dịch video (spec 006) như API trả về. */
@@ -123,6 +124,7 @@ export function useVideoActions(projectId: string) {
   const rerun = useMutation({ mutationFn: (id: string) => apiPost<VideoJobDto>(`/api/video/jobs/${id}/rerun`), onSettled: refresh });
   const remove = useMutation({
     mutationFn: async (id: string) => {
+      abortClientAudioJob(id);
       uploadRegistry.get(id)?.pause();
       await apiDelete(`/api/video/jobs/${id}`);
       uploadRegistry.remove(id);
@@ -132,7 +134,10 @@ export function useVideoActions(projectId: string) {
   });
   const removeMany = useMutation({
     mutationFn: async (ids: string[]) => {
-      for (const id of ids) uploadRegistry.get(id)?.pause();
+      for (const id of ids) {
+        abortClientAudioJob(id);
+        uploadRegistry.get(id)?.pause();
+      }
       const result = await apiPost<{ deleted: string[]; notFound: string[] }>('/api/video/jobs/bulk-delete', { ids });
       for (const id of result.deleted) {
         uploadRegistry.remove(id);

@@ -62,14 +62,20 @@ async function main() {
     NODE_ENV: 'production',
     PORT,
   };
-  // Dùng chung tiến trình con để web (migration + seed trong instrumentation) và worker cùng CSDL E2E
-  const web = spawn('npx', ['next', 'start', '-p', PORT], { env, stdio: 'inherit', shell: true });
-  const worker = spawn('npx', ['tsx', 'src/worker/index.ts'], { env, stdio: 'inherit', shell: true });
+  // Dùng chung tiến trình con để web (migration + seed trong instrumentation) và worker cùng CSDL E2E;
+  // gọi thẳng Node entry thay cho npx/shell để tiết kiệm tiến trình và bộ nhớ ảo trên Windows.
+  const nextBin = path.resolve(process.cwd(), 'node_modules/next/dist/bin/next');
+  const tsxBin = path.resolve(process.cwd(), 'node_modules/tsx/dist/cli.mjs');
+  const web = spawn(process.execPath, [nextBin, 'start', '-p', PORT], { env, stdio: 'inherit' });
+  const worker = spawn(process.execPath, [tsxBin, 'src/worker/index.ts'], { env, stdio: 'inherit' });
   children.push(web, worker);
-  web.on('exit', (code) => {
+  const onChildExit = (name: string) => (code: number | null) => {
+    if (code && code !== 0) console.error(`[e2e-up] ${name} thoát bất thường (mã ${code})`);
     stopAll();
     process.exit(code ?? 0);
-  });
+  };
+  web.on('exit', onChildExit('web'));
+  worker.on('exit', onChildExit('worker'));
 }
 
 main().catch((e) => {

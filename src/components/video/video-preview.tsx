@@ -49,8 +49,9 @@ export function VideoPreview({
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const [playFailed, setPlayFailed] = useState(false);
-  // tệp trên máy, nếu video được chọn trong phiên này và trình duyệt phát được
-  const [local] = useState(() => (media.browserPlayable ? localVideoUrl(job.id) : null));
+  // tệp trên máy, nếu video được chọn trong phiên này và trình duyệt phát được (hoặc đang chờ đo từ định dạng trình duyệt hỗ trợ)
+  const canTryLocal = media.browserPlayable || (media.videoCodec === 'pending' && ['mp4', 'm4v', 'mov', 'webm'].includes(job.ext));
+  const local = useMemo(() => (canTryLocal ? localVideoUrl(job.id) : null), [canTryLocal, job.id]);
   const { fonts } = useSubtitleCanvas({ boxRef, canvasRef, mediaRef, style, cues });
   // vùng an toàn chỉ là lựa chọn của khung xem trước trên video dọc, không lưu và không vào video xuất ra
   const vertical = isVerticalFrame(media.width, media.height);
@@ -65,9 +66,9 @@ export function VideoPreview({
     if (local) list.push({ kind: 'local', url: local });
     if (job.previewState === 'ready') list.push({ kind: 'preview', url: url('preview') });
     if (alive && media.browserPlayable) list.push({ kind: 'source', url: url('source') });
-    if (alive) list.push({ kind: 'audio', url: url('audio') });
+    if (alive || (job.sourceState === 'uploading' && job.clientAudio)) list.push({ kind: 'audio', url: url('audio') });
     return list;
-  }, [job.id, job.previewState, alive, media.browserPlayable, local]);
+  }, [job.id, job.previewState, job.sourceState, job.clientAudio, alive, media.browserPlayable, local]);
   // lỗi phát được nhớ theo trạng thái video nguồn: tải lại video thì thử lại từ đầu
   const failKey = (url: string) => `${job.sourceState}:${url}`;
   const source = sources.find((s) => !failed.has(failKey(s.url))) ?? null;
@@ -124,9 +125,11 @@ export function VideoPreview({
         ? p.gone
         : null
     : source.kind === 'audio'
-      ? job.previewState === 'pending'
-        ? p.audioWhilePreview
-        : p.audioOnly
+      ? job.sourceState === 'uploading'
+        ? p.audioWhileUploading
+        : job.previewState === 'pending'
+          ? p.audioWhilePreview
+          : p.audioOnly
       : null;
   const broken = (!source && alive) || playFailed;
 

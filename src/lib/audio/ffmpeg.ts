@@ -192,7 +192,7 @@ export type ExtractOptions = {
   /** chỉ số tuyệt đối của luồng tiếng cần tách (theo ffprobe); bỏ trống thì luồng tiếng đầu */
   audioIndex?: number;
   /** tệp không tin cậy: ép bộ tách theo đuôi và chỉ cho giao thức `file` */
-  demuxer?: Demuxer;
+  demuxer?: AudioDemuxer;
 };
 
 /** Tham số tách âm thanh; dùng chung cho tiến trình chạy có theo dõi của dịch video. */
@@ -227,13 +227,22 @@ export async function extractAudioToMp3File(inputPath: string, outPath: string, 
 // ---- Dịch video (spec 006): đo video nguồn ------------------------------------------------------
 
 export type Demuxer = 'mov' | 'matroska' | 'avi' | 'flv';
+export type AudioDemuxer = Demuxer | 'mp3' | 'ogg' | 'wav';
 
 const DEMUXERS: Record<string, Demuxer> = { mp4: 'mov', m4v: 'mov', mov: 'mov', mkv: 'matroska', webm: 'matroska', avi: 'avi', flv: 'flv' };
+const AUDIO_DEMUXERS: Record<string, AudioDemuxer> = { ...DEMUXERS, m4a: 'mov', ogg: 'ogg', mp3: 'mp3', wav: 'wav' };
 
 /** Bộ tách bị ép theo đuôi tệp: tệp đổi đuôi hoặc danh sách phát giả dạng không được "đoán" thành định dạng khác. */
 export function demuxerOf(ext: string): Demuxer {
   const d = DEMUXERS[ext.toLowerCase()];
   if (!d) throw new Error(`Không hỗ trợ đuôi .${ext}`);
+  return d;
+}
+
+/** Bộ tách cho âm thanh do trình duyệt tách (luồng nhanh): ép theo đuôi để tránh đoán nội dung. */
+export function audioDemuxerOf(ext: string): AudioDemuxer {
+  const d = AUDIO_DEMUXERS[ext.toLowerCase()];
+  if (!d) throw new Error(`Không hỗ trợ âm thanh đuôi .${ext}`);
   return d;
 }
 
@@ -308,6 +317,13 @@ const PLAYABLE: Record<'mov' | 'matroska', { video: string[]; audio: string[] }>
 export function runFfprobeJson(args: string[], timeoutMs = 60_000): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const child = spawn(FFPROBE(), ['-v', 'error', ...args, '-of', 'json'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    if (child.pid) {
+      try {
+        os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+      } catch {
+        /* không đổi được độ ưu tiên: vẫn chạy */
+      }
+    }
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
@@ -389,6 +405,29 @@ export async function probeVideo(inputPath: string, opts: { demuxer: Demuxer; ma
     hdr,
     matrix,
     browserPlayable: !!family && eightBit && family.video.includes(video.codec_name) && family.audio.includes(audio.codec_name),
+  };
+}
+
+/** Đo tệp âm thanh do trình duyệt tách (không tin cậy): chỉ giao thức `file`, ép bộ tách theo đuôi. */
+export async function probeAudio(
+  inputPath: string,
+  opts: { demuxer: AudioDemuxer; maxMinutes: number; timeoutMs?: number },
+): Promise<{ durationMs: number; startMs: number; codec: string; audioIndex: number }> {
+  const raw = (await runFfprobeJson(['-protocol_whitelist', 'file', '-f', opts.demuxer, '-show_format', '-show_streams', inputPath], opts.timeoutMs)) as ProbeOutput;
+  const audio = (raw.streams ?? []).find((s) => s.codec_type === 'audio');
+  if (!audio) throw new NoAudioStreamError();
+  if (!audio.codec_name) throw new MediaUnreadableError('bộ mã không đọc được');
+  const formatStartSec = num(raw.format?.start_time) ?? 0;
+  const audioStartSec = Math.max(0, num(audio.start_time) ?? formatStartSec);
+  const formatDur = num(raw.format?.duration);
+  const durSec = streamDuration(audio, formatStartSec) ?? (formatDur !== null ? Math.max(0, formatDur - audioStartSec) || formatDur : null);
+  if (durSec === null || durSec <= 0) throw new MediaUnreadableError('không đo được thời lượng âm thanh');
+  if (durSec > opts.maxMinutes * 60) throw new VideoTooLongError(durSec * 1000);
+  return {
+    durationMs: Math.round(durSec * 1000),
+    startMs: Math.round(audioStartSec * 1000),
+    codec: audio.codec_name,
+    audioIndex: audio.index,
   };
 }
 

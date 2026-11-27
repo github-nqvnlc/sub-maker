@@ -129,6 +129,8 @@ const VIDEO_CASES: Record<string, Case> = {
   'POST /video/jobs/bulk-delete': { kind: 'self', init: { json: { ids: [ZERO_UUID] } } },
   'POST /video/jobs/{jobId}/retranslate/estimate': onJob({ json: {} }),
   'POST /video/jobs/{jobId}/retranslate': onJob({ json: { confirm: true, direction: 'to_vi', baseRevision: 0 } }),
+  'POST /video/jobs/{jobId}/client-audio': onJob({ json: { size: 1000, fingerprint: 'a'.repeat(64), ext: 'm4a', mime: 'audio/mp4' } }),
+  'POST /video/jobs/{jobId}/client-audio/skip': onJob(),
 };
 
 // ----- Các ca kiểm thử theo từng story (mỗi story bổ sung vào đây) -----

@@ -104,8 +104,8 @@ export const PICK_LABEL = 'Kéo thả video vào đây hoặc bấm để chọn
 
 export async function chooseVideo(page: Page, file: VideoFile, label: string = PICK_LABEL): Promise<void> {
   const input = page.locator(`input[type=file][aria-label="${label}"]`);
-  if (file.buffer.length < 45 * MB) return input.setInputFiles(file);
-  // Playwright chỉ nhận bộ đệm dưới 50 MB: ghi ra đĩa (trình duyệt đọc dần trong lúc tải nên giữ tệp lại)
+  if (file.buffer.length < 4 * MB) return input.setInputFiles(file);
+  // Ghi tệp lớn ra đĩa thay vì đẩy chuỗi base64 nhiều chục MB qua CDP/trace (trình duyệt đọc dần trong lúc tải nên giữ tệp lại)
   const onDisk = path.join(mkdtempSync(path.join(os.tmpdir(), 'e2e-big-')), file.name);
   writeFileSync(onDisk, file.buffer);
   await input.setInputFiles(onDisk);
@@ -118,7 +118,7 @@ export async function startUpload(page: Page, file: VideoFile): Promise<void> {
 
 export const jobRow = (page: Page, name: string) => page.getByRole('row').filter({ hasText: name });
 
-export type VideoJobApi = { id: string; displayStatus: string; cueCount: number; progressPercent: number; fileName: string };
+export type VideoJobApi = { id: string; displayStatus: string; sourceState: string; cueCount: number; progressPercent: number; fileName: string };
 export async function videoJobs(page: Page, projectId: string): Promise<VideoJobApi[]> {
   const res = await page.request.get(`/api/projects/${projectId}/video/jobs`);
   expect(res.ok()).toBeTruthy();
