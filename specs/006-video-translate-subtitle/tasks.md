@@ -419,14 +419,14 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 
 ## Phase 13: Polish & Cross-Cutting
 
-- [ ] T135 Rà `src/lib/i18n/vi.ts`, `en.ts`; chạy `npm run check:i18n`.
-- [ ] T136 Bổ sung mọi đường dẫn còn thiếu của openapi-delta vào `tests/isolation/isolation.test.ts`; kiểm nhật ký không có khóa trong `tests/integration/log-secrets.test.ts` (FR-056, FR-058).
-- [ ] T137 Người kiểm đối chiếu toàn bộ tab và trang biên tập với checklist của các task giao diện bằng `ui-consistency:verifying`; sửa trong `src/components/video/`; ghi kết quả tại đây (FR-059).
-- [ ] T138 [P] `tests/e2e/video-mobile.spec.ts`: 375 px, theme Sáng và Tối.
-- [ ] T139 Đo SC-006, SC-007, SC-010 và thành phẩm so với nguồn (FR-038) trong ảnh worker; ghi vào `specs/006-video-translate-subtitle/research.md`.
-- [ ] T140 [P] Viết `specs/006-video-translate-subtitle/user-tasks.md` cho việc cần người dùng hoặc máy triển khai (quickstart §8: SC-001 đến SC-005, SC-014, điều khoản Cloudflare, phần mềm dựng phim).
-- [ ] T141 [P] Cập nhật `README.md` và `docs/operations.md` (quyền, hạn mức, chọn trần hệ thống thấp hơn ổ đĩa thật, đĩa tạm, tự xóa, đường hầm).
-- [ ] T142 Chạy các mục tự động được của `specs/006-video-translate-subtitle/quickstart.md` và toàn bộ cổng chung; ghi kết quả tại đây.
+- [X] T135 Rà `src/lib/i18n/vi.ts`, `en.ts`; chạy `npm run check:i18n` (đã sửa `deleteMissing` trong `en.ts`; `check:i18n` đạt).
+- [X] T136 Bổ sung mọi đường dẫn còn thiếu của openapi-delta vào `tests/isolation/isolation.test.ts`; kiểm nhật ký không có khóa trong `tests/integration/log-secrets.test.ts` (FR-056, FR-058; 84/84 thao tác `PENDING 0`, `isolation` 236/236, `log-secrets` 17/17 gồm 5 ca Soniox video).
+- [X] T137 Người kiểm đối chiếu toàn bộ tab và trang biên tập với checklist của các task giao diện bằng `ui-consistency:verifying`; sửa trong `src/components/video/`; ghi kết quả tại đây (FR-059; agent `3e1d848d-1491-4c31-92d1-9558cbd269fd` PASS sau sửa `find-replace.tsx`, `upload-panel.tsx`, `editor.tsx`, `en.ts`).
+- [X] T138 [P] `tests/e2e/video-mobile.spec.ts`: 375 px, theme Sáng và Tối (4/4 đạt trên `desktop` và `mobile` trong 42,9 s).
+- [X] T139 Đo SC-006, SC-007, SC-010 và thành phẩm so với nguồn (FR-038) trong ảnh worker; ghi vào `specs/006-video-translate-subtitle/research.md` (`R16`; cũng thống nhất `data-model.md` §5 với `quota.ts`).
+- [X] T140 [P] Viết `specs/006-video-translate-subtitle/user-tasks.md` cho việc cần người dùng hoặc máy triển khai (quickstart §8: SC-001 đến SC-005, SC-014, điều khoản Cloudflare, phần mềm dựng phim).
+- [X] T141 [P] Cập nhật `README.md` và `docs/operations.md` (quyền, hạn mức, chọn trần hệ thống thấp hơn ổ đĩa thật, đĩa tạm, tự xóa, đường hầm).
+- [X] T142 Chạy các mục tự động được của `specs/006-video-translate-subtitle/quickstart.md` và toàn bộ cổng chung; ghi kết quả tại đây (`lint`, `check:i18n`, `tsc --noEmit` đạt; Vitest `unit`+`integration`+`contract` `--maxWorkers=1`: 118/119 tệp · 1.609/1.615 ca đạt, 6 bỏ qua do chưa bật `REAL_PROVIDER_TESTS=1`; `test:isolation`: 236/236; `npm run test:e2e`: 103/108 đạt với 5 lỗi ở `video-editor:268` + `video-export` do pagefile Windows tụt thoáng qua — chạy riêng `video-editor.spec.ts` + `video-export.spec.ts` ngay sau đó đạt 13/13).
 - [ ] T143 Hoàn tất theo hiến pháp 1.4.0 (làm cuối cùng): mọi task đã `done`, task `parked` hoặc chờ người dùng thì dừng, nêu từng task và hỏi trước; chỉ commit thay đổi của tính năng, không commit bí mật; kéo `origin/main` mới (nếu có) và chạy lại kiểm thử; push `origin/main`; thông báo mã commit, kết quả push, kiểm thử, việc còn lại; đánh dấu T143 trong `specs/006-video-translate-subtitle/tasks.md`.
 
 ---

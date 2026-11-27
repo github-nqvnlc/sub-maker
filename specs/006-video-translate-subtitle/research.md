@@ -47,7 +47,7 @@ Số đo trong tài liệu này lấy trên máy dev: Windows 10, Intel i3-12100
   - Cờ xoay: để ffmpeg tự xoay; kích thước hiển thị tính sau xoay. Điểm ảnh không vuông: co về vuông. Kích thước lẻ: làm tròn xuống số chẵn.
   - HDR (`smpte2084`, `arib-std-b67`): chuyển về SDR BT.709 bằng `zscale` + `tonemap`, cảnh báo trước khi xuất. Nguồn SD BT.601 giữ ma trận màu của nguồn.
 - **Rationale**: Đo: 150 khung tốc độ thay đổi qua `overlay` giữ nguyên toàn bộ mốc khung (trùng mã băm) và thời lượng; video có cờ xoay 90° cho thành phẩm 360×640 đúng chiều; ffmpeg dev có `zscale`, `tonemap` và bộ tách `mov`, `matroska`, `avi`, `flv`. CRF 20 nằm trong khoảng 18–22 của REQ-006; trần bitrate làm dung lượng ước tính được (FR-042, FR-053).
-- **Chưa đo**: FR-038 (không phân biệt được bằng mắt) phải so khung trên video thật ([quickstart.md](./quickstart.md) §8).
+- **Đo trên ảnh worker và phần còn chờ**: đã đo khách quan trên video mẫu `testsrc2` 1080p ở `R16` (`SSIM All: 0,999432`, `PSNR trung bình: 53,90 dB`, vùng không có chữ); kiểm tra đối chiếu bằng mắt tại 20 thời điểm trên video thật vẫn cần thực hiện khi triển khai ([user-tasks.md](./user-tasks.md), [quickstart.md](./quickstart.md) §8).
 - **Alternatives considered**: CRF 18 không trần (thành phẩm có thể gấp 2–3 lần nguồn, vượt hạn mức); giữ đúng bitrate nguồn (mất nét ở nguồn nén kỹ); `preset medium` (chậm khoảng 2 lần).
 
 ## R4. Tách âm thanh và độ lệch đầu luồng
@@ -138,3 +138,26 @@ Số đo trong tài liệu này lấy trên máy dev: Windows 10, Intel i3-12100
 | `mediabunny` trên các trình duyệt | bước 8 | thu hẹp danh sách luồng nhanh |
 | Tải lên 10 GB qua đường hầm thật; điều khoản Cloudflare | trước khi phát hành | đổi cách công bố hoặc hạ giới hạn |
 | SC-003, SC-004, SC-005, SC-010 và FR-038 trên video thật, máy triển khai | cuối | chỉnh tham số hoặc quay lại spec |
+
+## R16. Kết quả đo nghiệm thu trong ảnh worker (T139)
+
+Đo ngày 2026-11-27 bên trong Docker image `worker` vừa dựng từ mã nguồn hiện tại (`node:22-bookworm-slim`, FFmpeg `5.1.9-0+deb12u1`, CPU 8 luồng `12th Gen Intel(R) Core(TM) i3-12100`, FFmpeg `-threads 6`, ~5 GB RAM trong container):
+
+- **SC-010 (`scripts/video-bench.ts 60 20 cut,karaoke`)**:
+  - `1080p cut`: 13,0 s cho 60 s = **4,63×** thời gian thực (vẽ chữ 2,2 s; dải `1920×272`; 39,9 MB; suy ra 10 phút ≈ **2,16 phút**, đạt ngưỡng ≤ 20 phút).
+  - `1080p karaoke`: 14,4 s cho 60 s = **4,17×** thời gian thực (vẽ chữ 7,2 s; dải `1920×272`; 41,9 MB; suy ra 10 phút ≈ **2,40 phút**, đạt ngưỡng ≤ 20 phút).
+  - `4K cut`: 13,4 s cho 20 s = **1,50×** thời gian thực (vẽ chữ 1,9 s; dải `3840×544`; 46,4 MB).
+  - `4K karaoke`: 16,8 s cho 20 s = **1,19×** thời gian thực (vẽ chữ 6,8 s; dải `3840×544`; 47,4 MB).
+  - Cổng `video-bench`: **ĐẠT**.
+- **SC-006 (tìm và thay thế tất cả trên 3.000 cue, 12.000 vị trí khớp, 3 biến thể dấu)**:
+  - `findInCues`: 36,02 ms; `replaceOps` + `applyOps`: 82,54 ms; tổng **118,56 ms** (ngưỡng ≤ 2.000 ms); còn lại 0 vị trí khớp (`remainingAfterReplace = 0`); hoàn tác `applyOps` mất 2,70 ms (`undoOk = true`).
+- **SC-007 (cập nhật cảnh và vẽ lại khung xem trước, 23 phông đã nạp)**:
+  - `1080p`, mặc định, 100 cue: dựng cảnh 0,17 ms + vẽ khung đầu 1,73 ms = **1,90 ms** (vẽ khung kế: 2,98 ms).
+  - `1080p`, mặc định, 3.000 cue: dựng cảnh 0,92 ms + vẽ khung đầu 1,03 ms = **1,95 ms** (vẽ khung kế: 0,98 ms).
+  - `1080p`, song ngữ + karaoke + viền + bóng, 3.000 cue: dựng cảnh 1,14 ms + vẽ khung đầu 2,88 ms = **4,03 ms** (vẽ khung kế: 4,72 ms).
+  - `4K`, song ngữ + karaoke + viền + bóng, 3.000 cue: dựng cảnh 0,92 ms + vẽ khung đầu 5,83 ms = **6,75 ms** (vẽ khung kế: 10,49 ms).
+  - Tất cả đều dưới ngưỡng 200 ms.
+- **FR-038 & SC-008 (gắn cứng bằng `burnArgs` theo `DEFAULT_VIDEO_STYLE`, 10 s `1920×1080` @ 30 fps `testsrc2` + AAC 48 kHz)**:
+  - Thời gian dựng: 2.114 ms (suy ra 10 phút ≈ 2,11 phút); dải phụ đề `y=856, height=124`.
+  - Thành phẩm giữ nguyên `1920×1080`, `30/1` fps, `300/300` khung, chênh lệch thời lượng **0 ms** (ngưỡng ≤ 100 ms), luồng tiếng `-c:a copy` trùng khớp MD5 tuyệt đối (`audioCopyMd5Match = true`).
+  - Đối chiếu 20 khung lấy mẫu cách đều ở vùng không có chữ (`y = 0..648`): **SSIM All = 0,999432** (`Y: 0,999583`, `U: 0,999148`, `V: 0,999108`), **PSNR trung bình = 53,90 dB** (`min: 50,78 dB`, `max: 58,05 dB`). Kiểm tra nhìn trực tiếp trên video quay thật trên máy triển khai giữ ở `user-tasks.md`.

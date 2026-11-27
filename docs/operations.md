@@ -256,3 +256,44 @@ docker run --rm -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/docs/example:/app/doc
 ```
 
 Đạt khi thời gian xuất không dài hơn thời lượng video. Số đã đo: `specs/005-subtitle-video-overlay/research.md` R1.
+
+## 12. Dịch video và gắn phụ đề (spec 006)
+
+### Quyền và phạm vi sử dụng
+
+- Tài khoản mới **mặc định không có quyền Dịch Video** (`users.can_translate_video = false`); Administrator luôn được phép và bật/tắt quyền theo từng User ở **Quản trị → Người dùng**.
+- Tắt quyền giữa chừng sẽ tự động gắn cờ dừng cho các tiến trình dịch và xuất video đang chạy của tài khoản đó mà không làm mất phụ đề đã lưu.
+
+### Hạn mức video và trần dung lượng toàn hệ thống
+
+- Hạn mức video (`users.video_used_bytes`, mặc định `userVideoQuotaBytes = 30 GB`) **tách riêng** với hạn mức 500 MB thường (chữ phụ đề lưu trong CSDL vẫn tính vào phần `script_bytes` mềm trong 500 MB và không chặn lưu).
+- **Trần dung lượng hệ thống** (`videoSystemCapBytes`, mặc định `100 GB`) giới hạn tổng dung lượng video đã lưu + chỗ đang giữ của phiên tải nguồn đang mở & bản xuất đang chạy + dung lượng bản xem trước `preview_bytes` của mọi User.
+- **Khuyến nghị chọn trần thấp hơn ổ đĩa thật**: ứng dụng web không truy vấn trực tiếp đĩa trống của MinIO, và các tệp tạm ngắn hạn (`audio.*`, `transcript-*.json`) nằm trong `video-tmp/` trước khi dọn; do đó **luôn đặt `videoSystemCapBytes` tối đa ~70–80% phần dung lượng thực cấp cho volume `miniodata`** (chừa dư ít nhất 20–30 GB cho tệp tạm, metadata S3 và phần dở chưa dọn).
+
+### Đĩa tạm của worker (`/tmp/submaker-video-*`)
+
+- Worker tải video nguồn về đĩa tạm, tách âm thanh / dựng bản xem trước / mã hóa video thành phẩm (tới 10 GB) rồi đẩy lên MinIO theo từng phần (multipart upload), không giữ video lớn trong RAM.
+- Trước mỗi tác vụ nặng (`video-prepare`, `video-preview`, `video-render`), worker kiểm tra chỗ trống đĩa tạm bằng `statfs`: cần ít nhất **dung lượng nguồn + dung lượng ước tính thành phẩm + 1 GB dự phòng** (`DISK_MARGIN`). Với video nguồn 10 GB, container `worker` cần tối thiểu **~22–25 GB trống** ở vùng lưu tạm (`/tmp`); xuất lớp phụ đề `.mov` trong suốt 10 phút cần thêm khoảng 2,5 GB. Thiếu đĩa sẽ báo lỗi sạch để không làm sập tiến trình.
+- Tệp nguồn không tin cậy luôn được đọc từ đĩa với `-protocol_whitelist file` và ép bộ tách theo đuôi; tiến trình `ffmpeg` chạy ở mức ưu tiên thấp (`PRIORITY_BELOW_NORMAL`), tối đa `max(1, CPU - 2)` luồng.
+
+### Tự xóa theo hạn và thẻ giữ lượt tải
+
+- Lịch `video-retention` chạy mỗi **10 phút**:
+  - **Video nguồn**: xóa sau `videoSourceRetainHours` (mặc định **48 giờ**) kể từ lần xuất thành công gần nhất; nếu việc chưa xuất lần nào (chờ duyệt, đã dừng, lỗi) thì xóa sau `videoIdleRetainDays` (mặc định **7 ngày**) không hoạt động. Người dùng vẫn tải được tệp phụ đề và có thể tải lại đúng video gốc (so kích thước + dấu vân tay 3 đoạn 1 MB) để xuất tiếp.
+  - **Video thành phẩm & lớp phụ đề**: xóa sau `videoOutputRetainDays` (mặc định **7 ngày**) kể từ lúc hoàn tất.
+  - **Tệp tạm & phiên tải dở**: phần tải lên dở quá **48 giờ**, bản âm thanh/xem trước của nguồn đã xóa và bản token thô quá hạn được tự động dọn sạch (hủy cả multipart upload trong MinIO theo bản ghi CSDL).
+- **Bảo vệ khi đang phát/tải**: đường phát/tải gia hạn `download_lease_until` mỗi 60 giây trong lúc truyền; tệp đến hạn sẽ được bỏ qua cho tới lượt dọn sau khi kết thúc tải/xuất.
+
+### Tải lên tệp lớn qua Cloudflare Tunnel
+
+- Tệp nguồn được chia từng phần **16 MB** (`SHA-256` từng phần, tối đa 3 phần song thời từ trình duyệt) nên mỗi yêu cầu đều nằm dưới ngưỡng thân yêu cầu 100 MB của gói Cloudflare miễn phí. Máy chủ giới hạn tối đa **8 phần giữ đồng thời trong RAM (128 MB)** trên toàn hệ thống, vượt quá sẽ trả `429 Retry-After` để trình duyệt tự chờ và tiếp tục.
+- **Điều khoản sử dụng (ToS) của Cloudflare**: gói Cloudflare Tunnel/CDN phổ thông hạn chế phân phối hoặc truyền lượng lớn nội dung video qua proxy HTTP chuẩn. Người vận hành **cần rà soát gói dịch vụ / điều khoản Cloudflare hiện hành** (và chạy kiểm thử tải 10 GB thật trên đường hầm đích trong [user-tasks.md](../specs/006-video-translate-subtitle/user-tasks.md)) trước khi mở tính năng cho người dùng Internet rộng rãi.
+
+### Đo hiệu năng trong ảnh worker
+
+```bash
+docker build --target worker -t submaker-worker:bench -f docker/Dockerfile .
+docker run --rm -v "$PWD/scripts:/app/scripts:ro" submaker-worker:bench npx tsx scripts/video-bench.ts 60 20 cut,karaoke
+```
+
+Kết quả đo và đánh dấu đồng hồ trên ảnh worker: xem `specs/006-video-translate-subtitle/research.md`.

@@ -303,7 +303,13 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
           <span>
             {e.style.saveError} {styleEditor.error}
           </span>
-          <Button size="sm" variant="outline" disabled={styleEditor.status === 'saving'} onClick={() => styleEditor.store.retry()}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="aria-disabled:opacity-50"
+            aria-disabled={styleEditor.status === 'saving' || undefined}
+            onClick={() => styleEditor.status !== 'saving' && styleEditor.store.retry()}
+          >
             {t.common.retry}
           </Button>
         </div>

@@ -1,10 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startMockProvider, type MockProvider } from '../../mock-provider/server';
 import { getDb } from '@/lib/db';
-import { aiProviderConfigs, jobSegments, voiceJobs } from '@/lib/db/schema';
+import { aiProviderConfigs, jobSegments, videoExports, videoJobLogs, videoJobs, voiceJobs } from '@/lib/db/schema';
 import { runGenerateVoice } from '@/worker/jobs/generate-voice';
 import { stopBoss } from '@/worker/queues';
+import { startSonioxMock, type SonioxMock } from '../mocks/soniox-mock';
 import { clearRateLimits, createAdmin, createUser, resetDb, type TestUser } from './helpers';
+import { putSonioxConfig, SONIOX_KEY } from './stt-helpers';
+import { grantVideo } from './video-helpers';
+import { runPipeline, uploadedJob } from './video-pipeline-helpers';
 import { FAST, GLOBAL_KEY, logRows, newProject, putGlobalConfig, setScenario, startJob, uploadScript } from './voice-helpers';
 
 /**
@@ -86,5 +90,53 @@ describe('không lộ bí mật ở bất kỳ đâu', () => {
     await setScenario(admin, mock, '401');
     const res = await admin.client.post('/api/admin/ai-configs/fpt_marketplace/test', { json: {} });
     expectNoSecrets('test-connection', await res.text());
+  });
+});
+
+describe('không lộ khóa Soniox trong dịch video (T136; FR-056)', () => {
+  let soniox: SonioxMock;
+  beforeAll(async () => {
+    soniox = await startSonioxMock();
+  });
+  afterAll(async () => {
+    await soniox.close();
+  });
+
+  function expectNoSonioxSecret(label: string, haystack: string) {
+    expect(haystack.includes(SONIOX_KEY), `${label}: lộ khóa Soniox`).toBe(false);
+    expect(haystack.includes(SONIOX_KEY.slice(0, 16)), `${label}: lộ phần đầu khóa Soniox`).toBe(false);
+    for (const re of LEAK_PATTERNS) expect(re.test(haystack), `${label}: khớp mẫu bí mật ${re}`).toBe(false);
+  }
+
+  it.each(['ok', '401', '5xx', 'malformed', 'redirect-internal'] as const)('dịch video với Soniox kịch bản "%s"', async (scenario) => {
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => undefined));
+    try {
+      await putSonioxConfig(admin, soniox, scenario, { enabled: true });
+      await grantVideo(admin, user.id, true);
+      const projectId = await newProject(user);
+      const created = await uploadedJob(user, projectId);
+      await runPipeline(created.id);
+
+      const jobs = await getDb().select().from(videoJobs);
+      const logs = await getDb().select().from(videoJobLogs);
+      const exps = await getDb().select().from(videoExports);
+      expectNoSonioxSecret('video_jobs', JSON.stringify(jobs));
+      expectNoSonioxSecret('video_job_logs', JSON.stringify(logs));
+      expectNoSonioxSecret('video_exports', JSON.stringify(exps));
+
+      for (const url of [`/api/video/jobs/${created.id}`, `/api/projects/${projectId}/video`, `/api/projects/${projectId}/video/jobs`]) {
+        const res = await user.client.get(url);
+        expectNoSonioxSecret(url, await res.text());
+      }
+      const cfg = await admin.client.get('/api/admin/stt-config');
+      const cfgText = await cfg.text();
+      expectNoSonioxSecret('/api/admin/stt-config', cfgText);
+      expect(cfgText).toContain(SONIOX_KEY.slice(-4));
+
+      const printed = spies.flatMap((s) => s.mock.calls.map((c) => c.map((x) => (x instanceof Error ? `${x.message}\n${x.stack}` : typeof x === 'string' ? x : JSON.stringify(x))).join(' ')));
+      expectNoSonioxSecret('console', printed.join('\n'));
+    } finally {
+      spies.forEach((s) => s.mockRestore());
+    }
   });
 });

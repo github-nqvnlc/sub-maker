@@ -1064,7 +1064,7 @@ export const en: Dict = {
       selectAll: 'Select all translation jobs',
       selectRow: 'Select this translation job',
       storage: 'Your account uses {used} of {quota} video storage',
-      deleteMissing: '{n} jobs could not be deleted because they no longer exist.',
+      deleteMissing: 'Could not delete {n} job(s): not found.',
       storageReserved: '({size} reserved)',
     },
     editor: {

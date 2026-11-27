@@ -45,6 +45,7 @@ Giao diện hoàn toàn bằng tiếng Việt, dùng được trên điện tho�
 | **Quản lý tiến trình** | **Dừng**, **tiếp tục** (bỏ qua các đoạn đã xong), **chạy lại** (tạo tiến trình mới; đoạn trùng được lấy từ cache, không tốn phí lặp), **sửa thiết lập** (model/giọng/tốc độ khi đã dừng hoặc lỗi), xóa một hoặc nhiều. |
 | **Nghe voice** | Trình phát có tua, tốc độ phát, âm lượng, tải `.mp3`; **highlight đúng câu đang đọc**, bấm câu để phát từ đó, tự cuộn theo câu đang đọc. |
 | **Video Overlay** | Tab riêng trong mỗi Project: xuất video **chỉ có chữ phụ đề** chạy khớp voice, để chèn đè lên video chính trong CapCut, Premiere, DaVinci Resolve, After Effects. Nguồn là voice của Project hoặc tệp `.mp3`/`.wav`/`.m4a` tải lên (≤ 100 MB), cùng kịch bản `.srt` có mốc. Khung 9:16, 16:9, 1:1; phông xanh lá, xanh dương, đen (`.mp4`) hoặc **nền trong suốt** (`.mov` ProRes 4444, `.webm` VP9). 5 phông chữ đủ tiếng Việt, viền, bóng, hộp nền, vị trí; 13 hiệu ứng xuất hiện, 3 cách biến mất, chế độ theo câu, theo từng từ và karaoke (nhịp từng từ là **ước lượng**). **Xem trước ngay trong trình duyệt** bằng cùng bộ vẽ với video xuất ra; cấu hình tự lưu. Xuất chạy nền, có tiến độ, nhật ký, dừng, chạy lại, dùng lại cấu hình, xóa nhiều mục. Vận hành: `docs/operations.md` §11. |
+| **Dịch Video** | Tab riêng trong Project (do Administrator cấp quyền): tải lên video `.mp4`, `.mov`, `.mkv`, `.webm`, `.avi`, `.flv`, `.m4v` tới **10 GB** (chia phần 16 MB có SHA-256, tạm dừng/tiếp tục/tự nối khi mất mạng; trình duyệt đủ mạnh tự tách âm thanh trong Web Worker bằng `mediabunny` để có phụ đề trong lúc video nguồn đang tải lên). Soniox nhận dạng và dịch hai chiều (**mọi ngôn ngữ → tiếng Việt** hoặc **tiếng Việt → tiếng Anh**), hỗ trợ **từ điển thuật ngữ** của Project (nhập/dán hàng loạt, giữ nguyên từ, dịch lại có xác nhận). Trình biên tập hỗ trợ video lên tới **20.000 đoạn**, sửa trực tiếp câu gốc & bản dịch, hoàn tác nhiều bước, kéo mốc trên dòng thời gian, gộp/tách/thêm/xóa đoạn, tìm & thay thế tiếng Việt không dấu/có dấu. Tùy chỉnh kiểu chữ (7 họ phông chữ gồm Oswald, Open Sans và độ đậm 600, chế độ **song ngữ**, bóng đổ, hộp nền, **vùng an toàn 9:16** cho TikTok/Shorts/Reels, hiệu ứng + karaoke), xem trước khớp với thành phẩm, tải `.srt`/`.vtt` hoặc lưu thành kịch bản, xuất **video gắn cứng (`.mp4`)** hoặc **lớp phụ đề riêng (`.mp4` phông xanh `#00FF00` / `.mov` nền trong suốt)**. Chi tiết: `docs/operations.md` §12. |
 | **Dashboard** | Số Project/voice, tổng thời lượng, ký tự đã gửi tới AI (theo ngày, theo nhà cung cấp, tách cấu hình chung/riêng), chi phí ước tính, dung lượng đã dùng so với hạn mức, lọc theo khoảng ngày. |
 | **Cấu hình AI riêng** | Người dùng được Admin cho phép có thể nhập base URL/khóa API riêng để thay cho cấu hình chung (chi phí do tài khoản đó chịu). |
 
@@ -160,7 +161,11 @@ Giới hạn mặc định (Administrator chỉnh trong **Quản trị → Cài 
 | Tiến trình chạy đồng thời toàn hệ thống / mỗi người | 3 / 2 |
 | Số đoạn gọi AI song song trong một tiến trình | 3 |
 | Xuất video overlay: toàn hệ thống / mỗi người (chờ hoặc chạy) | 1 / 2 |
-| Thời lượng voice để xuất video: phông màu / nền trong suốt | 60 phút / 10 phút |
+| Thời lượng voice để xuất video overlay: phông màu / nền trong suốt | 60 phút / 10 phút |
+| Hạn mức video mỗi người dùng / trần dung lượng video toàn hệ thống | 30 GB / 100 GB |
+| Video tải lên: dung lượng / thời lượng / việc đồng thời mỗi người | 10 GB / 180 phút / 1 việc |
+| Dịch video / xuất video đồng thời toàn hệ thống | 2 lượt dịch / 1 lượt xuất |
+| Lưu giữ video nguồn (đã xuất / chưa xuất) / thành phẩm đã xuất | 48 giờ / 7 ngày / 7 ngày |
 | Đăng nhập / đăng ký | 5 lần mỗi phút / 5 lần mỗi giờ (theo IP) |
 
 ---
@@ -335,6 +340,7 @@ Toàn bộ nằm dưới `/api`, trả JSON; lỗi có dạng `{ error: { code, 
 | Log thời gian thực | `GET /jobs/{id}/logs` (phân trang), `GET /jobs/{id}/events` (SSE, hỗ trợ `Last-Event-ID` để nối lại không mất dòng) |
 | Voice | `GET /voices/{id}`, `GET /voices/{id}/audio` (hỗ trợ `Range`, tải về) |
 | Video Overlay | `GET/PUT /projects/{id}/overlay`, `GET …/overlay/timeline`, `GET/POST …/overlay/audios`, `GET/POST …/overlay/jobs`, `GET /overlay/jobs/{id}`, `POST …/stop`, `/rerun`, `GET …/video`, `POST /overlay/jobs/bulk-delete`, `GET /overlay/audios/{id}/stream`, `POST /overlay/audios/bulk-delete` (đặc tả: `specs/005-subtitle-video-overlay/contracts/`) |
+| Dịch Video | `GET/POST …/video/jobs`, `PUT …/video/settings`, `POST/GET/PUT/DELETE /video/uploads/*`, `GET/DELETE/POST /video/jobs/{id}[/stop\|/rerun\|/retranslate\|/cues\|/cues/ops\|/style\|/subtitles\|/to-script\|/media\|/events\|/client-audio]`, `POST /video/jobs/{id}/exports[/estimate]`, `/video/exports/{id}[/video\|/stop\|/rerun]`, `POST /video/jobs/bulk-delete` (đặc tả: `specs/006-video-translate-subtitle/contracts/openapi-delta.yaml`) |
 | Quản trị | `/admin/users[/{id}[/reset-password]]`, `/admin/ai-configs[/{type}[/test]]`, `/admin/custom-ai-users[/{id}]`, `/admin/stats`, `/admin/settings` |
 
 Mô hình dữ liệu (rút gọn): `users` · `ai_provider_configs` (chung/riêng, khóa đã mã hóa) · `projects` · `subtitle_files` · `segments` · `voice_jobs` ·

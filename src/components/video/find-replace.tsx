@@ -105,8 +105,12 @@ export function FindReplacePanel({
   const replaceOne = () => {
     const match = matches[current];
     if (!match) return;
-    // chỗ đang chọn đã giống hệt chữ thay: không có gì để đổi, sang chỗ kế
-    if (replaceOps(cues, [match], state.replacement, state.column).replaced === 0) return void go(1);
+    // chỗ đang chọn đã giống hệt chữ thay: nếu chỉ còn một kết quả thì báo rõ, còn nhiều hơn thì nhảy tới kết quả kế
+    if (replaceOps(cues, [match], state.replacement, state.column).replaced === 0) {
+      if (matches.length <= 1) toast.error(f.nothing);
+      else go(1);
+      return;
+    }
     const ops = apply([match]);
     const op = ops?.[0];
     if (op?.type !== 'update') return;

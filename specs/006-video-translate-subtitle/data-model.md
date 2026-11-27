@@ -193,9 +193,9 @@ Xét trước mọi dòng trên: `source_state = rejected` (video không đạt 
 | --- | --- | --- | --- |
 | video nguồn | `users/{u}/video/{job}/source.{ext}` | hạn mức video | `source_expires_at` |
 | thành phẩm, lớp phụ đề | `users/{u}/video/{job}/exports/{id}-{lượt}.{ext}` (mỗi lượt dựng một khóa) | hạn mức video | `expires_at` |
-| âm thanh tách / do trình duyệt gửi | `users/{u}/video-tmp/{job}/audio.*` | chỉ trần hệ thống | âm thanh trình duyệt: sau khi chuyển MP3; MP3: cùng video nguồn |
-| bản xem trước | `users/{u}/video-tmp/{job}/preview.mp4` | chỉ trần hệ thống | cùng video nguồn |
-| token thô của Soniox | `users/{u}/video-tmp/{job}/transcript-{lượt}.json` | chỉ trần hệ thống | sau khi lưu cue; còn sót thì theo `last_activity_at` + `videoIdleRetainDays` |
+| âm thanh tách / do trình duyệt gửi | `users/{u}/video-tmp/{job}/audio.*` | chỉ bộ nhớ tạm (không cộng vào `videoSystemBytes`) | âm thanh trình duyệt: sau khi chuyển MP3; MP3: cùng video nguồn |
+| bản xem trước | `users/{u}/video-tmp/{job}/preview.mp4` | trần hệ thống (`preview_bytes` trong `videoSystemBytes`) | cùng video nguồn |
+| token thô của Soniox | `users/{u}/video-tmp/{job}/transcript-{lượt}.json` | chỉ bộ nhớ tạm (không cộng vào `videoSystemBytes`) | sau khi lưu cue; còn sót thì theo `last_activity_at` + `videoIdleRetainDays` |
 | chữ phụ đề (trong CSDL) | — | 500 MB (`script_bytes`) | xóa việc, Project, User |
 
 `source_expires_at`: đã có bản xuất thành công → `finished_at` gần nhất + `videoSourceRetainHours`; chưa có → `last_activity_at` + `videoIdleRetainDays`; đang tải → theo `expires_at` của phiên. Chỉ một hàm được ghi cột này: `recomputeSourceExpiry(jobId, tx)` trong `src/lib/video/expiry.ts`, gọi trong cùng giao dịch ở mỗi sự kiện làm đổi một trong các giá trị đó (tạo và hoàn tất tải lên; dừng, lỗi, chạy lại, chờ duyệt; sửa cue; đổi kiểu; tạo, hoàn tất, lỗi bản xuất). Việc dọn dẹp chỉ đọc. Đến hạn mà còn tiến trình hoặc thẻ giữ lượt tải thì để lượt quét sau.
