@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { CueFields, CueTools, type CueActions } from '@/components/video/cue-editing';
 import { useT } from '@/lib/i18n/client';
 import { fmt } from '@/lib/i18n/fmt';
+import type { FindColumn, FindMatch } from '@/lib/video/find-replace';
 import { formatCueTime } from '@/lib/video/time';
 import type { Cue } from '@/lib/video/types';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,36 @@ import { cn } from '@/lib/utils';
 const USER_SCROLL_PAUSE_MS = 3500;
 /** Chiều cao ước tính của một hàng chưa đo. */
 const ROW_PX = 128;
+
+/** Kết quả tìm cần tô trong danh sách: các vị trí theo từng cue của một cột, và vị trí đang chọn. */
+export type CueMarks = {
+  column: FindColumn;
+  byCue: ReadonlyMap<string, readonly FindMatch[]>;
+  current: FindMatch | null;
+  /** tăng khi người dùng chuyển kết quả ở khung tìm: danh sách cuộn tới đó (sửa chữ làm đổi kết quả thì không cuộn) */
+  jump: number;
+};
+
+/** Chữ của cột đang tìm với các chỗ khớp được tô: ô nhập không tô được từng đoạn chữ. */
+function Marked({ text, matches, current }: { text: string; matches: readonly FindMatch[]; current: FindMatch | null }) {
+  const parts: React.ReactNode[] = [];
+  let at = 0;
+  for (const m of matches) {
+    parts.push(text.slice(at, m.start));
+    parts.push(
+      <mark key={m.start} data-current={m === current ? 'true' : 'false'} className={cn('rounded-sm px-0.5', m === current ? 'bg-primary text-primary-foreground' : 'bg-primary/20 text-foreground')}>
+        {text.slice(m.start, m.end)}
+      </mark>,
+    );
+    at = m.end;
+  }
+  parts.push(text.slice(at));
+  return (
+    <p data-testid="cue-marks" className="text-xs break-words whitespace-pre-wrap text-muted-foreground">
+      {parts}
+    </p>
+  );
+}
 
 /**
  * Danh sách cue hai cột, chỉ dựng các hàng đang thấy (kịch bản tới 20.000 cue). Cue đang phát được tô sáng và cuộn vào giữa, trừ khi
@@ -32,6 +63,7 @@ export function CueList({
   onSelect,
   onSeek,
   onPlayFrom,
+  marks,
 }: {
   cues: readonly Cue[];
   active: number;
@@ -45,6 +77,7 @@ export function CueList({
   /** bấm vào một cue: tua tới đầu cue */
   onSeek: (index: number) => void;
   onPlayFrom: (index: number) => void;
+  marks?: CueMarks | null;
 }) {
   const t = useT();
   const l = t.video.editor.list;
@@ -98,6 +131,21 @@ export function CueList({
       window.removeEventListener('pointercancel', release);
     };
   }, []);
+
+  // chuyển tới kết quả tìm đang chọn: chỉ cuộn, không lấy tiêu điểm khỏi ô tìm
+  const found = useRef(marks?.current ?? null);
+  useEffect(() => {
+    found.current = marks?.current ?? null;
+  }, [marks]);
+  const jump = marks?.jump ?? 0;
+  useEffect(() => {
+    const target = found.current;
+    if (!jump || !target) return;
+    const index = latest.current.findIndex((c) => c.id === target.cueId);
+    if (index < 0) return;
+    pausedUntil.current = Date.now() + USER_SCROLL_PAUSE_MS;
+    scrollToIndex.current(index, { align: 'center' });
+  }, [jump]);
 
   const holdAutoScroll = () => {
     pausedUntil.current = Date.now() + USER_SCROLL_PAUSE_MS;
@@ -168,6 +216,7 @@ export function CueList({
                     {cue.timing === 'estimated' ? <Badge variant="outline">{l.estimated}</Badge> : null}
                   </div>
                   <CueFields cue={cue} number={n} readOnly={readOnly} actions={actions} />
+                  {marks?.byCue.has(cue.id) ? <Marked text={(marks.column === 'source' ? cue.sourceText : cue.targetText).normalize('NFC')} matches={marks.byCue.get(cue.id)!} current={marks.current} /> : null}
                   {selected && !readOnly ? <CueTools cue={cue} number={n} isLast={item.index === cues.length - 1} actions={actions} /> : null}
                 </div>
               </div>

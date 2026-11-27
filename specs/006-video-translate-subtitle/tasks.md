@@ -311,14 +311,19 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 
 **Independent Test**: đếm, tô sáng, thay một, thay tất cả, tùy chọn, hoàn tác.
 
-- [ ] T109 [P] [US6] `tests/unit/video/find-replace.test.ts`: không dấu và có dấu, `đ`, hoa/thường, cả từ tiếng Việt, dạng khớp, vị trí không còn khớp; 3.000 cue ≤ 2 giây (FR-025, SC-006).
-- [ ] T110 [US6] Viết `src/lib/video/find-replace.ts` theo contracts/subtitle-pipeline.md §4.
-- [ ] T111 [US6] Viết `src/components/video/find-replace.tsx` và tô sáng trong `cue-list.tsx`.
+- [X] T109 [P] [US6] `tests/unit/video/find-replace.test.ts`: không dấu và có dấu, `đ`, hoa/thường, cả từ tiếng Việt, dạng khớp, vị trí không còn khớp; 3.000 cue ≤ 2 giây (FR-025, SC-006).
+  - done (27/11): `tests/unit/video/find-replace.test.ts` 12 ca (đã thấy trượt rồi đạt).
+- [X] T110 [US6] Viết `src/lib/video/find-replace.ts` theo contracts/subtitle-pipeline.md §4.
+  - done: `src/lib/video/find-replace.ts`; nhớ chuỗi đã gập theo cue.
+- [X] T111 [US6] Viết `src/components/video/find-replace.tsx` và tô sáng trong `cue-list.tsx`.
   - `Input`, `SelectField`, `SwitchRow`, `Button size="sm" variant="outline"`; số kết quả `tabular-nums`; xác nhận nhiều dạng khác dấu bằng `ConfirmDialog`; không có kết quả thì nói rõ.
   - Mẫu: `src/components/overlay/typography-panel.tsx` cho các hàng điều khiển. Không chép: tiêu đề và nhóm kiểu chữ.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T112 [US6] Thêm ca tìm thay vào `tests/e2e/video-editor.spec.ts`.
-- [ ] T113 [US6] Chạy Independent Test của US6 theo `specs/006-video-translate-subtitle/quickstart.md` §2 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - done (27/11): `find-replace.tsx`, tô sáng trong `cue-list.tsx`; agent kiểm ba lượt. Còn mở (mức rất thấp): khi chỉ còn đúng một kết quả và nó đã giống chữ thay thì bấm "Thay thế" không có phản hồi.
+- [X] T112 [US6] Thêm ca tìm thay vào `tests/e2e/video-editor.spec.ts`.
+  - done (27/11): hai ca trong `tests/e2e/video-editor.spec.ts`.
+- [X] T113 [US6] Chạy Independent Test của US6 theo `specs/006-video-translate-subtitle/quickstart.md` §2 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - Kết quả (27/11): quickstart §2 bước 4–5 đạt trên desktop và 375 px — tìm "ban" khớp "bạn", "bán", "bàn"; hộp xác nhận liệt kê từng dạng; một lần hoàn tác trả lại đủ; tùy chọn hoa thường, khớp cả từ, khớp đúng dấu; thay một chỗ. Kịch bản 3.000 cue thay tất cả 141–172 ms trong trình duyệt (SC-006).
 
 ---
 

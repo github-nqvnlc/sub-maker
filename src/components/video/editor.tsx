@@ -2,8 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Redo2, Undo2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Redo2, Search, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -15,6 +15,7 @@ import type { CueActions } from '@/components/video/cue-editing';
 import { CueList } from '@/components/video/cue-list';
 import { ExportList } from '@/components/video/export-list';
 import { ExportPanel } from '@/components/video/export-panel';
+import { EMPTY_FIND, FindReplacePanel, useFindMatches, type FindState } from '@/components/video/find-replace';
 import { GlossaryEditor } from '@/components/video/glossary-editor';
 import { RetranslateButton } from '@/components/video/retranslate-button';
 import { VideoStatusBadge } from '@/components/video/status';
@@ -32,6 +33,7 @@ import { useFormat, useT } from '@/lib/i18n/client';
 import { fmt } from '@/lib/i18n/fmt';
 import { insertAfterOp, mergeOps, nudgeOp, setEdgeOp, splitOps, type Caret, type CueOp } from '@/lib/video/cue-ops';
 import type { CueListDto } from '@/lib/video/cues';
+import type { FindMatch } from '@/lib/video/find-replace';
 import { videoErrorText, videoLogText } from '@/lib/video/text';
 import { CUE_LIMITS, type VideoMedia } from '@/lib/video/types';
 
@@ -76,6 +78,28 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
   const [reveal, setReveal] = useState<{ id: string } | null>(null);
   const carets = useRef(new Map<string, Caret>());
   const readOnly = !job.editable || editor.status === 'conflict';
+  const [findOpen, setFindOpen] = useState(false);
+  const [find, setFind] = useState<FindState>(EMPTY_FIND);
+  const [findAt, setFindAt] = useState(0);
+  const [findJump, setFindJump] = useState(0);
+  const findFocus = useRef(false);
+  const findButton = useRef<HTMLButtonElement>(null);
+  const closeFind = () => {
+    setFindOpen(false);
+    findButton.current?.focus();
+  };
+  const { matches, matchDiacritics } = useFindMatches(cues, find, findOpen);
+  /** vị trí đang chọn, kẹp lại khi số kết quả giảm */
+  const current = Math.min(findAt, Math.max(0, matches.length - 1));
+  const matchesByCue = useMemo(() => {
+    const map = new Map<string, FindMatch[]>();
+    for (const m of matches) {
+      const list = map.get(m.cueId);
+      if (list) list.push(m);
+      else map.set(m.cueId, [m]);
+    }
+    return map;
+  }, [matches]);
 
   // tab khác đã lưu hoặc vừa dịch lại xong: đọc lại khi không còn gì chưa lưu
   const behind = job.cueRevision > editor.revision && editor.status === 'saved';
@@ -239,6 +263,19 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
                 <Redo2 className="size-3.5" />
                 {tools.redo}
               </Button>
+              <Button
+                ref={findButton}
+                size="sm"
+                variant="outline"
+                aria-expanded={findOpen}
+                onClick={() => {
+                  findFocus.current = !findOpen;
+                  setFindOpen(!findOpen);
+                }}
+              >
+                <Search className="size-3.5" />
+                {e.find.open}
+              </Button>
               <RetranslateButton job={job} disabled={readOnly} ensureSaved={ensureSaved} />
               {editor.status !== 'conflict' && !editor.error ? (
                 <span role="status" className="ml-auto text-xs text-muted-foreground" data-testid="save-status">
@@ -246,6 +283,29 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
                 </span>
               ) : null}
             </div>
+            {findOpen ? (
+              <FindReplacePanel
+                cues={cues}
+                state={find}
+                matches={matches}
+                matchDiacritics={matchDiacritics}
+                current={current}
+                readOnly={readOnly}
+                takeFocusRef={findFocus}
+                onChange={setFind}
+                onCurrent={(index) => {
+                  setFindAt(index);
+                  setFindJump((n) => n + 1);
+                }}
+                onApply={(ops) => {
+                  if (store.getSnapshot().status === 'conflict') return false;
+                  const violation = store.apply(ops);
+                  if (violation) toast.error(violation.reason === 'text' ? e.find.tooLong : tools.rejected);
+                  return !violation;
+                }}
+                onClose={closeFind}
+              />
+            ) : null}
             {cues.length === 0 ? (
               <EmptyState
                 title={e.list.empty}
@@ -267,6 +327,7 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
                 actions={actions}
                 reveal={reveal}
                 onRevealed={() => setReveal(null)}
+                marks={findOpen ? { column: find.column, byCue: matchesByCue, current: matches[current] ?? null, jump: findJump } : null}
                 onSeek={(index) => {
                   const cue = cues[index];
                   if (cue) seek(cue.startMs);

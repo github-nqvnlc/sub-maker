@@ -186,3 +186,108 @@ test('hai thẻ cùng sửa: thẻ sau được báo tải lại, bản của th
   await expect(second.getByRole('textbox', { name: 'Bản dịch đoạn 2', exact: true })).toHaveValue('Hôm nay chúng ta học điều mới.');
   await second.close();
 });
+
+/** Số kết quả tìm đang hiện. */
+const found = (page: Page) => page.getByTestId('find-count');
+
+// Independent Test US6 (T112, T113; quickstart §2 bước 4): từ tìm không dấu khớp chữ có dấu, xác nhận các dạng, hoàn tác một lần
+test('tìm và thay: khớp không dấu, tùy chọn, tô sáng, xác nhận các dạng, hoàn tác một lần @mobile', async ({ page }) => {
+  const { jobId } = await openEditor(page);
+  const before = ['Bạn bán bàn ban đêm', 'Hôm nay bạn học', 'Không có gì khớp'];
+  for (const [i, text] of before.entries()) await target(page, i + 1).fill(text);
+  await saved(page);
+
+  await page.getByRole('button', { name: 'Tìm và thay thế' }).click();
+  const query = page.getByRole('textbox', { name: 'Tìm', exact: true });
+  await expect(query).toBeFocused();
+  await query.fill('ban');
+  await expect(found(page)).toHaveText('Kết quả 1/5');
+  await expect(row(page, 1).getByTestId('cue-marks').locator('mark')).toHaveText(['Bạn', 'bán', 'bàn', 'ban']);
+  await expect(row(page, 1).locator('mark[data-current="true"]')).toHaveText('Bạn');
+  await page.getByRole('button', { name: 'Kết quả sau' }).click();
+  await expect(found(page)).toHaveText('Kết quả 2/5');
+  await expect(row(page, 1).locator('mark[data-current="true"]')).toHaveText('bán');
+
+  await page.getByRole('switch', { name: 'Phân biệt hoa, thường' }).click();
+  await expect(found(page)).toContainText('/4');
+  await page.getByRole('switch', { name: 'Phân biệt hoa, thường' }).click();
+  await page.getByRole('switch', { name: 'Khớp đúng dấu' }).click();
+  await expect(found(page)).toContainText('/1');
+  await page.getByRole('switch', { name: 'Khớp đúng dấu' }).click();
+  await query.fill('an');
+  await page.getByRole('switch', { name: 'Khớp cả từ' }).click();
+  await expect(found(page)).toHaveText('Không có kết quả');
+  await page.getByRole('switch', { name: 'Khớp cả từ' }).click();
+  await query.fill('zzz');
+  await expect(found(page)).toHaveText('Không có kết quả');
+  await expect(page.getByRole('button', { name: 'Thay thế tất cả' })).toBeDisabled();
+  await expectNoHorizontalScroll(page);
+
+  // nhiều dạng khác dấu: hỏi lại và liệt kê từng dạng; một lần hoàn tác trả lại tất cả
+  await query.fill('ban');
+  await page.getByRole('textbox', { name: 'Thay bằng' }).fill('tôi');
+  await page.getByRole('button', { name: 'Thay thế tất cả' }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText('5 chỗ sẽ được thay');
+  for (const line of ['“bạn”: 2 chỗ', '“bán”: 1 chỗ', '“bàn”: 1 chỗ', '“ban”: 1 chỗ']) await expect(dialog.getByRole('listitem').filter({ hasText: line })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Thay thế tất cả' }).click();
+  await expect(page.getByText('Đã thay 5 chỗ')).toBeVisible();
+  await expect(target(page, 1)).toHaveValue('tôi tôi tôi tôi đêm');
+  await expect(target(page, 2)).toHaveValue('Hôm nay tôi học');
+  await saved(page);
+  await expect.poll(async () => (await cuesInDb(jobId))[0]!.target_text).toBe('tôi tôi tôi tôi đêm');
+  await page.getByRole('button', { name: 'Hoàn tác' }).click();
+  for (const [i, text] of before.entries()) await expect(target(page, i + 1)).toHaveValue(text);
+
+  // thay một chỗ: chỉ vị trí đang chọn đổi
+  await query.fill('bạn');
+  await expect(found(page)).toHaveText('Kết quả 1/2');
+  await page.getByRole('button', { name: 'Thay thế', exact: true }).click();
+  await expect(target(page, 1)).toHaveValue('tôi bán bàn ban đêm');
+  await expect(target(page, 2)).toHaveValue('Hôm nay bạn học');
+  await expect(found(page)).toHaveText('Kết quả 1/1');
+
+  // chữ mới vẫn khớp từ tìm thì chuyển sang chỗ kế, không thay chồng tại chỗ
+  await query.fill('ban');
+  await page.getByRole('textbox', { name: 'Thay bằng' }).fill('bạn');
+  await expect(found(page)).toContainText('Kết quả 1/');
+  await page.getByRole('button', { name: 'Thay thế', exact: true }).click();
+  await expect(found(page)).toContainText('Kết quả 2/');
+  // chỗ đã đúng chữ thay thì chuyển tiếp thay vì đứng yên
+  await page.getByRole('button', { name: 'Kết quả trước' }).click();
+  await expect(found(page)).toContainText('Kết quả 1/');
+  await page.getByRole('button', { name: 'Thay thế', exact: true }).click();
+  await expect(found(page)).toContainText('Kết quả 2/');
+  // Escape ở bất kỳ ô nào của khung đều đóng và trả tiêu điểm về nút mở
+  await page.getByRole('textbox', { name: 'Thay bằng' }).press('Escape');
+  await expect(query).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Tìm và thay thế' })).toBeFocused();
+  await saved(page);
+});
+
+test('kịch bản 3.000 cue: thay tất cả trong vòng 2 giây (SC-006)', async ({ page }) => {
+  const { jobId } = await openEditor(page);
+  await e2eQuery('delete from video_cues where job_id = $1', [jobId]);
+  await e2eQuery(
+    `insert into video_cues (id, job_id, start_ms, end_ms, timing, source_text, target_text)
+     select gen_random_uuid(), $1, i * 1000, i * 1000 + 800, 'measured', 'Sentence ' || i, 'Câu ' || i || ': bạn nhé' from generate_series(0, 2999) i`,
+    [jobId],
+  );
+  await e2eQuery(`update video_jobs set cue_count = 3000, cue_revision = cue_revision + 1, media = jsonb_set(media, '{durationMs}', '3600000') where id = $1`, [jobId]);
+  await page.reload();
+  await expect(page.getByRole('tab', { name: 'Phụ đề (3000)' })).toBeVisible();
+  await page.getByRole('button', { name: 'Tìm và thay thế' }).click();
+  await page.getByRole('textbox', { name: 'Tìm', exact: true }).fill('bạn');
+  await expect(found(page)).toHaveText('Kết quả 1/3000');
+  await page.getByRole('textbox', { name: 'Thay bằng' }).fill('mình');
+
+  const started = Date.now();
+  await page.getByRole('button', { name: 'Thay thế tất cả' }).click();
+  await expect(target(page, 1)).toHaveValue('Câu 0: mình nhé', { timeout: 10_000 });
+  await expect(found(page)).toHaveText('Không có kết quả');
+  const elapsed = Date.now() - started;
+  console.log(`[SC-006] thay tất cả 3.000 cue: ${elapsed} ms`);
+  expect(elapsed).toBeLessThanOrEqual(2000);
+  await saved(page);
+  await expect.poll(async () => (await e2eQuery<{ n: string }>(`select count(*) as n from video_cues where job_id = $1 and target_text like '%mình%'`, [jobId]))[0]!.n, { timeout: 30_000 }).toBe('3000');
+});
