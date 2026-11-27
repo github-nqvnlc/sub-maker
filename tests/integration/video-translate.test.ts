@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { probeVideo } from '@/lib/audio/ffmpeg';
 import { getDb } from '@/lib/db';
-import { systemSettings, usageRecords, users, videoProjectSettings } from '@/lib/db/schema';
+import { systemSettings, usageRecords, users, videoJobs, videoProjectSettings } from '@/lib/db/schema';
 import { downloadObjectToFile, headObject } from '@/lib/storage/client';
 import { storageKeys } from '@/lib/storage/keys';
 import { stopBoss } from '@/worker/queues';
@@ -15,7 +15,7 @@ import { runVideoTranslate } from '@/worker/jobs/video-translate';
 import { startSonioxMock, type SonioxMock } from '../mocks/soniox-mock';
 import { clearRateLimits, createAdmin, createUser, resetDb, type TestUser } from './helpers';
 import { putSonioxConfig, SONIOX_KEY } from './stt-helpers';
-import { grantVideo, videoJobRow, videoUsed } from './video-helpers';
+import { errorOf, grantVideo, insertVideoJob, videoJobRow, videoUsed } from './video-helpers';
 import { cuesOf, FAST_PREPARE, FAST_TRANSLATE, runPipeline, uploadedJob, videoLogKeys, videoUsage } from './video-pipeline-helpers';
 import type { TestVideoOptions } from './video-media';
 import { newProject } from './voice-helpers';
@@ -320,4 +320,137 @@ describe('bản xem trước (T061)', () => {
     await preview(job.id);
     expect((await videoJobRow(job.id))!.previewState).toBe('ready');
   }, 60_000);
+});
+
+describe('từ điển của Project (T103, T105; FR-019 đến FR-021)', () => {
+  const putSettings = (who: TestUser, json: unknown) => who.client.put(`/api/projects/${projectId}/video/settings`, { json });
+  const saved = async () => (await getDb().select().from(videoProjectSettings).where(eq(videoProjectSettings.projectId, projectId)))[0]?.glossary;
+
+  it('lưu bản đã chuẩn hóa; việc mới trong Project chụp từ điển; sửa sau đó không đổi việc đã tạo', async () => {
+    const res = await putSettings(user, { glossary: [{ source: '  Sub Maker ', target: '', keep: true }, { source: 'teacher', target: ' thầy giáo ', keep: false }] });
+    expect(res.status).toBe(200);
+    const pairs = [
+      { source: 'Sub Maker', target: 'Sub Maker', keep: true },
+      { source: 'teacher', target: 'thầy giáo', keep: false },
+    ];
+    expect(((await res.json()) as { glossary: unknown }).glossary).toEqual(pairs);
+    expect(await saved()).toEqual(pairs);
+    const job = await uploadedJob(user, projectId);
+    expect((await videoJobRow(job.id))!.glossary).toEqual(pairs);
+    await putSettings(user, { glossary: [] });
+    expect((await videoJobRow(job.id))!.glossary).toEqual(pairs);
+  });
+
+  it('cặp sai trả 422 GLOSSARY_INVALID kèm thứ tự cặp, không ghi gì; người khác nhận 404', async () => {
+    const res = await putSettings(user, { glossary: [{ source: 'a', target: 'b', keep: false }, { source: 'A', target: 'c', keep: false }, { source: '', target: 'd', keep: false }] });
+    expect(res.status).toBe(422);
+    expect(await errorOf(res)).toMatchObject({ code: 'GLOSSARY_INVALID', fields: { '2': 'duplicate', '3': 'missing' } });
+    expect(await saved()).toBeUndefined();
+    const other = await createUser();
+    expect((await putSettings(other, { glossary: [] })).status).toBe(404);
+  });
+
+  it('giới hạn đọc từ cài đặt: đổi cài đặt thì giới hạn đổi theo', async () => {
+    const two = [{ source: 'a', target: 'b', keep: false }, { source: 'c', target: 'd', keep: false }];
+    expect((await putSettings(user, { glossary: two })).status).toBe(200);
+    expect((await admin.client.put('/api/admin/settings', { json: { videoGlossaryMaxPairs: 1 } })).status).toBe(200);
+    const res = await putSettings(user, { glossary: two });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).code).toBe('GLOSSARY_TOO_LARGE');
+  });
+});
+
+describe('dịch lại (T103, T105; FR-016, FR-021)', () => {
+  const estimateOf = (who: TestUser, id: string) => who.client.post(`/api/video/jobs/${id}/retranslate/estimate`);
+  const retranslate = (who: TestUser, id: string, json: unknown) => who.client.post(`/api/video/jobs/${id}/retranslate`, { json });
+  const transcriptions = () => mock.requests.filter((r) => r.method === 'POST' && r.path === '/v1/transcriptions').map((r) => JSON.parse(r.body) as Record<string, unknown>);
+
+  async function translatedJob() {
+    const job = await uploadedJob(user, projectId);
+    await runPipeline(job.id);
+    return { id: job.id, row: (await videoJobRow(job.id))! };
+  }
+
+  it('ước tính theo thời lượng âm thanh và đơn giá; chưa có đơn giá thì chi phí là null', async () => {
+    const { id, row } = await translatedJob();
+    const res = await estimateOf(user, id);
+    expect(res.status).toBe(200);
+    const ms = row.media!.audioDurationMs;
+    expect(await res.json()).toEqual({ durationMs: ms, costEstimateUsd: expect.closeTo((Math.round(ms / 1000) / 3600) * 3.6, 6) });
+    await putSonioxConfig(admin, mock, 'ok', { pricePerAudioHourUsd: null });
+    expect(await (await estimateOf(user, id)).json()).toEqual({ durationMs: ms, costEstimateUsd: null });
+  });
+
+  it('thay toàn bộ cue bằng kết quả mới theo hướng và từ điển mới, ghi thêm đúng một bản tính phí; cue cũ giữ tới lúc đó', async () => {
+    const { id, row } = await translatedJob();
+    const before = await cuesOf(id);
+    await user.client.put(`/api/projects/${projectId}/video/settings`, { json: { glossary: [{ source: 'teacher', target: 'cô giáo', keep: false }] } });
+
+    const res = await retranslate(user, id, { confirm: true, direction: 'vi_to_en', baseRevision: row.cueRevision });
+    expect(res.status).toBe(202);
+    const queued = (await videoJobRow(id))!;
+    expect(queued).toMatchObject({ status: 'queued', translationRun: 2, direction: 'vi_to_en', sonioxFileId: null, sonioxTranscriptionId: null, glossary: [{ source: 'teacher', target: 'cô giáo', keep: false }] });
+    expect(await cuesOf(id)).toEqual(before);
+
+    await runVideoTranslate(id, FAST_TRANSLATE);
+    const done = (await videoJobRow(id))!;
+    expect(done).toMatchObject({ status: 'review_ready', cueRun: 2, billedRun: 2, cueRevision: row.cueRevision + 1 });
+    expect((await cuesOf(id)).map((c) => c.targetText)).not.toEqual(before.map((c) => c.targetText));
+    expect((await videoUsage(id)).filter((u) => u.ok)).toHaveLength(2);
+    expect(transcriptions().at(-1)).toMatchObject({ translation: { target_language: 'en' }, context: { translation_terms: [{ source: 'teacher', target: 'cô giáo' }] } });
+  });
+
+  it('lượt mới lỗi thì giữ nguyên cue cũ và sửa tiếp được', async () => {
+    const { id, row } = await translatedJob();
+    const before = await cuesOf(id);
+    await scenario('401');
+    expect((await retranslate(user, id, { confirm: true, direction: 'to_vi', baseRevision: row.cueRevision })).status).toBe(202);
+    await runVideoTranslate(id, FAST_TRANSLATE);
+    expect((await videoJobRow(id))!).toMatchObject({ status: 'failed', cueRun: 1, errorCode: 'SONIOX_AUTH' });
+    expect(await cuesOf(id)).toEqual(before);
+  });
+
+  it('thiếu xác nhận, phiên bản cũ, đang chạy, mất nguồn, thiếu quyền, của người khác: bị từ chối, không đổi gì', async () => {
+    const { id, row } = await translatedJob();
+    const body = { confirm: true, direction: 'to_vi', baseRevision: row.cueRevision };
+    for (const bad of [{ ...body, confirm: false }, { direction: 'to_vi', baseRevision: row.cueRevision }, { ...body, direction: 'x' }]) expect((await retranslate(user, id, bad)).status).toBe(422);
+
+    let res = await retranslate(user, id, { ...body, baseRevision: row.cueRevision + 1 });
+    expect([res.status, (await errorOf(res)).code]).toEqual([409, 'CUE_CONFLICT']);
+
+    const other = await createUser();
+    await grantVideo(admin, other.id);
+    expect((await retranslate(other, id, body)).status).toBe(404);
+    expect((await retranslate(admin, id, body)).status).toBe(404);
+    expect((await estimateOf(other, id)).status).toBe(404);
+
+    await grantVideo(admin, user.id, false);
+    res = await retranslate(user, id, body);
+    expect([res.status, (await errorOf(res)).code]).toEqual([403, 'VIDEO_NOT_ALLOWED']);
+    await grantVideo(admin, user.id);
+
+    await getDb().update(videoJobs).set({ sourceState: 'deleted', sourceKey: null, audioTempKey: null }).where(eq(videoJobs.id, id));
+    res = await retranslate(user, id, body);
+    expect([res.status, (await errorOf(res)).code]).toEqual([409, 'VIDEO_SOURCE_GONE']);
+
+    await getDb().update(videoJobs).set({ sourceState: 'ready', status: 'translating' }).where(eq(videoJobs.id, id));
+    res = await retranslate(user, id, body);
+    expect([res.status, (await errorOf(res)).code]).toEqual([409, 'VIDEO_NOT_EDITABLE']);
+    expect((await videoJobRow(id))!.translationRun).toBe(1);
+  });
+
+  it('đang có việc khác chạy thì từ chối theo giới hạn số việc', async () => {
+    const { id, row } = await translatedJob();
+    await insertVideoJob(user.id, projectId, { status: 'queued' });
+    const res = await retranslate(user, id, { confirm: true, direction: 'to_vi', baseRevision: row.cueRevision });
+    expect([res.status, (await errorOf(res)).code]).toEqual([429, 'VIDEO_TOO_MANY_JOBS']);
+  });
+
+  it('chưa cấu hình Soniox thì từ chối, không đổi gì', async () => {
+    const { id, row } = await translatedJob();
+    await putSonioxConfig(admin, mock, 'ok', { enabled: false });
+    const res = await retranslate(user, id, { confirm: true, direction: 'to_vi', baseRevision: row.cueRevision });
+    expect([res.status, (await errorOf(res)).code]).toEqual([409, 'STT_NOT_CONFIGURED']);
+    expect((await videoJobRow(id))!.status).toBe('review_ready');
+  });
 });

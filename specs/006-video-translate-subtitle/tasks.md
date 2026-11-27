@@ -284,18 +284,24 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 
 **Independent Test**: nhập 10 cặp, dịch, đối chiếu; việc mới trong Project thấy từ điển.
 
-- [ ] T103 [P] [US5] `tests/unit/video/glossary.test.ts` (`->` ưu tiên hơn dấu phẩy, "giữ nguyên", lỗi theo dòng, trùng nguồn, ≤ `videoGlossaryMaxPairs` mặc định 200, ≤ `videoGlossaryMaxChars` mặc định 8.000, đổi cài đặt thì giới hạn đổi theo) và ca dịch lại trong `tests/integration/video-translate.test.ts` (FR-019 đến FR-021).
-- [ ] T104 [P] [US5] Viết `src/lib/video/glossary.ts`. Giới hạn nhận qua tham số lấy từ cài đặt, không viết cứng.
-- [ ] T105 [US5] Lưu và kiểm từ điển ở route `video/settings`; chụp từ điển vào việc; viết `src/app/api/video/jobs/[jobId]/retranslate/route.ts` (`confirm: true`, `baseRevision`, `VIDEO_SOURCE_GONE`). Đọc giới hạn từ cài đặt khi kiểm ở máy chủ. Thêm `retranslate/estimate/route.ts`: thời lượng và chi phí ước tính theo đơn giá đã cấu hình, `null` khi chưa có (FR-016).
-- [ ] T106 [US5] Viết `src/components/video/glossary-editor.tsx` (bảng dựng trên `Table`, thêm sửa xóa, dán hàng loạt), dùng ở tab và trang biên tập.
+- [X] T103 [P] [US5] `tests/unit/video/glossary.test.ts` (`->` ưu tiên hơn dấu phẩy, "giữ nguyên", lỗi theo dòng, trùng nguồn, ≤ `videoGlossaryMaxPairs` mặc định 200, ≤ `videoGlossaryMaxChars` mặc định 8.000, đổi cài đặt thì giới hạn đổi theo) và ca dịch lại trong `tests/integration/video-translate.test.ts` (FR-019 đến FR-021).
+  - done (27/11): `tests/unit/video/glossary.test.ts`; ca từ điển và dịch lại trong `tests/integration/video-translate.test.ts` (9 ca, đã thấy trượt rồi đạt).
+- [X] T104 [P] [US5] Viết `src/lib/video/glossary.ts`. Giới hạn nhận qua tham số lấy từ cài đặt, không viết cứng.
+  - done: `src/lib/video/glossary.ts`; `tests/unit/video/glossary.test.ts` 10 ca đạt.
+- [X] T105 [US5] Lưu và kiểm từ điển ở route `video/settings`; chụp từ điển vào việc; viết `src/app/api/video/jobs/[jobId]/retranslate/route.ts` (`confirm: true`, `baseRevision`, `VIDEO_SOURCE_GONE`). Đọc giới hạn từ cài đặt khi kiểm ở máy chủ. Thêm `retranslate/estimate/route.ts`: thời lượng và chi phí ước tính theo đơn giá đã cấu hình, `null` khi chưa có (FR-016).
+  - done: `settings-service.ts`, `retranslate.ts`, route `retranslate` và `retranslate/estimate`; giới hạn đọc từ cài đặt; ca cô lập đã thêm.
+- [X] T106 [US5] Viết `src/components/video/glossary-editor.tsx` (bảng dựng trên `Table`, thêm sửa xóa, dán hàng loạt), dùng ở tab và trang biên tập.
   - `ui/table.tsx`, `Input`, `Textarea`; xóa qua `ConfirmDialog`; lỗi theo dòng `role="alert"` `text-xs text-destructive`; ghi chú từ điển chỉ là chỉ dẫn cho máy dịch (FR-021).
   - Mẫu: `src/components/overlay/source-picker.tsx` cho bố cục vùng nhập. Không chép: ô chọn tệp, danh sách âm thanh.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T107 [US5] Thêm hộp "Dịch lại" (nêu thời lượng, chi phí ước tính hoặc "chưa ước tính được", và việc chỉnh sửa tay bị thay) vào `src/components/video/editor.tsx`.
+  - done (27/11): `glossary-editor.tsx` ở tab Dịch Video và tab "Từ điển" của trình biên tập; agent kiểm ba lượt, mọi mục đã đóng. Giới hạn: mỗi lần lưu đọc bản mới nhất rồi mới ghi, còn khe vài mili giây giữa hai thiết bị cùng sửa.
+- [X] T107 [US5] Thêm hộp "Dịch lại" (nêu thời lượng, chi phí ước tính hoặc "chưa ước tính được", và việc chỉnh sửa tay bị thay) vào `src/components/video/editor.tsx`.
   - `shared/confirm-dialog.tsx`; `toast`; chữ qua `useT()`.
   - Mẫu: hộp xác nhận trong `src/components/overlay/overlay-job-list.tsx`. Không chép: chữ về xóa.
   - Ba bước: đọc lại checklist; gửi người kiểm; ghi `done` hoặc `parked`.
-- [ ] T108 [US5] Chạy Independent Test của US5 theo `specs/006-video-translate-subtitle/quickstart.md` §5 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - done (27/11): `retranslate-button.tsx`; nút xác nhận khóa tới khi có ước tính; ẩn khi thiếu quyền, chưa cấu hình hoặc không còn âm thanh (`canRetranslate`); `ConfirmDialog` thêm `confirmDisabled`.
+- [X] T108 [US5] Chạy Independent Test của US5 theo `specs/006-video-translate-subtitle/quickstart.md` §5 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - Kết quả (27/11): quickstart §5 đạt qua `tests/e2e/video-glossary.spec.ts` (desktop và 375 px): dán 10 dòng gồm một dòng lỗi và một dòng trùng, thêm sửa xóa, việc mới gửi đúng `context.translation_terms` (Soniox giả), "Dịch lại" phải xác nhận và thay phụ đề sửa tay bằng kết quả mới.
 
 ---
 

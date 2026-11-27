@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
-import { createSonioxHandler } from '../tests/mocks/soniox-mock';
+import { createSonioxHandler, type SonioxRequest } from '../tests/mocks/soniox-mock';
 
 /**
  * Máy chủ nhà cung cấp TTS giả dùng cho kiểm thử (Nguyên tắc V): mô phỏng FPT Marketplace và ShopAIKey (OpenAI TTS, MiniMax).
@@ -42,6 +42,8 @@ export type RecordedRequest = {
 export type MockProvider = {
   url: string;
   requests: RecordedRequest[];
+  /** yêu cầu tới Soniox giả, theo thứ tự nhận */
+  sonioxRequests: SonioxRequest[];
   reset(): void;
   close(): Promise<void>;
 };
@@ -351,6 +353,7 @@ export async function startMockProvider(opts: { port?: number } = {}): Promise<M
   return {
     url: `http://127.0.0.1:${port}`,
     requests,
+    sonioxRequests: soniox.requests,
     reset,
     async close() {
       for (const r of pending) r();

@@ -86,6 +86,8 @@ export type VideoJobDto = {
   storedBytes: number;
   canStop: boolean;
   canRerun: boolean;
+  /** còn âm thanh hoặc video nguồn để gửi dịch lại */
+  canRetranslate: boolean;
   createdAt: string;
   finishedAt: string | null;
 };
@@ -163,6 +165,7 @@ export function videoJobDto(j: JobRow, exports: ReadonlyArray<ExportListRow>, up
     storedBytes: (j.sourceKey ? j.fileSizeBytes : 0) + exports.reduce((n, e) => n + (e.status === 'completed' ? (e.outputBytes ?? 0) : 0), 0),
     canStop: pipelineActive || !!active,
     canRerun: (j.status === 'failed' || j.status === 'stopped') && canResume(j),
+    canRetranslate: canResume(j),
     createdAt: j.createdAt.toISOString(),
     finishedAt: j.finishedAt?.toISOString() ?? null,
   };
@@ -239,7 +242,13 @@ export async function getVideoTab(user: Principal, projectId: string) {
     allowed: mayTranslate(user),
     sttConfigured: await sttReady(),
     quota: await videoQuotaInfo(user.id),
-    limits: { maxBytes: settings.videoMaxBytes, maxMinutes: settings.videoMaxMinutes, extensions: [...VIDEO_EXTENSIONS] },
+    limits: {
+      maxBytes: settings.videoMaxBytes,
+      maxMinutes: settings.videoMaxMinutes,
+      extensions: [...VIDEO_EXTENSIONS],
+      glossaryMaxPairs: settings.videoGlossaryMaxPairs,
+      glossaryMaxChars: settings.videoGlossaryMaxChars,
+    },
     retention: { sourceHours: settings.videoSourceRetainHours, idleDays: settings.videoIdleRetainDays, outputDays: settings.videoOutputRetainDays },
     settings: await projectVideoSettings(projectId),
   };

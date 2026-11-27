@@ -25,6 +25,8 @@ type Props = {
   /** Bắt buộc gõ lại chuỗi này mới cho xác nhận (ví dụ email khi xóa User). */
   requireText?: string;
   requireTextLabel?: string;
+  /** Chưa đủ thông tin để người dùng quyết định (ví dụ đang tải chi phí ước tính). */
+  confirmDisabled?: boolean;
   onConfirm: () => Promise<void> | void;
 };
 
@@ -37,6 +39,7 @@ export function ConfirmDialog({
   destructive = true,
   requireText,
   requireTextLabel,
+  confirmDisabled = false,
   onConfirm,
 }: Props) {
   const t = useT();
@@ -72,7 +75,7 @@ export function ConfirmDialog({
           <AlertDialogCancel disabled={busy}>{t.common.cancel}</AlertDialogCancel>
           <Button
             variant={destructive ? 'destructive' : 'default'}
-            disabled={busy || blocked}
+            disabled={busy || blocked || confirmDisabled}
             onClick={async () => {
               setBusy(true);
               try {

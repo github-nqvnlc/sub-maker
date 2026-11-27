@@ -15,6 +15,8 @@ import type { CueActions } from '@/components/video/cue-editing';
 import { CueList } from '@/components/video/cue-list';
 import { ExportList } from '@/components/video/export-list';
 import { ExportPanel } from '@/components/video/export-panel';
+import { GlossaryEditor } from '@/components/video/glossary-editor';
+import { RetranslateButton } from '@/components/video/retranslate-button';
 import { VideoStatusBadge } from '@/components/video/status';
 import { StylePanel } from '@/components/video/style-panel';
 import { Timeline } from '@/components/video/timeline';
@@ -212,14 +214,21 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
               {e.tabCues} ({cues.length})
             </TabsTrigger>
             <TabsTrigger value="style">{e.tabStyle}</TabsTrigger>
+            <TabsTrigger value="glossary">{e.tabGlossary}</TabsTrigger>
             <TabsTrigger value="export">{t.video.export.tab}</TabsTrigger>
             <TabsTrigger value="log">{e.tabLog}</TabsTrigger>
           </TabsList>
           <TabsContent value="cues" className="space-y-3">
             {!job.editable ? (
-              <p role="status" className="text-sm text-muted-foreground">
-                {e.readOnly}
-              </p>
+              <div className="space-y-2">
+                <p role="status" className="text-sm text-muted-foreground">
+                  {e.readOnly}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Progress value={job.progressPercent} className="h-1.5 flex-1" aria-label={t.video.list.progressLabel} />
+                  <span className="text-xs tabular-nums text-muted-foreground">{job.progressPercent}%</span>
+                </div>
+              </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" disabled={readOnly || !editor.canUndo} onClick={() => store.undo()}>
@@ -230,6 +239,7 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
                 <Redo2 className="size-3.5" />
                 {tools.redo}
               </Button>
+              <RetranslateButton job={job} disabled={readOnly} ensureSaved={ensureSaved} />
               {editor.status !== 'conflict' && !editor.error ? (
                 <span role="status" className="ml-auto text-xs text-muted-foreground" data-testid="save-status">
                   {status}
@@ -281,6 +291,10 @@ function Workspace({ job, media, loaded, reload }: { job: VideoJobDetailDto; med
           </TabsContent>
           <TabsContent value="style">
             <StylePanel style={styleEditor.style} status={styleEditor.status} onChange={(next) => styleEditor.store.set(next)} />
+          </TabsContent>
+          {/* giữ chữ đang gõ khi sang tab khác tra thuật ngữ */}
+          <TabsContent value="glossary" forceMount className="data-[state=inactive]:hidden">
+            <GlossaryEditor projectId={job.projectId} />
           </TabsContent>
           <TabsContent value="export" className="space-y-6">
             <ExportPanel job={job} revision={editor.revision} ensureSaved={ensureSaved} styleVersion={styleEditor.savedVersion} ensureStyleSaved={() => styleEditor.store.flush()} />

@@ -125,6 +125,8 @@ const VIDEO_CASES: Record<string, Case> = {
   'DELETE /video/exports/{exportId}': onExport(),
   'PUT /projects/{projectId}/video/settings': onProject({ json: { direction: 'vi_to_en' } }),
   'PUT /video/jobs/{jobId}/style': onJob({ json: DEFAULT_VIDEO_STYLE }),
+  'POST /video/jobs/{jobId}/retranslate/estimate': onJob({ json: {} }),
+  'POST /video/jobs/{jobId}/retranslate': onJob({ json: { confirm: true, direction: 'to_vi', baseRevision: 0 } }),
 };
 
 // ----- Các ca kiểm thử theo từng story (mỗi story bổ sung vào đây) -----

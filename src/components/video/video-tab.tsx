@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { ErrorState, LoadingList } from '@/components/shared/states';
+import { GlossaryEditor } from '@/components/video/glossary-editor';
 import { UploadPanel } from '@/components/video/upload-panel';
 import { VideoJobList } from '@/components/video/video-job-list';
 import { isVideoActive, useVideoJobs, useVideoRefresh, useVideoTab } from '@/lib/hooks/use-video';
@@ -53,6 +54,7 @@ export function VideoTab({ projectId }: { projectId: string }) {
         <UploadPanel projectId={projectId} tab={tab.data} jobs={jobs.data ?? []} />
       )}
       <VideoJobList projectId={projectId} allowed={tab.data.allowed} />
+      <GlossaryEditor projectId={projectId} />
     </div>
   );
 }

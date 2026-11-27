@@ -289,6 +289,12 @@ export function UploadPanel({ projectId, tab, jobs }: { projectId: string; tab: 
               onPick={pick}
             />
             <SelectField label={u.direction} value={direction} onChange={(v) => setDirection(v as Direction)} options={DIRECTIONS.map((d) => ({ value: d, label: u.directions[d] }))} />
+            <p className="text-xs text-muted-foreground">
+              {fmt(u.glossary, { n: tab.settings.glossary.length })}{' '}
+              <a href="#video-glossary-title" className="underline underline-offset-4 hover:text-foreground">
+                {u.glossaryLink}
+              </a>
+            </p>
             {formError ? (
               <p role="alert" className="text-sm text-destructive">
                 {formError}
