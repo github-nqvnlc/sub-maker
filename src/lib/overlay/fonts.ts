@@ -3,10 +3,15 @@
  * (GlobalFonts): cùng tệp TTF trong `public/fonts/overlay` là điều kiện để xem trước giống video. Mã thuần, không đọc tệp.
  */
 
-export const FONT_FAMILIES = ['be-vietnam-pro', 'roboto', 'montserrat', 'inter', 'arimo'] as const;
+export const FONT_FAMILIES = ['be-vietnam-pro', 'roboto', 'montserrat', 'inter', 'arimo', 'oswald', 'open-sans'] as const;
 export type FontFamily = (typeof FONT_FAMILIES)[number];
-export const FONT_WEIGHTS = [400, 700, 800] as const;
+/** Bộ phông chữ cũ của tab Video Overlay (spec 005, FR-012; spec 006 T095 giữ tab Video Overlay nguyên bộ cũ). */
+export const OVERLAY_FONT_FAMILIES = ['be-vietnam-pro', 'roboto', 'montserrat', 'inter', 'arimo'] as const;
+export type OverlayFontFamily = (typeof OVERLAY_FONT_FAMILIES)[number];
+export const FONT_WEIGHTS = [400, 600, 700, 800] as const;
 export type FontWeight = (typeof FONT_WEIGHTS)[number];
+export const OVERLAY_FONT_WEIGHTS = [400, 700, 800] as const;
+export type OverlayFontWeight = (typeof OVERLAY_FONT_WEIGHTS)[number];
 
 /** Phông chữ thay thế khi phông chữ đã chọn thiếu ký tự. */
 export const FALLBACK_FAMILY = 'noto-sans';
@@ -18,19 +23,25 @@ export const FONT_LABELS: Record<FontFamily, string> = {
   montserrat: 'Montserrat',
   inter: 'Inter',
   arimo: 'Arimo (Arial)',
+  oswald: 'Oswald',
+  'open-sans': 'Open Sans',
 };
 
-/** Độ đậm có sẵn của từng họ (Arimo không có 800). */
+/** Độ đậm có sẵn của từng họ (Arimo không có 600/800; Oswald không có 800). */
 export const WEIGHTS_OF: Record<FontFamily | typeof FALLBACK_FAMILY, readonly FontWeight[]> = {
-  'be-vietnam-pro': [400, 700, 800],
-  roboto: [400, 700, 800],
-  montserrat: [400, 700, 800],
-  inter: [400, 700, 800],
+  'be-vietnam-pro': [400, 600, 700, 800],
+  roboto: [400, 600, 700, 800],
+  montserrat: [400, 600, 700, 800],
+  inter: [400, 600, 700, 800],
   arimo: [400, 700],
+  oswald: [400, 600, 700],
+  'open-sans': [400, 600, 700, 800],
   'noto-sans': [400, 700],
 };
 
 export const hasWeight = (family: FontFamily, weight: number): boolean => (WEIGHTS_OF[family] as readonly number[]).includes(weight);
+export const hasOverlayWeight = (family: OverlayFontFamily, weight: number): boolean =>
+  (OVERLAY_FONT_WEIGHTS as readonly number[]).includes(weight) && hasWeight(family, weight);
 
 /** Tên họ đăng ký riêng để không lẫn với phông chữ cài sẵn trên máy. */
 export const registeredName = (family: string): string => `ov-${family}`;

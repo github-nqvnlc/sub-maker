@@ -7,7 +7,7 @@ import { SliderField } from '@/components/overlay/slider-field';
 import { ColorField } from '@/components/shared/color-field';
 import { useT } from '@/lib/i18n/client';
 import { ALIGNS, ANCHOR_Y, ANCHORS, LIMITS, type OverlayConfig } from '@/lib/overlay/config';
-import { FONT_FAMILIES, FONT_LABELS, FONT_WEIGHTS, hasWeight } from '@/lib/overlay/fonts';
+import { FONT_LABELS, hasOverlayWeight, OVERLAY_FONT_FAMILIES, OVERLAY_FONT_WEIGHTS, type OverlayFontFamily } from '@/lib/overlay/fonts';
 
 /** Kiểu chữ và vị trí (FR-012..014). */
 export function TypographyPanel({ config, onChange }: { config: OverlayConfig; onChange: (c: OverlayConfig) => void }) {
@@ -29,17 +29,18 @@ export function TypographyPanel({ config, onChange }: { config: OverlayConfig; o
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <SelectField
               label={t.overlay.font}
-              value={font.family}
-              onChange={(family) => onChange({ ...config, font: { ...font, family, weight: hasWeight(family, font.weight) ? font.weight : 700 } })}
-              options={FONT_FAMILIES.map((f) => ({ value: f, label: FONT_LABELS[f] }))}
+              value={(OVERLAY_FONT_FAMILIES as readonly string[]).includes(font.family) ? (font.family as OverlayFontFamily) : 'be-vietnam-pro'}
+              onChange={(family) => onChange({ ...config, font: { ...font, family, weight: hasOverlayWeight(family, font.weight) ? font.weight : 700 } })}
+              options={OVERLAY_FONT_FAMILIES.map((f) => ({ value: f, label: FONT_LABELS[f] }))}
             />
             <SelectField
               label={t.overlay.fontWeight}
               value={String(font.weight) as '400' | '700' | '800'}
               onChange={(w) => onChange({ ...config, font: { ...font, weight: Number(w) as 400 | 700 | 800 } })}
-              options={FONT_WEIGHTS.map((w) => {
+              options={OVERLAY_FONT_WEIGHTS.map((w) => {
                 const key = String(w) as '400' | '700' | '800';
-                const ok = hasWeight(font.family, w);
+                const current = (OVERLAY_FONT_FAMILIES as readonly string[]).includes(font.family) ? (font.family as OverlayFontFamily) : 'be-vietnam-pro';
+                const ok = hasOverlayWeight(current, w);
                 return { value: key, label: ok ? t.overlay.weights[key] : `${t.overlay.weights[key]} (${t.overlay.weightMissing})`, disabled: !ok };
               })}
             />

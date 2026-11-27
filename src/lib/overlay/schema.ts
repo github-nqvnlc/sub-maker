@@ -16,7 +16,7 @@ import {
   WORD_EFFECTS,
   type OverlayConfig,
 } from './config';
-import { FONT_FAMILIES } from './fonts';
+import { OVERLAY_FONT_FAMILIES } from './fonts';
 
 /**
  * Kiểm tra cấu hình ở máy chủ (FR-046): danh sách đóng, số trong khoảng, màu `#RRGGBB`, không nhận trường lạ. Tách khỏi `config.ts`
@@ -36,7 +36,7 @@ const baseSchema = z
     includeAudio: z.boolean(),
     font: z
       .object({
-        family: z.enum(FONT_FAMILIES),
+        family: z.enum(OVERLAY_FONT_FAMILIES),
         size: int(LIMITS.fontSize),
         weight: z.union([z.literal(400), z.literal(700), z.literal(800)]),
       })

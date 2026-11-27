@@ -282,7 +282,15 @@ test('mọi hiệu ứng còn lại, cue ngắn hơn hiệu ứng và toast rờ
     const jobId = await openEditor(page, p.id, src);
 
     // ---- Rời Karaoke không hiện toast "đưa về mặc định"; rời Word (có chọn "Từ bung ra") thì hiện ----
+    // ---- Kiểm danh sách phông mới (Oswald, Open Sans) và độ đậm 600 (Hơi đậm) ở tab Kiểu chữ ----
     await page.getByRole('tab', { name: 'Kiểu chữ' }).click();
+    await page.getByRole('combobox', { name: 'Phông chữ' }).click();
+    await expect(page.getByRole('option', { name: 'Oswald' })).toBeVisible();
+    await expect(page.getByRole('option', { name: 'Open Sans' })).toBeVisible();
+    await page.getByRole('option', { name: 'Oswald' }).click();
+    await page.getByRole('combobox', { name: 'Độ đậm' }).click();
+    await expect(page.getByRole('option', { name: 'Hơi đậm', exact: true })).toBeEnabled();
+    await page.getByRole('option', { name: 'Hơi đậm', exact: true }).click();
     const syncSelect = page.getByRole('combobox', { name: 'Chế độ đồng bộ' });
     await syncSelect.click();
     await page.getByRole('option', { name: 'Karaoke' }).click();
@@ -319,6 +327,8 @@ test('mọi hiệu ứng còn lại, cue ngắn hơn hiệu ứng và toast rờ
       { label: 'word-pop', style: { ...base, sync: 'word', wordEffect: 'pop', enter: 'cut' }, frames: [6, 13, 52, 70, 88] },
       { label: 'word-typewriter', style: { ...base, sync: 'word', wordEffect: 'typewriter', enter: 'cut' }, frames: [6, 13, 52, 70, 88] },
       { label: 'glow', style: { ...base, sync: 'cue', enter: 'glow', highlightColor: '#FF0000' }, frames: [6, 13, 52, 70] },
+      { label: 'oswald-600', style: { ...base, font: { family: 'oswald', size: 64, weight: 600 }, sync: 'cue', enter: 'cut' }, frames: [6, 52, 65] },
+      { label: 'open-sans-600', style: { ...base, font: { family: 'open-sans', size: 64, weight: 600 }, sync: 'cue', enter: 'cut' }, frames: [6, 52, 65] },
     ];
 
     for (const c of cases) {

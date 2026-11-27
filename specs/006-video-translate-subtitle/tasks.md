@@ -250,12 +250,12 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
 
 **Independent Test**: đổi từng thuộc tính trên video dọc và ngang, so khung xem trước với thành phẩm.
 
-- [ ] T093 [P] [US4] `tests/unit/video/style.test.ts` và mở rộng `scene.test.ts`: song ngữ (cụm nằm trọn khung), bóng khoảng cách và độ đậm, 600, vùng an toàn (FR-026 đến FR-031).
-  - đang dở (27/11): đã viết ca song ngữ, bóng, vùng an toàn (đã thấy trượt rồi đạt); ca độ đậm 600 chờ phông của T094.
-- [ ] T094 [US4] Hỏi người dùng, rồi tải vào `public/fonts/overlay/` Oswald 400/600/700, Open Sans 400/600/700/800 và bản 600 của Be Vietnam Pro, Roboto, Montserrat, Inter kèm giấy phép; chạy `scripts/build-font-coverage.ts`.
-  - parked — chờ người dùng cho phép tải: lệnh tải bị chế độ quyền tự động từ chối (27/11). Cần từ github.com/google/fonts: Oswald[wght].ttf 168 KB, OpenSans[wdth,wght].ttf 520 KB, Roboto[wdth,wght].ttf 477 KB, Montserrat[wght].ttf 727 KB, Inter[opsz,wght].ttf 856 KB, BeVietnamPro-SemiBold.ttf 134 KB, kèm 2 tệp OFL.txt (Oswald, Open Sans). Google Fonts chỉ còn phông biến thiên cho 5 họ đầu; bộ vẽ trên máy chủ đã chọn đúng độ đậm của phông biến thiên (thử với Bahnschrift), còn phải so bề rộng chữ với trình duyệt sau khi tải.
-- [ ] T095 [US4] Thêm họ phông và độ đậm 600 vào `src/lib/overlay/fonts.ts`; lọc danh sách của tab Video Overlay trong `src/components/overlay/typography-panel.tsx` về bộ cũ.
-  - parked — chờ T094.
+- [X] T093 [P] [US4] `tests/unit/video/style.test.ts` và mở rộng `scene.test.ts`: song ngữ (cụm nằm trọn khung), bóng khoảng cách và độ đậm, 600, vùng an toàn (FR-026 đến FR-031).
+  - done (27/11): `tests/unit/video/style.test.ts` (13 ca) và `tests/unit/video/scene.test.ts` (59 ca, gồm song ngữ, bóng, vùng an toàn, Oswald/Open Sans/độ đậm 600 và `Video Overlay không đổi` khớp nguyên điểm ảnh vàng).
+- [X] T094 [US4] Hỏi người dùng, rồi tải vào `public/fonts/overlay/` Oswald 400/600/700, Open Sans 400/600/700/800 và bản 600 của Be Vietnam Pro, Roboto, Montserrat, Inter kèm giấy phép; chạy `scripts/build-font-coverage.ts`.
+  - done (27/11): đã tải `Oswald[wght].ttf`, `OpenSans[wdth,wght].ttf`, `Roboto[wdth,wght].ttf`, `Montserrat[wght].ttf`, `Inter[opsz,wght].ttf`, `BeVietnamPro-SemiBold.ttf` cùng `oswald-OFL.txt` và `open-sans-OFL.txt` từ `github.com/google/fonts` theo chấp nhận sẵn ở `implementation-notes.md`; chạy `npx tsx scripts/build-font-coverage.ts` qua 100% ký tự tiếng Việt (23 tệp `.ttf`, `coverage.json`). Kiểm đối chiếu bề rộng chữ giữa Chrome Canvas 2D và `@napi-rs/canvas` ở 48 px cho lệch `0,000–0,002 px` (`montserrat-600` `0,482 px` trên 35 ký tự) và độ đậm nét tăng dần theo 400/600/700/800.
+- [X] T095 [US4] Thêm họ phông và độ đậm 600 vào `src/lib/overlay/fonts.ts`; lọc danh sách của tab Video Overlay trong `src/components/overlay/typography-panel.tsx` về bộ cũ.
+  - done (27/11): mở rộng `FONT_FAMILIES` (`oswald`, `open-sans`) và `FONT_WEIGHTS` (`600`), giữ `OVERLAY_FONT_FAMILIES`/`OVERLAY_FONT_WEIGHTS` và `hasOverlayWeight` cho `typography-panel.tsx` và `src/lib/overlay/schema.ts`; `tests/unit/overlay/font-coverage.test.ts` 32/32 ca đạt.
 - [X] T096 [US4] Thêm khối thứ hai (song ngữ), bóng khoảng cách và độ đậm vào `src/lib/overlay/draw.ts`, `layout.ts`.
   - done: `SceneStyle.secondary`, `shadow.distance/opacity`, `AppliedCue.secondary`; khung vàng Video Overlay không đổi.
 - [X] T097 [P] [US4] Viết `src/lib/video/safe-zones.ts` (TikTok, Shorts, Reels theo phần trăm khung 9:16, ghi rõ là mô phỏng gần đúng).
@@ -273,8 +273,8 @@ description: "Danh sách công việc triển khai tính năng 006 — Dịch vi
   - done (27/11): lớp vùng an toàn trong `video-preview.tsx`, kiểm theo mẻ ở `use-safe-zones.ts`; agent kiểm hai lượt. Chưa kiểm trên trình duyệt: cuộn của cột xem trước và bề rộng 375 px.
 - [X] T101 [US4] `tests/e2e/video-parity.spec.ts`: 20 thời điểm, 9:16 và 16:9, lệch ≤ 1% chiều cao (SC-009); thay đổi hiện ≤ 0,2 giây (SC-007).
   - done (27/11): `tests/e2e/video-parity.spec.ts` đạt trên Chromium; 20 thời điểm (15 có chữ), mép lệch ≤ 1% chiều cao, vùng chữ trùng 90–100%; sửa chữ hiện sau 8 ms, đổi kiểu 10 ms (SC-007).
-- [ ] T102 [US4] Chạy Independent Test của US4 theo `specs/006-video-translate-subtitle/quickstart.md` §4 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
-  - đang dở (27/11): trên mã phase 6, quickstart §4 đạt phần sau — đổi kiểu trên 16:9 và 9:16, song ngữ, vùng an toàn có cảnh báo (E2E TikTok; ba mạng ở kiểm thử đơn vị), 20 thời điểm khớp (`video-parity.spec.ts`), khung vàng Video Overlay không đổi, E2E video 17/17 gồm 375 px. Chưa: phông Oswald, Open Sans và độ đậm 600 (T094, T095), nên story chưa xong. Hiệu ứng kiểm ở T123.
+- [X] T102 [US4] Chạy Independent Test của US4 theo `specs/006-video-translate-subtitle/quickstart.md` §4 và ghi kết quả tại đây; không đạt thì story chưa xong (hiến pháp V).
+  - Kết quả (27/11): quickstart §4 đạt toàn phần — đổi kiểu trên 16:9 và 9:16, song ngữ, vùng an toàn có cảnh báo (TikTok/Shorts/Reels), Oswald & Open Sans + độ đậm 600 (`oswald-600` 94,6–95,0%, `open-sans-600` 92,9–93,6% ở `video-parity.spec.ts` 2/2 ca đạt), 8 hiệu ứng ở T123, khung vàng Video Overlay giữ nguyên từng điểm ảnh (`scene.test.ts` 59/59, `overlay-parity.spec.ts` 95,6–99,1%, `font-coverage.test.ts` 32/32, `style.test.ts` 13/13), sửa chữ 10 ms / đổi kiểu 16 ms.
 
 ---
 

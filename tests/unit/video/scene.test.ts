@@ -4,7 +4,7 @@ import { canonicalFrame, DEFAULT_CONFIG, outputSize, overlaySceneStyle, type Sce
 import { createScene, drawFrame, sceneBand, type Scene } from '@/lib/overlay/draw';
 import { effectDurations, wordStates } from '@/lib/overlay/effects';
 import type { AppliedCue } from '@/lib/overlay/types';
-import { DEFAULT_VIDEO_STYLE, STYLE_ENTERS, toSceneStyle, videoStyleSchema, type VideoStyle } from '@/lib/video/style';
+import { DEFAULT_VIDEO_STYLE, STYLE_ENTERS, toAppliedCues, toSceneStyle, videoStyleSchema, type VideoStyle } from '@/lib/video/style';
 import { asCtx, createLayer, cue, measure } from '../overlay/helpers';
 import { GOLDEN_CONFIGS, goldenHashes, readGolden } from './overlay-golden';
 
@@ -352,6 +352,17 @@ describe('hiệu ứng của dịch video (T119; FR-032 đến FR-035)', () => {
 });
 
 describe('Video Overlay không đổi (spec 005)', () => {
+  it('vẽ được Oswald, Open Sans và độ đậm 600 với kích thước/độ đậm phân biệt rõ (T093, T095)', () => {
+    const cues = toAppliedCues([{ startMs: 0, endMs: 2000, sourceText: 'Hi', targetText: 'Xin chào Việt Nam!' }], 'target');
+    for (const family of ['be-vietnam-pro', 'roboto', 'montserrat', 'inter', 'oswald', 'open-sans'] as const) {
+      const f400 = draw(scene(toSceneStyle({ ...DEFAULT_VIDEO_STYLE, font: { family, size: 64, weight: 400 } }, 1280, 720), cues), 500);
+      const f600 = draw(scene(toSceneStyle({ ...DEFAULT_VIDEO_STYLE, font: { family, size: 64, weight: 600 } }, 1280, 720), cues), 500);
+      const b600 = boundsOf(f600, 1280, 720, (_r, _g, _b, a) => a > 0);
+      expect(b600?.count ?? 0, `${family} 600`).toBeGreaterThan(500);
+      expect(f600.equals(f400), `${family} 600 khác 400`).toBe(false);
+    }
+  });
+
   it('mọi cấu hình mẫu vẽ ra đúng từng điểm ảnh như trước khi mở rộng', async () => {
     const golden = readGolden()[process.platform];
     expect(golden, `chưa có khung vàng cho ${process.platform}: chạy overlay-golden.ts --write trên mã trước thay đổi`).toBeDefined();

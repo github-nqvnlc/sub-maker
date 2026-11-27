@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { boxHitsZone, isVerticalFrame, SAFE_PLATFORMS, SAFE_ZONES } from '@/lib/video/safe-zones';
-import { DEFAULT_VIDEO_STYLE, parseStoredStyle, toAppliedCues, toSceneStyle, videoStyleSchema, type VideoStyle } from '@/lib/video/style';
+import { DEFAULT_VIDEO_STYLE, normalizeStyle, parseStoredStyle, toAppliedCues, toSceneStyle, videoStyleSchema, type VideoStyle } from '@/lib/video/style';
 
 /** Kiểu phụ đề của dịch video (spec 006, T093; FR-026..FR-031). Độ đậm 600 và phông mới kiểm ở T095. */
 
@@ -109,5 +109,22 @@ describe('vùng an toàn (FR-030)', () => {
     const below = { x: px.x, y: px.y + px.height, width: 10, height: 10 };
     expect(boxHitsZone(below, frame, 'tiktok')).toBe(false);
     expect(boxHitsZone({ ...below, y: below.y - 2 }, frame, 'tiktok')).toBe(true);
+  });
+});
+
+describe('phông chữ dịch video và độ đậm 600 (T093, T095)', () => {
+  it('nhận Oswald, Open Sans và độ đậm 600; độ đậm không hỗ trợ được chuẩn hóa về 700', () => {
+    for (const family of ['be-vietnam-pro', 'roboto', 'montserrat', 'inter', 'oswald', 'open-sans'] as const) {
+      const s = style({ font: { family, size: 48, weight: 600 } });
+      expect(videoStyleSchema.safeParse(s).success).toBe(true);
+      expect(normalizeStyle(s)).toMatchObject({ style: { font: { family, weight: 600 } }, changed: [] });
+    }
+    const arimo600 = normalizeStyle(style({ font: { family: 'arimo', size: 48, weight: 600 } }));
+    expect(arimo600.style.font.weight).toBe(700);
+    expect(arimo600.changed).toEqual(['font.weight']);
+
+    const oswald800 = normalizeStyle(style({ font: { family: 'oswald', size: 48, weight: 800 } }));
+    expect(oswald800.style.font.weight).toBe(700);
+    expect(oswald800.changed).toEqual(['font.weight']);
   });
 });

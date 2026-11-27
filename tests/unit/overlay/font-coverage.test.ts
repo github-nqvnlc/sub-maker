@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { allFontFiles, FALLBACK_FAMILY, FONT_FAMILIES, FONT_WEIGHTS, fontFilesFor, hasGlyph, hasWeight, missingChars, VIETNAMESE_CHARS, WEIGHTS_OF } from '@/lib/overlay/fonts';
+import { allFontFiles, FALLBACK_FAMILY, FONT_FAMILIES, FONT_WEIGHTS, fontFilesFor, hasGlyph, hasOverlayWeight, hasWeight, missingChars, OVERLAY_FONT_FAMILIES, OVERLAY_FONT_WEIGHTS, VIETNAMESE_CHARS, WEIGHTS_OF } from '@/lib/overlay/fonts';
 import { config, coverage, cue, isWhite, boundsWhere, render, sceneOf } from './helpers';
 
 /** Phông chữ của video overlay (spec 005, FR-012, T055). */
@@ -18,10 +18,19 @@ describe('danh mục phông chữ', () => {
     }
   });
 
-  it('arimo không có độ đậm 800; các họ khác có đủ ba độ đậm', () => {
+  it('arimo không có 600/800, oswald không có 800; Video Overlay giữ bộ 5 họ cũ', () => {
     expect(hasWeight('arimo', 800)).toBe(false);
-    for (const f of FONT_FAMILIES) for (const w of FONT_WEIGHTS) expect(hasWeight(f, w), `${f} ${w}`).toBe(f !== 'arimo' || w !== 800);
+    expect(hasWeight('arimo', 600)).toBe(false);
+    expect(hasWeight('oswald', 800)).toBe(false);
+    for (const f of OVERLAY_FONT_FAMILIES) for (const w of OVERLAY_FONT_WEIGHTS) expect(hasOverlayWeight(f, w), `${f} ${w}`).toBe(f !== 'arimo' || w !== 800);
+    for (const f of FONT_FAMILIES) {
+      for (const w of FONT_WEIGHTS) {
+        const expected = f === 'arimo' ? w === 400 || w === 700 : f === 'oswald' ? w !== 800 : true;
+        expect(hasWeight(f, w), `${f} ${w}`).toBe(expected);
+      }
+    }
     expect(fontFilesFor('arimo').map((x) => x.file)).toEqual(['arimo-400.ttf', 'arimo-700.ttf', 'noto-sans-400.ttf', 'noto-sans-700.ttf']);
+    expect(fontFilesFor('oswald').map((x) => x.file)).toEqual(['oswald-400.ttf', 'oswald-600.ttf', 'oswald-700.ttf', 'noto-sans-400.ttf', 'noto-sans-700.ttf']);
   });
 });
 
